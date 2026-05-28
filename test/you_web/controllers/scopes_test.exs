@@ -14,11 +14,11 @@ defmodule YouWeb.ScopesTest do
       assert get_session(conn, :scopes) == ["email", "profile"]
     end
 
-    test "defaults to email scope when not specified", %{conn: conn} do
+    test "sets scopes to nil when not specified", %{conn: conn} do
       conn =
         get(conn, ~p"/users/log-in", callback_url: "https://sockeet.example.com/auth/callback")
 
-      assert get_session(conn, :scopes) == ["email"]
+      assert get_session(conn, :scopes) == nil
     end
   end
 end

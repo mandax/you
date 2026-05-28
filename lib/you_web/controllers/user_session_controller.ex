@@ -9,7 +9,7 @@ defmodule YouWeb.UserSessionController do
       if callback_url = params["callback_url"] do
         put_session(conn, :callback_url, callback_url)
       else
-        conn
+        put_session(conn, :callback_url, nil)
       end
 
     conn =
@@ -17,7 +17,7 @@ defmodule YouWeb.UserSessionController do
         scopes = String.split(params["scope"], " ")
         put_session(conn, :scopes, scopes)
       else
-        put_session(conn, :scopes, ["email"])
+        put_session(conn, :scopes, nil)
       end
 
     if conn.assigns[:current_scope] && conn.assigns.current_scope.user &&
@@ -25,7 +25,7 @@ defmodule YouWeb.UserSessionController do
       render(conn, :authorize,
         app_name: get_session(conn, :callback_url),
         user_email: conn.assigns.current_scope.user.email,
-        scopes: get_session(conn, :scopes)
+        scopes: get_session(conn, :scopes) || ["email"]
       )
     else
       email = get_in(conn.assigns, [:current_scope, Access.key(:user), Access.key(:email)])
