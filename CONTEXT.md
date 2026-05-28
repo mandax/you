@@ -60,6 +60,18 @@ _Avoid_: HTTP client, REST wrapper, direct GenServer calls
 The communication channel between You and apps. Connected BEAM nodes exchange process messages. You registers `You.IAM.Server` — a GenServer that handles `{:verify_token, jwt}`, `{:exchange_code, code}`, `{:get_user, user_id}`, `{:revoke_token, jwt}`. Apps use `You.SDK` which wraps these calls.
 _Avoid_: RPC, REST, node coupling
 
+**Grant Scope**:
+A declared permission an app requests during authorization. Controls what claims go into the App JWT. Values: `email` (user_id + email), `profile` (adds name, avatar), `roles` (adds role assignments). The app passes `scope` in the redirect URL; can only self-limit, never escalate. 
+_Avoid_: Permission, claim, data access level
+
+**Consent**:
+A record that a user authorized an app with specific grant scopes. Stored in the `consents` table. Checked at auth code exchange time — expired or missing consent means the user must re-authorize. Expires alongside the App JWT.
+_Avoid_: Authorization grant, permission record, approval
+
+**Anonymization**:
+The LGPD-compliant deletion method: personal fields (email, password hash, TOTP secret) are nulled or replaced with redacted values. The user row stays for referential integrity with app caches. No login possible after anonymization.
+_Avoid_: Hard delete, cascade delete, account removal
+
 **IAM Token Cache** (`iam_tokens` table in each app, optional):
 Lightweight local cache stored in each app's database. Stores `you_user_id`, username, email, role, and last validated timestamp. Used for display and graceful degradation when You is unreachable.
 _Avoid_: User table, user cache, auth table
