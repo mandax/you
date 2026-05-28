@@ -68,4 +68,31 @@ defmodule You.AccountsTest do
       refute Accounts.verify_totp(setup.user, "000000")
     end
   end
+
+  describe "auth_code" do
+    test "generate_auth_code returns a code string" do
+      user = AccountsFixtures.user_fixture()
+      assert {:ok, code} = Accounts.generate_auth_code(user)
+      assert is_binary(code)
+      assert byte_size(code) > 0
+    end
+
+    test "consume_auth_code returns user for valid code" do
+      user = AccountsFixtures.user_fixture()
+      {:ok, code} = Accounts.generate_auth_code(user)
+      assert {:ok, consumed} = Accounts.consume_auth_code(code)
+      assert consumed.id == user.id
+    end
+
+    test "consume_auth_code returns error for invalid code" do
+      assert {:error, :not_found} = Accounts.consume_auth_code("invalid-code")
+    end
+
+    test "consume_auth_code consumes the code so it cannot be reused" do
+      user = AccountsFixtures.user_fixture()
+      {:ok, code} = Accounts.generate_auth_code(user)
+      {:ok, _} = Accounts.consume_auth_code(code)
+      assert {:error, :not_found} = Accounts.consume_auth_code(code)
+    end
+  end
 end

@@ -281,6 +281,39 @@ defmodule You.Accounts do
     :ok
   end
 
+  ## Auth Code
+
+  @doc """
+  Generates a single-use authorization code for the OAuth-like redirect flow.
+
+  The code is valid for 5 minutes. Returns `{:ok, code}`.
+  """
+  def generate_auth_code(%User{} = user) do
+    {code, user_token} = UserToken.build_auth_token(user)
+    Repo.insert!(user_token)
+    {:ok, code}
+  end
+
+  @doc """
+  Consumes an authorization code, returning the user if valid.
+
+  Returns `{:ok, user}` or `{:error, :not_found}`.
+  """
+  def consume_auth_code(code) when is_binary(code) do
+    with {:ok, query} <- UserToken.verify_auth_code_query(code) do
+      case Repo.one(query) do
+        {user, token} ->
+          Repo.delete!(token)
+          {:ok, user}
+
+        nil ->
+          {:error, :not_found}
+      end
+    else
+      :error -> {:error, :not_found}
+    end
+  end
+
   ## 2FA
 
   @doc """

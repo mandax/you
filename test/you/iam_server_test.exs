@@ -61,4 +61,20 @@ defmodule You.IAMServerTest do
       assert {:error, :revoked} = GenServer.call(You.IAM.Server, {:verify_token, jwt})
     end
   end
+
+  describe "exchange_code" do
+    test "returns JWT for valid auth code" do
+      user = AccountsFixtures.user_fixture() |> AccountsFixtures.set_password()
+      {:ok, code} = You.Accounts.generate_auth_code(user)
+
+      assert {:ok, info} = GenServer.call(You.IAM.Server, {:exchange_code, code})
+      assert info.user_id == user.id
+      assert info.email == user.email
+      assert is_binary(info.jwt)
+    end
+
+    test "returns error for invalid auth code" do
+      assert {:error, :not_found} = GenServer.call(You.IAM.Server, {:exchange_code, "invalid"})
+    end
+  end
 end

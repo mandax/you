@@ -43,6 +43,13 @@ defmodule You.IAM.Server do
     GenServer.call(__MODULE__, {:revoke_token, jwt})
   end
 
+  @doc """
+  Exchanges an authorization code for a JWT. Returns `{:ok, %{user_id, email, jwt}}` or `{:error, reason}`.
+  """
+  def exchange_code(code) do
+    GenServer.call(__MODULE__, {:exchange_code, code})
+  end
+
   # Server
 
   def start_link(opts) do
@@ -81,5 +88,20 @@ defmodule You.IAM.Server do
   def handle_call({:revoke_token, jwt}, _from, state) do
     JWT.revoke(jwt)
     {:reply, :ok, state}
+  end
+
+  @impl true
+  def handle_call({:exchange_code, code}, _from, state) do
+    result =
+      case Accounts.consume_auth_code(code) do
+        {:ok, user} ->
+          {:ok, jwt} = JWT.sign(%{sub: user.id, email: user.email, app: "you", role: "user"})
+          {:ok, %{user_id: user.id, email: user.email, jwt: jwt}}
+
+        {:error, reason} ->
+          {:error, reason}
+      end
+
+    {:reply, result, state}
   end
 end

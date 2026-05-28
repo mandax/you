@@ -54,6 +54,15 @@ defmodule You.SDK do
     call({:revoke_token, jwt}, opts)
   end
 
+  @doc """
+  Exchanges an authorization code for a JWT.
+
+  Returns `{:ok, %{user_id, email, jwt}}` or `{:error, reason | :unreachable}`.
+  """
+  def exchange_code(code, opts \\ []) do
+    call({:exchange_code, code}, opts)
+  end
+
   defp call(msg, opts) do
     timeout = Keyword.get(opts, :timeout, @default_timeout)
     server = Keyword.get(opts, :node) || Application.get_env(:you_sdk, :node)

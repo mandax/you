@@ -11,8 +11,9 @@ defmodule You.Accounts.UserToken do
   @magic_link_validity_in_minutes 15
   @change_email_validity_in_days 7
   @session_validity_in_days 14
+  @auth_code_validity_in_minutes 5
 
-# JWT revocation blocklist also lives here.
+  # JWT revocation blocklist also lives here.
   # Insert a row with context: "jti_revoked" and the SHA-256 of the JTI
   # in the token field. JWT.verify/1 checks this before returning claims.
   #
@@ -148,6 +149,35 @@ defmodule You.Accounts.UserToken do
         query =
           from token in by_token_and_context_query(hashed_token, context),
             where: token.inserted_at > ago(@change_email_validity_in_days, "day")
+
+        {:ok, query}
+
+      :error ->
+        :error
+    end
+  end
+
+  @doc false
+  def build_auth_token(user) do
+    build_hashed_token(user, "oauth_code", user.email)
+  end
+
+  @doc """
+  Verifies an auth code and returns the underlying lookup query.
+
+  The query returns the token with its associated user, valid only within
+  the `@auth_code_validity_in_minutes` window.
+  """
+  def verify_auth_code_query(token) do
+    case Base.url_decode64(token, padding: false) do
+      {:ok, decoded_token} ->
+        hashed_token = :crypto.hash(@hash_algorithm, decoded_token)
+
+        query =
+          from token in by_token_and_context_query(hashed_token, "oauth_code"),
+            join: user in assoc(token, :user),
+            where: token.inserted_at > ago(^@auth_code_validity_in_minutes, "minute"),
+            select: {user, token}
 
         {:ok, query}
 
