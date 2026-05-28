@@ -2,6 +2,7 @@ defmodule YouWeb.Router do
   use YouWeb, :router
 
   import YouWeb.UserAuth
+  import Phoenix.LiveView.Router
 
   pipeline :browser do
     plug :accepts, ["html"]
@@ -21,6 +22,15 @@ defmodule YouWeb.Router do
     pipe_through :browser
 
     get "/", PageController, :home
+  end
+
+  scope "/admin", YouWeb do
+    pipe_through [:browser, :require_authenticated_user, :require_admin]
+
+    live "/", AdminDashboardLive, :index
+    live "/settings", AdminSettingsLive, :index
+    live "/apps", AdminAppsLive, :index
+    live "/users", AdminUsersLive, :index
   end
 
   # Enable LiveDashboard and Swoosh mailbox preview in development

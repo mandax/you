@@ -1,0 +1,50 @@
+defmodule Mix.Tasks.You.BootstrapAdmin do
+  @moduledoc """
+  Creates the first admin user interactively.
+
+  ## Usage
+
+      mix you.bootstrap_admin
+
+  Prompts for email and password. Idempotent — if the user is already
+  an admin, prints a message and exits.
+  """
+
+  use Mix.Task
+
+  @shortdoc "Create the first admin user"
+
+  def run(_args) do
+    Mix.shell().info([:green, "=== You Admin Bootstrap ==="])
+    Mix.shell().info("Creates the first admin user for the You IAM instance.")
+
+    email = Mix.shell().prompt("Email:")
+    password = Mix.shell().prompt("Password:", echo: false)
+    confirm = Mix.shell().prompt("Confirm password:", echo: false)
+
+    if password != confirm do
+      Mix.shell().error("Passwords do not match.")
+      exit({:shutdown, 1})
+    end
+
+    if byte_size(password) < 12 do
+      Mix.shell().error("Password must be at least 12 characters.")
+      exit({:shutdown, 1})
+    end
+
+    # Ensure ecto repos are started
+    Mix.Task.run("app.start")
+
+    case You.Admin.bootstrap_admin(email, password) do
+      {:ok, %{is_admin: true}} ->
+        Mix.shell().info([:green, "Admin user created successfully."])
+
+      {:ok, %{email: ^email}} ->
+        Mix.shell().info([:yellow, "User #{email} is already an admin."])
+
+      {:error, changeset} ->
+        Mix.shell().error("Failed to create admin: #{inspect(changeset.errors)}")
+        exit({:shutdown, 1})
+    end
+  end
+end

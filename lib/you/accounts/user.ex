@@ -10,6 +10,7 @@ defmodule You.Accounts.User do
     field :authenticated_at, :utc_datetime, virtual: true
     field :totp_secret, :string
     field :totp_enabled, :boolean, default: false
+    field :is_admin, :boolean, default: false
 
     timestamps(type: :utc_datetime)
   end
