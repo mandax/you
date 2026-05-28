@@ -31,6 +31,12 @@ defmodule YouWeb.Router do
     delete "/logout", ApiAuthController, :logout
   end
 
+  scope "/.well-known", YouWeb do
+    pipe_through :api
+
+    get "/jwks.json", JwksController, :show
+  end
+
   # Enable LiveDashboard and Swoosh mailbox preview in development
   if Application.compile_env(:you, :dev_routes) do
     # If you want to use the LiveDashboard in production, you should put

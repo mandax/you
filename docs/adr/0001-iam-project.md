@@ -37,21 +37,24 @@ You is a separate OTP application in its own repository (`~/dev/you` alongside `
 
 ### 6. You exposes REST for auth, GraphQL for user data
 
-### 7. Erlang distribution for app↔You communication
+### 7. You SDK for app integration (not Erlang distribution)
 
-Sockeet and You run as connected Elixir nodes on the same cluster. Communication happens via Erlang process messages, not HTTP:
+Apps integrate with You via the `You.SDK` module, not Erlang distribution.
 
-- **Token validation**: Sockeet sends `{:verify_token, jwt}` to a named GenServer on You → You validates signature, expiry, blocklist → returns user info
-- **User lookup**: Sockeet sends `{:get_user, user_id}` → You returns `{username, email, role}` (used to enrich API key displays and populate the local token cache)
-- **Token revocation**: Sockeet sends `{:revoke_token, jti}` → You adds JTI to blocklist
+- **Token validation**: Apps call `You.SDK.verify(jwt, public_key)` locally using You's Ed25519 public key. No network call per request.
+- **Login**: Apps call `You.SDK.login(you_url, email, password)` which makes an HTTP POST to You's `/api/login`.
+- **Token revocation**: Apps call `You.SDK.revoke(you_url, jwt)` which makes an HTTP DELETE to You's `/api/logout`.
+- **Public key**: You exposes its Ed25519 public key at `GET /.well-known/jwks.json`. Apps fetch it once on startup and cache it.
 
 This means:
-- No HTTP overhead for auth validation
-- The Erlang node connection can be secured (see decision 8)
-- Both apps share the same Erlang cookie for node authentication
-- Message protocol is defined by You's public API module — apps never call You's GenServer internals directly
+- No Erlang node coupling. Apps connect over plain HTTPS.
+- Apps asynchronously fetch and cache You's public key for local verification.
+- The SDK is a standalone library that can be published as a Hex package.
+- Apps never call You's GenServer internals or access its database.
 
-### 8. Secure Erlang distribution with TLS
+Rejected: Erlang distribution for token validation. Creates tight node coupling, requires both apps to be on the same BEAM cluster, and means You's GenServer is a single point of failure for all auth decisions. HTTP-based token introspection with local JWT verification is simpler, more scalable, and works with non-Elixir clients.
+
+### 8. Secure transport (HTTPS)
 
 ### 9. Each app stores a lightweight `iam_tokens` cache
 
@@ -69,10 +72,10 @@ The implementation follows this sequence:
 2. ✅ **JWT layer** — replace sessions with JWT on login/logout; add `jose` signing/verification
 3. ✅ **Magic link** — reuse `UserToken` pattern for email-based passwordless login
 4. ✅ **2FA** — add `nimble_totp` column to User, pre-auth token flow, recovery codes
-5. **Erlang distribution** — connect Sockeet + You nodes, define message protocol for token validation ← CURRENT
-6. **Sockeet migration** — swap `AdminAuth` plug for JWT validation via Erlang message, drop `admin_users`, add `iam_tokens` table
+5. **SDK module** — build `You.SDK` with local JWT verification and HTTP client ← CURRENT
+6. **JWKS endpoint** — expose Ed25519 public key at `GET /.well-known/jwks.json`
 
-Steps 1–4 are self-contained within You. Step 5 requires changes in both repos. Step 6 is purely on the Sockeet side.
+Steps 1–5 are self-contained within You. Step 6 adds the public key discovery endpoint.
 
 ## Status
 
@@ -81,5 +84,6 @@ Proposed — replaces previous version of this ADR.
 ## Consequences
 
 - You owns the full authentication flow. Apps never see passwords, TOTP secrets, or 2FA codes.
-- Apps connect to You via Erlang distribution for token validation — no HTTP calls per request.
-- Losing the Erlang connection to You means apps degrade gracefully using their local `iam_tokens` cache for a configurable grace period.
+- Apps validate JWTs locally using You's cached public key — no HTTP calls per request.
+- The `You.SDK` is a standalone library consumable as a Hex or path dependency.
+- Losing the HTTP connection to You means apps can't log in, but existing JWTs remain valid until expiry.
