@@ -12,6 +12,12 @@ defmodule You.Accounts.UserToken do
   @change_email_validity_in_days 7
   @session_validity_in_days 14
 
+# JWT revocation blocklist also lives here.
+  # Insert a row with context: "jti_revoked" and the SHA-256 of the JTI
+  # in the token field. JWT.verify/1 checks this before returning claims.
+  #
+  # Other context values (session, login, change:*) serve as standard
+  # auth tokens from phx.gen.auth.
   schema "users_tokens" do
     field :token, :binary
     field :context, :string

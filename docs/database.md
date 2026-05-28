@@ -46,7 +46,7 @@ erDiagram
 
 ## Context values
 
-The `users_tokens.context` column describes the token's purpose:
+The `users_tokens.context` column describes the token's purpose.
 
 | Context | Purpose | Expiry |
 |---------|---------|--------|
@@ -54,6 +54,11 @@ The `users_tokens.context` column describes the token's purpose:
 | `login` | Magic link token | 15 minutes |
 | `change:{email}` | Email change confirmation | 7 days |
 | `jti_revoked` | JWT revocation blocklist entry | Permanent (until JWT expires) |
+
+The `users_tokens` table doubles as the JWT revocation blocklist.
+When a JWT is revoked (via `DELETE /api/logout`), the JTI is SHA-256
+hashed and inserted with `context: "jti_revoked"`.
+`JWT.verify/1` checks this table before accepting any token.
 
 ## Notes
 
