@@ -73,6 +73,9 @@ defmodule YouWeb.Router do
     get "/users/log-in", UserSessionController, :new
     get "/users/log-in/:token", UserSessionController, :confirm
     post "/users/log-in", UserSessionController, :create
+    get "/users/log-in/totp", UserSessionController, :totp
+    post "/users/log-in/totp", UserSessionController, :verify_totp
+    post "/users/log-in/authorize", UserSessionController, :authorize_action
     delete "/users/log-out", UserSessionController, :delete
   end
 end

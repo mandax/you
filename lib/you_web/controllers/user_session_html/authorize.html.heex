@@ -1,0 +1,30 @@
+<Layouts.app flash={@flash} current_scope={@current_scope}>
+  <div class="mx-auto max-w-sm space-y-4">
+    <div class="text-center">
+      <.header>
+        <p>Authorize</p>
+        <:subtitle>
+          You are signed in as <strong><%= @user_email %></strong>. <br /> An application at
+          <strong>{@app_name}</strong>
+          would like to access your account.
+        </:subtitle>
+      </.header>
+    </div>
+
+    <.form
+      :let={_f}
+      for={%{}}
+      as={:authorize}
+      id="authorize_form"
+      action={~p"/users/log-in/authorize"}
+    >
+      <.button class="btn btn-primary w-full">
+        Authorize <span aria-hidden="true">→</span>
+      </.button>
+    </.form>
+
+    <.button class="btn btn-ghost w-full" phx-no-format>
+      <.link href="/">Cancel</.link>
+    </.button>
+  </div>
+</Layouts.app>

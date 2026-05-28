@@ -1,0 +1,29 @@
+<Layouts.app flash={@flash} current_scope={@current_scope}>
+  <div class="mx-auto max-w-sm space-y-4">
+    <div class="text-center">
+      <.header>
+        <p>Two-Factor Authentication</p>
+        <:subtitle>Enter the code from your authenticator app.</:subtitle>
+      </.header>
+    </div>
+
+    <div :if={assigns[:error]} class="alert alert-error">
+      <p>{@error}</p>
+    </div>
+
+    <.form :let={f} for={@form} as={:totp} id="totp_form" action={~p"/users/log-in/totp"}>
+      <.input
+        field={f[:code]}
+        type="text"
+        label="Authentication Code"
+        autocomplete="off"
+        spellcheck="false"
+        required
+        phx-mounted={JS.focus()}
+      />
+      <.button class="btn btn-primary w-full">
+        Verify <span aria-hidden="true">→</span>
+      </.button>
+    </.form>
+  </div>
+</Layouts.app>
