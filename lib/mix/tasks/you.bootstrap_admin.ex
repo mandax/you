@@ -31,8 +31,10 @@ defmodule Mix.Tasks.You.BootstrapAdmin do
       exit({:shutdown, 1})
     end
 
-    if byte_size(password) < 12 do
-      Mix.shell().error("Password must be at least 12 characters.")
+    min_length = if Mix.env() == :dev, do: 6, else: 12
+
+    if byte_size(password) < min_length do
+      Mix.shell().error("Password must be at least #{min_length} characters.")
       exit({:shutdown, 1})
     end
 
