@@ -17,17 +17,18 @@ defmodule YouWeb.Router do
     plug :accepts, ["json"]
   end
 
-  scope "/api", YouWeb do
-    pipe_through :api
-
-    post "/login", ApiAuthController, :login
-    delete "/logout", ApiAuthController, :logout
-  end
-
   scope "/", YouWeb do
     pipe_through :browser
 
     get "/", PageController, :home
+  end
+
+  scope "/api", YouWeb do
+    pipe_through :api
+
+    post "/login", ApiAuthController, :login
+    post "/login/verify", ApiAuthController, :verify
+    delete "/logout", ApiAuthController, :logout
   end
 
   # Enable LiveDashboard and Swoosh mailbox preview in development

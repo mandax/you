@@ -6,7 +6,7 @@ defmodule You.Accounts do
   import Ecto.Query, warn: false
   alias You.Repo
 
-  alias You.Accounts.{User, UserToken, UserNotifier}
+  alias You.Accounts.{User, UserToken, UserNotifier, RecoveryCode}
 
   ## Database getters
 
@@ -279,6 +279,85 @@ defmodule You.Accounts do
   def delete_user_session_token(token) do
     Repo.delete_all(from(UserToken, where: [token: ^token, context: "session"]))
     :ok
+  end
+
+  ## 2FA
+
+  @doc """
+  Generates a TOTP setup for a user.
+
+  Returns `{:ok, %{secret: secret, uri: uri}}`.
+  The secret is already stored on the user record (replaced on each call).
+  """
+  def generate_totp_setup(%User{} = user) do
+    secret = NimbleTOTP.secret()
+    uri = NimbleTOTP.otpauth_uri(secret, user.email, issuer: "You")
+
+    # Store the secret on the user record so verify_totp can check codes
+    {:ok, updated_user} =
+      user
+      |> Ecto.Changeset.change(totp_secret: secret)
+      |> Repo.update()
+
+    {:ok, %{secret: secret, uri: uri, user: updated_user}}
+  end
+
+  @doc """
+  Enables TOTP for a user after verifying the current code.
+
+  Generates 8 recovery codes (bcrypt-hashed).
+  Returns `{:ok, %{user: user, recovery_codes: [string]}}` or `{:error, :invalid_code}`.
+  """
+  def enable_totp(%User{} = user, code) when is_binary(code) do
+    enable_totp_if_valid(user, verify_totp_secret(user, code))
+  end
+
+  defp enable_totp_if_valid(user, true), do: enable_totp_with_codes(user)
+  defp enable_totp_if_valid(_user, _valid), do: {:error, :invalid_code}
+
+  defp enable_totp_with_codes(user) do
+    recovery_codes = generate_recovery_codes(user)
+
+    user
+    |> Ecto.Changeset.change(totp_enabled: true)
+    |> Repo.update!()
+
+    {:ok, %{user: user, totp_enabled: true, recovery_codes: recovery_codes}}
+  end
+
+  @doc """
+  Verifies a TOTP code against the user's stored secret.
+
+  Returns `true` or `false`.
+  """
+  def verify_totp(%User{totp_secret: nil}, _code), do: false
+
+  def verify_totp(%User{} = user, code) when is_binary(code) do
+    verify_totp_secret(user, code)
+  end
+
+  defp verify_totp_secret(%User{totp_secret: nil}, _code), do: false
+
+  defp verify_totp_secret(%User{totp_secret: secret}, code) do
+    NimbleTOTP.valid?(secret, code)
+  end
+
+  defp generate_recovery_codes(%User{} = user) do
+    codes = for _ <- 1..8, do: generate_code()
+
+    Enum.each(codes, fn code ->
+      Repo.insert!(%RecoveryCode{
+        user_id: user.id,
+        code_hash: Bcrypt.hash_pwd_salt(code),
+        used: false
+      })
+    end)
+
+    codes
+  end
+
+  defp generate_code do
+    :crypto.strong_rand_bytes(8) |> Base.url_encode64(padding: false)
   end
 
   ## Token helper

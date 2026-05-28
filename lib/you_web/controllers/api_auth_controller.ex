@@ -4,10 +4,13 @@ defmodule YouWeb.ApiAuthController do
   alias You.JWT
   alias You.Accounts
 
+  # 5 minutes
+  @pre_auth_exp 300
+
   @doc """
   POST /api/login
 
-  Accepts `{"email": "...", "password": "..."}` and returns `{"jwt": "..."}`.
+  Returns JWT for valid credentials, or pre-auth token if 2FA is enabled.
   """
   def login(conn, %{"email" => email, "password" => password}) do
     case Accounts.get_user_by_email_and_password(email, password) do
@@ -16,16 +19,58 @@ defmodule YouWeb.ApiAuthController do
         |> put_status(401)
         |> json(%{error: "invalid email or password"})
 
+      %{totp_enabled: true} = user ->
+        {:ok, pre_auth_token} =
+          JWT.sign(
+            %{
+              sub: user.id,
+              email: user.email,
+              purpose: "pre_auth"
+            },
+            @pre_auth_exp
+          )
+
+        json(conn, %{status: "2fa_required", pre_auth_token: pre_auth_token})
+
       user ->
-        claims = %{
+        {:ok, jwt} =
+          JWT.sign(%{
+            sub: user.id,
+            email: user.email,
+            app: "you",
+            role: "user"
+          })
+
+        json(conn, %{jwt: jwt})
+    end
+  end
+
+  @doc """
+  POST /api/login/verify
+
+  Accepts a pre-auth token and TOTP code. Returns JWT on success.
+  """
+  def verify(conn, %{"pre_auth_token" => pre_auth_token, "totp_code" => totp_code}) do
+    with {:ok, claims} <- JWT.verify(pre_auth_token),
+         :ok <- verify_pre_auth(claims),
+         {:ok, user} <- lookup_user(claims["sub"]),
+         true <- Accounts.verify_totp(user, totp_code) do
+      JWT.revoke(pre_auth_token)
+
+      {:ok, jwt} =
+        JWT.sign(%{
           sub: user.id,
           email: user.email,
           app: "you",
           role: "user"
-        }
+        })
 
-        {:ok, jwt} = JWT.sign(claims)
-        conn |> json(%{jwt: jwt})
+      json(conn, %{jwt: jwt})
+    else
+      _ ->
+        conn
+        |> put_status(401)
+        |> json(%{error: "invalid verification"})
     end
   end
 
@@ -43,6 +88,18 @@ defmodule YouWeb.ApiAuthController do
         conn
         |> put_status(401)
         |> json(%{error: "missing or invalid authorization header"})
+    end
+  end
+
+  defp verify_pre_auth(%{"purpose" => "pre_auth"}), do: :ok
+  defp verify_pre_auth(_claims), do: {:error, :invalid_purpose}
+
+  defp lookup_user(nil), do: {:error, :not_found}
+
+  defp lookup_user(user_id) do
+    case You.Repo.get(Accounts.User, user_id) do
+      nil -> {:error, :not_found}
+      %{id: _id} = user -> {:ok, user}
     end
   end
 end
