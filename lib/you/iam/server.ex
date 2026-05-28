@@ -64,7 +64,19 @@ defmodule You.IAM.Server do
     result =
       case JWT.verify(jwt) do
         {:ok, claims} ->
-          {:ok, %{user_id: claims["sub"], email: claims["email"], role: claims["role"]}}
+          user_id = claims["sub"]
+
+          case Repo.get(Accounts.User, user_id) do
+            %{email: email} when not is_nil(email) ->
+              if String.starts_with?(email, "redacted-") do
+                {:error, :not_found}
+              else
+                {:ok, %{user_id: user_id, email: claims["email"], role: claims["role"]}}
+              end
+
+            _ ->
+              {:error, :not_found}
+          end
 
         {:error, reason} ->
           {:error, reason}
@@ -77,8 +89,15 @@ defmodule You.IAM.Server do
   def handle_call({:get_user, user_id}, _from, state) do
     result =
       case Repo.get(Accounts.User, user_id) do
-        %{id: id, email: email} -> {:ok, %{id: id, email: email}}
-        nil -> {:error, :not_found}
+        %{email: email} when not is_nil(email) ->
+          if String.starts_with?(email, "redacted-") do
+            {:error, :not_found}
+          else
+            {:ok, %{id: user_id, email: email}}
+          end
+
+        _ ->
+          {:error, :not_found}
       end
 
     {:reply, result, state}

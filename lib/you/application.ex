@@ -17,6 +17,13 @@ defmodule You.Application do
       YouWeb.Endpoint
     ]
 
+    children =
+      if Application.get_env(:you, :audit, [])[:enabled] != false do
+        [You.Audit.Handler | children]
+      else
+        children
+      end
+
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options
     opts = [strategy: :one_for_one, name: You.Supervisor]

@@ -22,8 +22,14 @@ defmodule YouWeb.UserSessionController do
 
     if conn.assigns[:current_scope] && conn.assigns.current_scope.user &&
          get_session(conn, :callback_url) do
+      app_name =
+        case You.Admin.lookup_app_by_callback(get_session(conn, :callback_url)) do
+          {:ok, app} -> app.name
+          :error -> get_session(conn, :callback_url)
+        end
+
       render(conn, :authorize,
-        app_name: get_session(conn, :callback_url),
+        app_name: app_name,
         user_email: conn.assigns.current_scope.user.email,
         scopes: get_session(conn, :scopes) || ["email"]
       )
@@ -100,6 +106,12 @@ defmodule YouWeb.UserSessionController do
         end
       end
     else
+      :telemetry.execute([:you, :audit, :login, :attempt], %{}, %{
+        email: email,
+        method: "password",
+        result: :failure
+      })
+
       form = Phoenix.Component.to_form(user_params, as: "user")
 
       # In order to prevent user enumeration attacks, don't disclose whether the email is disclosed.

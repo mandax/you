@@ -94,6 +94,11 @@ defmodule You.JWT do
       }
       |> Repo.insert()
 
+      :telemetry.execute([:you, :audit, :token, :revoke], %{}, %{
+        user_id: sub,
+        jti: jti
+      })
+
       :ok
     else
       _ -> :ok

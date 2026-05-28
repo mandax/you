@@ -23,3 +23,5 @@ config :phoenix, :plug_init_mode, :runtime
 
 config :phoenix,
   sort_verified_routes_query_params: true
+
+config :you, :audit, enabled: false
