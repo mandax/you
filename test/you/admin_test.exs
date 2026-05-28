@@ -50,10 +50,11 @@ defmodule You.AdminTest do
   end
 
   describe "bootstrap_admin/2" do
-    test "creates user and promotes to admin" do
+    test "creates user, confirms, and promotes to admin" do
       assert {:ok, user} = Admin.bootstrap_admin("admin@example.com", "a-strong-password!")
       assert user.is_admin
       assert user.email == "admin@example.com"
+      assert user.confirmed_at != nil
     end
 
     test "idempotent — returns existing admin" do

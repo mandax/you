@@ -69,6 +69,15 @@ defmodule You.Admin do
         nil ->
           {:ok, user} = You.Accounts.register_user(%{email: email})
           {:ok, {user, _}} = You.Accounts.update_user_password(user, %{password: password})
+
+          # Confirm the user so password login works without magic link
+          {:ok, user} =
+            user
+            |> Ecto.Changeset.change(
+              confirmed_at: DateTime.utc_now() |> DateTime.truncate(:second)
+            )
+            |> You.Repo.update()
+
           user
 
         existing ->

@@ -54,8 +54,13 @@ defmodule Mix.Tasks.You.BootstrapAdmin do
 
   defp read_password do
     case :io.get_password() do
-      {:ok, chars} -> IO.write("\n"); List.to_string(chars)
-      {:error, _} -> IO.write("\n"); Mix.shell().prompt("Password: ")
+      {:ok, chars} ->
+        IO.write("\n")
+        List.to_string(chars)
+
+      {:error, _} ->
+        IO.write("\n")
+        Mix.shell().prompt("Password: ")
     end
   end
 end
