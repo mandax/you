@@ -38,3 +38,6 @@ priv/repo/*.db-wal
 
 # Audit log files (created at runtime)
 priv/log/*.jsonl
+
+# Backup artifacts
+backup.log
