@@ -94,8 +94,10 @@ defmodule You.IAM.Server do
   def handle_call({:exchange_code, code}, _from, state) do
     result =
       case Accounts.consume_auth_code(code) do
-        {:ok, user} ->
-          {:ok, jwt} = JWT.sign(%{sub: user.id, email: user.email, app: "you", role: "user"})
+        {:ok, user, scopes} ->
+          claims = build_scoped_claims(user, scopes || ["email"])
+
+          {:ok, jwt} = JWT.sign(claims)
           {:ok, %{user_id: user.id, email: user.email, jwt: jwt}}
 
         {:error, reason} ->
@@ -103,5 +105,17 @@ defmodule You.IAM.Server do
       end
 
     {:reply, result, state}
+  end
+
+  defp build_scoped_claims(user, scopes) do
+    base = %{sub: user.id, app: "you"}
+
+    scopes
+    |> Enum.reduce(base, fn
+      "email", acc -> Map.put(acc, :email, user.email)
+      "profile", acc -> acc |> Map.put(:email, user.email) |> Map.put(:name, user.email)
+      "roles", acc -> acc |> Map.put(:email, user.email) |> Map.put(:role, "user")
+      _, acc -> acc
+    end)
   end
 end

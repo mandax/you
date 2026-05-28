@@ -24,6 +24,7 @@ defmodule You.Accounts.UserToken do
     field :context, :string
     field :sent_to, :string
     field :authenticated_at, :utc_datetime
+    field :meta, :string
     belongs_to :user, You.Accounts.User
 
     timestamps(type: :utc_datetime, updated_at: false)
@@ -164,8 +165,19 @@ defmodule You.Accounts.UserToken do
   end
 
   @doc false
-  def build_auth_token(user) do
-    build_hashed_token(user, "oauth_code", user.email)
+  def build_auth_token(user, scopes \\ nil) do
+    token_parts = build_hashed_token(user, "oauth_code", user.email)
+
+    token =
+      case token_parts do
+        {token, user_token} ->
+          {token, %{user_token | meta: scopes && Jason.encode!(%{"scopes" => scopes})}}
+
+        other ->
+          other
+      end
+
+    token
   end
 
   @doc """

@@ -1,7 +1,10 @@
 defmodule YouWeb.UserSettingsController do
   use YouWeb, :controller
 
+  alias You.Repo
   alias You.Accounts
+  alias You.Accounts.Consent
+  alias You.Admin.App
   alias YouWeb.UserAuth
 
   import YouWeb.UserAuth, only: [require_sudo_mode: 2]
@@ -11,6 +14,32 @@ defmodule YouWeb.UserSettingsController do
 
   def edit(conn, _params) do
     render(conn, :edit)
+  end
+
+  def access_data(conn, _params) do
+    user = conn.assigns.current_scope.user
+
+    apps =
+      user.id
+      |> get_user_consents()
+      |> Enum.map(fn c ->
+        %{
+          name: c.app.name,
+          scopes: c.scopes,
+          granted_at: c.granted_at
+        }
+      end)
+
+    data = %{
+      email: user.email,
+      confirmed_at: user.confirmed_at,
+      totp_enabled: user.totp_enabled,
+      created_at: user.inserted_at,
+      updated_at: user.updated_at,
+      apps: apps
+    }
+
+    json(conn, data)
   end
 
   def update(conn, %{"action" => "update_email"} = params) do
@@ -73,5 +102,17 @@ defmodule YouWeb.UserSettingsController do
     conn
     |> assign(:email_changeset, Accounts.change_user_email(user))
     |> assign(:password_changeset, Accounts.change_user_password(user))
+  end
+
+  defp get_user_consents(user_id) do
+    import Ecto.Query
+
+    Repo.all(
+      from c in Consent,
+        join: a in App,
+        on: c.app_id == a.id,
+        where: c.user_id == ^user_id,
+        select: %{app: a, scopes: c.scopes, granted_at: c.granted_at}
+    )
   end
 end

@@ -13,6 +13,7 @@ defmodule You.Application do
       {DNSCluster, query: Application.get_env(:you, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: You.PubSub},
       You.IAM.Server,
+      You.Accounts.JtiCleanup,
       YouWeb.Endpoint
     ]
 

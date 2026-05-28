@@ -69,6 +69,19 @@ defmodule You.AccountsTest do
     end
   end
 
+  describe "anonymize_user/1" do
+    test "anonymizes personal data" do
+      user = AccountsFixtures.user_fixture()
+      {:ok, anonymized} = Accounts.anonymize_user(user)
+      assert anonymized.email =~ "redacted-"
+      assert String.ends_with?(anonymized.email, "@anonymized.you")
+      assert anonymized.hashed_password == nil
+      assert anonymized.totp_secret == nil
+      refute anonymized.totp_enabled
+      assert anonymized.confirmed_at == nil
+    end
+  end
+
   describe "auth_code" do
     test "generate_auth_code returns a code string" do
       user = AccountsFixtures.user_fixture()
@@ -77,11 +90,12 @@ defmodule You.AccountsTest do
       assert byte_size(code) > 0
     end
 
-    test "consume_auth_code returns user for valid code" do
+    test "consume_auth_code returns user and scopes for valid code" do
       user = AccountsFixtures.user_fixture()
       {:ok, code} = Accounts.generate_auth_code(user)
-      assert {:ok, consumed} = Accounts.consume_auth_code(code)
+      assert {:ok, consumed, scopes} = Accounts.consume_auth_code(code)
       assert consumed.id == user.id
+      assert scopes == ["email"]
     end
 
     test "consume_auth_code returns error for invalid code" do
@@ -91,7 +105,7 @@ defmodule You.AccountsTest do
     test "consume_auth_code consumes the code so it cannot be reused" do
       user = AccountsFixtures.user_fixture()
       {:ok, code} = Accounts.generate_auth_code(user)
-      {:ok, _} = Accounts.consume_auth_code(code)
+      {:ok, _, _} = Accounts.consume_auth_code(code)
       assert {:error, :not_found} = Accounts.consume_auth_code(code)
     end
   end

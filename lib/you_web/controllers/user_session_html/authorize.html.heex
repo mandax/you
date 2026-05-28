@@ -6,9 +6,12 @@
         <:subtitle>
           You are signed in as <strong><%= @user_email %></strong>. <br /> An application at
           <strong>{@app_name}</strong>
-          would like to access your account.
+          would like to access:
         </:subtitle>
       </.header>
+      <ul class="list-disc text-left pl-6 text-sm">
+        <li :for={scope <- @scopes}>{scope}</li>
+      </ul>
     </div>
 
     <.form

@@ -72,6 +72,14 @@ defmodule You.JWT do
   end
 
   @doc """
+  Extracts the JTI (JWT ID) from a signed JWT. Returns the JTI string.
+  """
+  def extract_jti(signed) when is_binary(signed) do
+    {:ok, payload} = jose_verify(signed)
+    payload["jti"]
+  end
+
+  @doc """
   Revokes a JWT by adding its JTI to the blocklist. Returns `:ok`.
   """
   def revoke(signed) when is_binary(signed) do

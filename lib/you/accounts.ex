@@ -6,7 +6,7 @@ defmodule You.Accounts do
   import Ecto.Query, warn: false
   alias You.Repo
 
-  alias You.Accounts.{User, UserToken, UserNotifier, RecoveryCode}
+  alias You.Accounts.{User, UserToken, UserNotifier, RecoveryCode, Consent}
 
   ## Database getters
 
@@ -292,8 +292,8 @@ defmodule You.Accounts do
 
   The code is valid for 5 minutes. Returns `{:ok, code}`.
   """
-  def generate_auth_code(%User{} = user) do
-    {code, user_token} = UserToken.build_auth_token(user)
+  def generate_auth_code(%User{} = user, scopes \\ nil) do
+    {code, user_token} = UserToken.build_auth_token(user, scopes)
     Repo.insert!(user_token)
     {:ok, code}
   end
@@ -309,14 +309,24 @@ defmodule You.Accounts do
     with {:ok, query} <- UserToken.verify_auth_code_query(code, expiry) do
       case Repo.one(query) do
         {user, token} ->
+          scopes = parse_meta_scopes(token.meta)
           Repo.delete!(token)
-          {:ok, user}
+          {:ok, user, scopes}
 
         nil ->
           {:error, :not_found}
       end
     else
       :error -> {:error, :not_found}
+    end
+  end
+
+  defp parse_meta_scopes(nil), do: ["email"]
+
+  defp parse_meta_scopes(meta) when is_binary(meta) do
+    case Jason.decode(meta) do
+      {:ok, %{"scopes" => scopes}} when is_list(scopes) -> scopes
+      _ -> ["email"]
     end
   end
 
@@ -365,6 +375,38 @@ defmodule You.Accounts do
   end
 
   @doc """
+  Anonymizes a user's personal data for LGPD right to deletion.
+
+  The user row stays (referential integrity) but is functionally dead.
+  All sessions, tokens, and recovery codes are deleted.
+  """
+  def anonymize_user(%User{} = user) do
+    uuid = Ecto.UUID.generate()
+
+    result =
+      Repo.transact(fn ->
+        updated =
+          user
+          |> Ecto.Changeset.change(%{
+            email: "redacted-#{uuid}@anonymized.you",
+            hashed_password: nil,
+            totp_secret: nil,
+            totp_enabled: false,
+            confirmed_at: nil
+          })
+          |> Repo.update!()
+
+        Repo.delete_all(from(t in UserToken, where: t.user_id == ^user.id))
+        Repo.delete_all(from(r in RecoveryCode, where: r.user_id == ^user.id))
+        Repo.delete_all(from(c in Consent, where: c.user_id == ^user.id))
+
+        {:ok, updated}
+      end)
+
+    result
+  end
+
+  @doc """
   Verifies a TOTP code against the user's stored secret.
 
   Returns `true` or `false`.
@@ -397,6 +439,66 @@ defmodule You.Accounts do
 
   defp generate_code do
     :crypto.strong_rand_bytes(8) |> Base.url_encode64(padding: false)
+  end
+
+  ## LGPD: JTI cleanup
+
+  @doc """
+  Deletes expired JTI revocation entries. Runs periodically.
+  Retention is `jwt_expiry_hours + 1 hour` grace period.
+  """
+  def cleanup_revoked_jtis do
+    retention_hours = You.Settings.get(:jwt_expiry_hours) + 1
+    threshold = DateTime.add(DateTime.utc_now(), -retention_hours * 3600, :second)
+
+    Repo.delete_all(
+      from t in UserToken,
+        where: t.context == "jti_revoked" and t.inserted_at < ^threshold
+    )
+  end
+
+  ## LGPD: Consent
+
+  @doc """
+  Records a consent grant for a user-app pair.
+  Returns `{:ok, consent}`.
+  """
+  def record_consent(%User{} = user, %You.Admin.App{} = app, scopes) when is_list(scopes) do
+    now = DateTime.utc_now()
+    expires_at = DateTime.add(now, You.Settings.get(:jwt_expiry_hours) * 3600, :second)
+
+    %Consent{}
+    |> Consent.changeset(%{
+      user_id: user.id,
+      app_id: app.id,
+      scopes: scopes,
+      granted_at: now,
+      expires_at: expires_at
+    })
+    |> Repo.insert(
+      on_conflict: {:replace, [:scopes, :granted_at, :expires_at]},
+      conflict_target: [:user_id, :app_id]
+    )
+  end
+
+  @doc """
+  Checks if a valid consent exists for the given user and app.
+  Returns `{:ok, scopes}` or `{:error, :no_consent}`.
+  """
+  def check_consent(%User{} = user, %You.Admin.App{} = app) do
+    now = DateTime.utc_now()
+
+    case Repo.get_by(Consent, user_id: user.id, app_id: app.id) do
+      %Consent{scopes: scopes, expires_at: expires_at} when not is_nil(expires_at) ->
+        if DateTime.compare(expires_at, now) == :gt do
+          {:ok, scopes}
+        else
+          {:error, :no_consent}
+        end
+
+      _ ->
+        {:error, :no_consent}
+    end
   end
 
   ## Token helper

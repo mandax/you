@@ -65,6 +65,7 @@ defmodule YouWeb.Router do
     get "/users/settings", UserSettingsController, :edit
     put "/users/settings", UserSettingsController, :update
     get "/users/settings/confirm-email/:token", UserSettingsController, :confirm_email
+    get "/users/settings/access_data", UserSettingsController, :access_data
   end
 
   scope "/", YouWeb do
