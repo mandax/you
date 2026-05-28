@@ -17,12 +17,18 @@ defmodule YouWeb.Router do
     plug :accepts, ["json"]
   end
 
+  scope "/api", YouWeb do
+    pipe_through :api
+
+    post "/login", ApiAuthController, :login
+    delete "/logout", ApiAuthController, :logout
+  end
+
   scope "/", YouWeb do
     pipe_through :browser
 
     get "/", PageController, :home
   end
-
 
   # Enable LiveDashboard and Swoosh mailbox preview in development
   if Application.compile_env(:you, :dev_routes) do
