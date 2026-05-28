@@ -6,7 +6,11 @@ Cross-app identity, authentication, authorization, and user settings platform. E
 
 **User**:
 A person with an account. Has a username, email, password hash, display name, and optional avatar. A user belongs to zero or more teams.
-_Avoid_: Admin, account, member
+_Avoid_: Account, member
+
+**Admin**:
+A User with `is_admin = true`. Gates access to You's admin panel (`/admin`) and instance configuration. Bootstrap via `mix you.bootstrap_admin`. Only an existing admin can promote others.
+_Avoid_: Superuser, operator, root
 
 **You Session**:
 The browser cookie on you.example.com that proves the user authenticated with You's portal. Database-backed via `users_tokens` (context: "session"). Used to skip the login form on subsequent app authorization flows. Separate from any app JWT — signing out of You does not invalidate app JWTs.
@@ -37,7 +41,7 @@ A Bearer token used by apps to call You's internal endpoints (token validation, 
 _Avoid_: Token, secret, credential
 
 **Two-Factor Authentication (2FA)**:
-An optional second factor on login using TOTP (time-based one-time passwords). When enabled, password validation returns a pre-auth token, which is exchanged for a final JWT only after a valid TOTP code is submitted. Recovery codes (8 single-use hashed codes) are generated at setup.
+An optional second factor on login using TOTP (time-based one-time passwords). After password authentication, if the user has 2FA enabled, a TOTP code is required before the authorization code is issued. Recovery codes (8 single-use bcrypt-hashed codes) are generated at setup as a fallback.
 _Avoid_: MFA, two-step verification
 
 **Magic Link**:
