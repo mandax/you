@@ -1,0 +1,12 @@
+# You IAM — mise tool versions
+#
+# Install: mise install
+# Pin:     mise pin
+#
+# Note: if you manage Erlang/Elixir via Homebrew,
+# ensure the versions below match your setup.
+
+[tools]
+# Runtime (managed via Homebrew — versions below document the target)
+erlang = "29.0.1"
+elixir = "1.19.5"
