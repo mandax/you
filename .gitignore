@@ -41,3 +41,5 @@ priv/log/*.jsonl
 
 # Backup artifacts
 backup.log
+dev.db
+you_dev.db
