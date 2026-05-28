@@ -1,0 +1,8 @@
+{"action":"promote_admin","event":"admin:action","target_user_id":1,"target_email":"user-576460752303417213@example.com","ts":"2026-05-28T20:13:53.489228Z"}
+{"action":"promote_admin","event":"admin:action","target_user_id":1,"target_email":"admin@example.com","ts":"2026-05-28T20:13:53.490471Z"}
+{"action":"promote_admin","event":"admin:action","target_user_id":1,"target_email":"user-576460752303419963@example.com","ts":"2026-05-28T20:13:53.491895Z"}
+{"action":"promote_admin","event":"admin:action","target_user_id":1,"target_email":"admin@example.com","ts":"2026-05-28T20:13:53.493080Z"}
+{"action":"promote_admin","event":"admin:action","ts":"2026-05-28T20:13:57.347620Z","target_email":"admin@example.com","target_user_id":1}
+{"action":"promote_admin","event":"admin:action","ts":"2026-05-28T20:13:57.348588Z","target_email":"user-576460752303421049@example.com","target_user_id":1}
+{"action":"promote_admin","event":"admin:action","ts":"2026-05-28T20:13:57.349766Z","target_email":"user-576460752303420921@example.com","target_user_id":1}
+{"action":"promote_admin","event":"admin:action","ts":"2026-05-28T20:13:57.350985Z","target_email":"admin@example.com","target_user_id":1}

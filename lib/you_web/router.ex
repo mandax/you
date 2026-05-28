@@ -31,6 +31,7 @@ defmodule YouWeb.Router do
     live "/settings", AdminSettingsLive, :index
     live "/apps", AdminAppsLive, :index
     live "/users", AdminUsersLive, :index
+    live "/audit", AdminAuditLive, :index
   end
 
   # Enable LiveDashboard and Swoosh mailbox preview in development

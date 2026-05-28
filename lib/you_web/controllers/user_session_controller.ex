@@ -71,6 +71,13 @@ defmodule YouWeb.UserSessionController do
   # email + password login
   def create(conn, %{"user" => %{"email" => email, "password" => password} = user_params}) do
     if user = Accounts.get_user_by_email_and_password(email, password) do
+      :telemetry.execute([:you, :audit, :login, :attempt], %{}, %{
+        user_id: user.id,
+        email: user.email,
+        method: "password",
+        result: :success
+      })
+
       if user.totp_enabled do
         conn
         |> put_session(:totp_user_id, user.id)

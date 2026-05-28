@@ -98,9 +98,22 @@ defmodule You.IAM.Server do
           claims = build_scoped_claims(user, scopes || ["email"])
 
           {:ok, jwt} = JWT.sign(claims)
+
+          :telemetry.execute(
+            [:you, :audit, :token, :exchange],
+            %{},
+            %{user_id: user.id, scopes: scopes}
+          )
+
           {:ok, %{user_id: user.id, email: user.email, jwt: jwt}}
 
         {:error, reason} ->
+          :telemetry.execute(
+            [:you, :audit, :token, :exchange],
+            %{},
+            %{result: :failure, reason: reason}
+          )
+
           {:error, reason}
       end
 

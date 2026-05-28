@@ -12,9 +12,18 @@ defmodule You.Admin do
   Promotes a user to admin. Returns `{:ok, user}`.
   """
   def promote_admin(%User{} = user) do
-    user
-    |> Ecto.Changeset.change(is_admin: true)
-    |> Repo.update()
+    result =
+      user
+      |> Ecto.Changeset.change(is_admin: true)
+      |> Repo.update()
+
+    :telemetry.execute([:you, :audit, :admin, :action], %{}, %{
+      action: "promote_admin",
+      target_user_id: user.id,
+      target_email: user.email
+    })
+
+    result
   end
 
   @doc """

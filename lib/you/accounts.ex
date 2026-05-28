@@ -467,18 +467,27 @@ defmodule You.Accounts do
     now = DateTime.utc_now()
     expires_at = DateTime.add(now, You.Settings.get(:jwt_expiry_hours) * 3600, :second)
 
-    %Consent{}
-    |> Consent.changeset(%{
+    result =
+      %Consent{}
+      |> Consent.changeset(%{
+        user_id: user.id,
+        app_id: app.id,
+        scopes: scopes,
+        granted_at: now,
+        expires_at: expires_at
+      })
+      |> Repo.insert(
+        on_conflict: {:replace, [:scopes, :granted_at, :expires_at]},
+        conflict_target: [:user_id, :app_id]
+      )
+
+    :telemetry.execute([:you, :audit, :consent, :grant], %{}, %{
       user_id: user.id,
       app_id: app.id,
-      scopes: scopes,
-      granted_at: now,
-      expires_at: expires_at
+      scopes: scopes
     })
-    |> Repo.insert(
-      on_conflict: {:replace, [:scopes, :granted_at, :expires_at]},
-      conflict_target: [:user_id, :app_id]
-    )
+
+    result
   end
 
   @doc """
