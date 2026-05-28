@@ -18,9 +18,15 @@ defmodule Mix.Tasks.You.BootstrapAdmin do
     Mix.shell().info([:green, "=== You Admin Bootstrap ==="])
     Mix.shell().info("Creates the first admin user for the You IAM instance.")
 
-    email = Mix.shell().prompt("Email:")
-    password = Mix.shell().prompt("Password:", echo: false)
-    confirm = Mix.shell().prompt("Confirm password:", echo: false)
+    email = IO.gets("Email: ") |> String.trim()
+
+    IO.write("Password: ")
+    password = :io.get_password() |> List.to_string()
+    IO.write("\n")
+
+    IO.write("Confirm password: ")
+    confirm = :io.get_password() |> List.to_string()
+    IO.write("\n")
 
     if password != confirm do
       Mix.shell().error("Passwords do not match.")
