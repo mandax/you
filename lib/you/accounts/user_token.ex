@@ -62,11 +62,14 @@ defmodule You.Accounts.UserToken do
   The token is valid if it matches the value in the database and it has
   not expired (after @session_validity_in_days).
   """
-  def verify_session_token_query(token) do
+  def verify_session_token_query(token, expiry_hours \\ nil) do
+    expiry_hours = expiry_hours || @session_validity_in_days * 24
+    threshold = DateTime.add(DateTime.utc_now(), -expiry_hours * 60 * 60, :second)
+
     query =
       from token in by_token_and_context_query(token, "session"),
         join: user in assoc(token, :user),
-        where: token.inserted_at > ago(@session_validity_in_days, "day"),
+        where: token.inserted_at > ^threshold,
         select: {%{user | authenticated_at: token.authenticated_at}, token.inserted_at}
 
     {:ok, query}
@@ -111,7 +114,10 @@ defmodule You.Accounts.UserToken do
   database. This function also checks whether the token has expired. The context
   of a magic link token is always "login".
   """
-  def verify_magic_link_token_query(token) do
+  def verify_magic_link_token_query(token, expiry_minutes \\ nil) do
+    expiry_minutes = expiry_minutes || @magic_link_validity_in_minutes
+    threshold = DateTime.add(DateTime.utc_now(), -expiry_minutes * 60, :second)
+
     case Base.url_decode64(token, padding: false) do
       {:ok, decoded_token} ->
         hashed_token = :crypto.hash(@hash_algorithm, decoded_token)
@@ -119,7 +125,7 @@ defmodule You.Accounts.UserToken do
         query =
           from token in by_token_and_context_query(hashed_token, "login"),
             join: user in assoc(token, :user),
-            where: token.inserted_at > ago(^@magic_link_validity_in_minutes, "minute"),
+            where: token.inserted_at > ^threshold,
             where: token.sent_to == user.email,
             select: {user, token}
 
@@ -168,7 +174,10 @@ defmodule You.Accounts.UserToken do
   The query returns the token with its associated user, valid only within
   the `@auth_code_validity_in_minutes` window.
   """
-  def verify_auth_code_query(token) do
+  def verify_auth_code_query(token, expiry_minutes \\ nil) do
+    expiry_minutes = expiry_minutes || @auth_code_validity_in_minutes
+    threshold = DateTime.add(DateTime.utc_now(), -expiry_minutes * 60, :second)
+
     case Base.url_decode64(token, padding: false) do
       {:ok, decoded_token} ->
         hashed_token = :crypto.hash(@hash_algorithm, decoded_token)
@@ -176,7 +185,7 @@ defmodule You.Accounts.UserToken do
         query =
           from token in by_token_and_context_query(hashed_token, "oauth_code"),
             join: user in assoc(token, :user),
-            where: token.inserted_at > ago(^@auth_code_validity_in_minutes, "minute"),
+            where: token.inserted_at > ^threshold,
             select: {user, token}
 
         {:ok, query}

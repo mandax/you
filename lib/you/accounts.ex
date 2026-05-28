@@ -184,7 +184,8 @@ defmodule You.Accounts do
   If the token is valid `{user, token_inserted_at}` is returned, otherwise `nil` is returned.
   """
   def get_user_by_session_token(token) do
-    {:ok, query} = UserToken.verify_session_token_query(token)
+    expiry_hours = You.Settings.get(:session_expiry_hours)
+    {:ok, query} = UserToken.verify_session_token_query(token, expiry_hours)
     Repo.one(query)
   end
 
@@ -192,7 +193,9 @@ defmodule You.Accounts do
   Gets the user with the given magic link token.
   """
   def get_user_by_magic_link_token(token) do
-    with {:ok, query} <- UserToken.verify_magic_link_token_query(token),
+    expiry = You.Settings.get(:magic_link_expiry_minutes)
+
+    with {:ok, query} <- UserToken.verify_magic_link_token_query(token, expiry),
          {user, _token} <- Repo.one(query) do
       user
     else
@@ -219,7 +222,8 @@ defmodule You.Accounts do
      `mix help phx.gen.auth`.
   """
   def login_user_by_magic_link(token) do
-    {:ok, query} = UserToken.verify_magic_link_token_query(token)
+    expiry = You.Settings.get(:magic_link_expiry_minutes)
+    {:ok, query} = UserToken.verify_magic_link_token_query(token, expiry)
 
     case Repo.one(query) do
       # Prevent session fixation attacks by disallowing magic links for unconfirmed users with password
@@ -300,7 +304,9 @@ defmodule You.Accounts do
   Returns `{:ok, user}` or `{:error, :not_found}`.
   """
   def consume_auth_code(code) when is_binary(code) do
-    with {:ok, query} <- UserToken.verify_auth_code_query(code) do
+    expiry = You.Settings.get(:code_expiry_minutes)
+
+    with {:ok, query} <- UserToken.verify_auth_code_query(code, expiry) do
       case Repo.one(query) do
         {user, token} ->
           Repo.delete!(token)

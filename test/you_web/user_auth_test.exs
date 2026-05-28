@@ -159,6 +159,9 @@ defmodule YouWeb.UserAuthTest do
     end
 
     test "reissues a new token after a few days and refreshes cookie", %{conn: conn, user: user} do
+      # Set session expiry high enough so a 10-day-old token is still valid for reissue
+      You.Settings.set(:session_expiry_hours, 30 * 24)
+
       logged_in_conn =
         conn |> fetch_cookies() |> UserAuth.log_in_user(user, %{"remember_me" => "true"})
 
