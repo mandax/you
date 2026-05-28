@@ -41,6 +41,14 @@ defmodule YouWeb.UserAuth do
   end
 
   @doc """
+  Creates a user session without redirecting. Useful when the caller
+  needs to do additional processing (e.g., callback_url redirect with auth code).
+  """
+  def create_user_session(conn, user, params \\ %{}) do
+    create_or_extend_session(conn, user, params)
+  end
+
+  @doc """
   Logs the user out.
 
   It clears all session data for safety. See renew_session.
