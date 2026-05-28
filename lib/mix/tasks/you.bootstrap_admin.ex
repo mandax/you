@@ -21,12 +21,10 @@ defmodule Mix.Tasks.You.BootstrapAdmin do
     email = IO.gets("Email: ") |> String.trim()
 
     IO.write("Password: ")
-    password = :io.get_password() |> List.to_string()
-    IO.write("\n")
+    password = read_password()
 
     IO.write("Confirm password: ")
-    confirm = :io.get_password() |> List.to_string()
-    IO.write("\n")
+    confirm = read_password()
 
     if password != confirm do
       Mix.shell().error("Passwords do not match.")
@@ -51,6 +49,13 @@ defmodule Mix.Tasks.You.BootstrapAdmin do
       {:error, changeset} ->
         Mix.shell().error("Failed to create admin: #{inspect(changeset.errors)}")
         exit({:shutdown, 1})
+    end
+  end
+
+  defp read_password do
+    case :io.get_password() do
+      {:ok, chars} -> IO.write("\n"); List.to_string(chars)
+      {:error, _} -> IO.write("\n"); Mix.shell().prompt("Password: ")
     end
   end
 end
