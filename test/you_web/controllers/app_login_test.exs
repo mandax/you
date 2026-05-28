@@ -21,6 +21,13 @@ defmodule YouWeb.AppLoginTest do
           password: AccountsFixtures.valid_user_password()
         })
 
+      # Register the app for the callback URL
+      You.Admin.create_app(%{
+        slug: "sockeet",
+        name: "Sockeet",
+        callback_url: "https://sockeet.example.com/auth/callback"
+      })
+
       %{user: user}
     end
 

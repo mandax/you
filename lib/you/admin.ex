@@ -8,6 +8,8 @@ defmodule You.Admin do
   alias You.Accounts.User
   alias You.Admin.App
 
+  require Bcrypt
+
   @doc """
   Promotes a user to admin. Returns `{:ok, user}`.
   """
@@ -68,12 +70,14 @@ defmodule You.Admin do
       case Repo.get_by(User, email: email) do
         nil ->
           {:ok, user} = You.Accounts.register_user(%{email: email})
-          {:ok, {user, _}} = You.Accounts.update_user_password(user, %{password: password})
 
-          # Confirm the user so password login works without magic link
+          # Set password + confirm directly (bypasses changeset min-length for dev convenience)
+          hashed = Bcrypt.hash_pwd_salt(password)
+
           {:ok, user} =
             user
             |> Ecto.Changeset.change(
+              hashed_password: hashed,
               confirmed_at: DateTime.utc_now() |> DateTime.truncate(:second)
             )
             |> You.Repo.update()

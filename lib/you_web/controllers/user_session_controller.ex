@@ -51,7 +51,7 @@ defmodule YouWeb.UserSessionController do
 
     case Accounts.login_user_by_magic_link(token) do
       {:ok, {user, _expired_tokens}} ->
-        if callback_url = get_session(conn, :callback_url) do
+        if callback_url = safe_callback_url(conn) do
           record_consent_for_app(conn, user)
           scopes = get_session(conn, :scopes) || ["email"]
           {:ok, code} = Accounts.generate_auth_code(user, scopes)
@@ -89,7 +89,7 @@ defmodule YouWeb.UserSessionController do
         |> put_session(:totp_user_id, user.id)
         |> redirect(to: ~p"/users/log-in/totp")
       else
-        if callback_url = get_session(conn, :callback_url) do
+        if callback_url = safe_callback_url(conn) do
           record_consent_for_app(conn, user)
           scopes = get_session(conn, :scopes) || ["email"]
           {:ok, code} = Accounts.generate_auth_code(user, scopes)
@@ -172,7 +172,7 @@ defmodule YouWeb.UserSessionController do
       user = Accounts.get_user!(user_id)
 
       if Accounts.verify_totp(user, code) do
-        callback_url = get_session(conn, :callback_url)
+        callback_url = safe_callback_url(conn)
 
         if callback_url do
           record_consent_for_app(conn, user)
@@ -204,7 +204,7 @@ defmodule YouWeb.UserSessionController do
 
   def authorize_action(conn, _params) do
     user = conn.assigns.current_scope.user
-    callback_url = get_session(conn, :callback_url)
+    callback_url = safe_callback_url(conn)
 
     if user && callback_url do
       record_consent_for_app(conn, user)
@@ -219,6 +219,17 @@ defmodule YouWeb.UserSessionController do
       conn
       |> put_flash(:error, "Session expired, please log in again.")
       |> redirect(to: ~p"/users/log-in")
+    end
+  end
+
+  defp safe_callback_url(conn) do
+    callback_url = get_session(conn, :callback_url)
+
+    if callback_url do
+      case You.Admin.lookup_app_by_callback(callback_url) do
+        {:ok, _app} -> callback_url
+        :error -> nil
+      end
     end
   end
 

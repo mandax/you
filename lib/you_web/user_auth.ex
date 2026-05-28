@@ -229,12 +229,14 @@ defmodule YouWeb.UserAuth do
   Requires the current user to be an admin. Returns 404 for non-admins.
   """
   def require_admin(conn, _opts) do
-    if conn.assigns[:current_user] && conn.assigns.current_user.is_admin do
+    if conn.assigns[:current_scope] && conn.assigns.current_scope.user &&
+         conn.assigns.current_scope.user.is_admin do
       conn
     else
       conn
       |> put_status(404)
-      |> json(%{error: "not found"})
+      |> put_view(html: YouWeb.ErrorHTML, json: YouWeb.ErrorJSON)
+      |> render(:not_found)
       |> halt()
     end
   end

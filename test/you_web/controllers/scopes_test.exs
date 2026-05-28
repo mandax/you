@@ -1,8 +1,6 @@
 defmodule YouWeb.ScopesTest do
   use YouWeb.ConnCase
 
-  alias You.AccountsFixtures
-
   describe "scope parameter in login URL" do
     test "stores scope in session when present", %{conn: conn} do
       conn =

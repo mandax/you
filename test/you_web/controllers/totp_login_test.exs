@@ -2,10 +2,17 @@ defmodule YouWeb.TotpLoginTest do
   use YouWeb.ConnCase
 
   alias You.Accounts
+  alias You.Admin
   alias You.AccountsFixtures
 
   describe "2FA during login" do
     setup do
+      Admin.create_app(%{
+        slug: "sockeet",
+        name: "Sockeet",
+        callback_url: "https://sockeet.example.com/auth/callback"
+      })
+
       user = AccountsFixtures.user_fixture()
 
       {:ok, {user, _}} =

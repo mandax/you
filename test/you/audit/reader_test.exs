@@ -17,8 +17,7 @@ defmodule You.Audit.ReaderTest do
   end
 
   describe "categories/0" do
-    test "lists available log categories", %{tmp_dir: tmp_dir} do
-      # Override log_dir by writing directly and checking
+    test "lists available log categories" do
       assert Reader.categories() |> is_list()
     end
   end

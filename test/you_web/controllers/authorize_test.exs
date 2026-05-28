@@ -1,8 +1,6 @@
 defmodule YouWeb.AuthorizeTest do
   use YouWeb.ConnCase
 
-  alias You.AccountsFixtures
-
   setup :register_and_log_in_user
 
   describe "GET /login with callback_url when already logged in" do

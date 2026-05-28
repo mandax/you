@@ -116,7 +116,8 @@ defmodule You.IAM.Server do
         {:ok, user, scopes} ->
           claims = build_scoped_claims(user, scopes || ["email"])
 
-          {:ok, jwt} = JWT.sign(claims)
+          jwt_expiry = You.Settings.get(:jwt_expiry_hours) * 3600
+          {:ok, jwt} = JWT.sign(claims, jwt_expiry)
 
           :telemetry.execute(
             [:you, :audit, :token, :exchange],
