@@ -1,8 +1,0 @@
-{"user_id":1,"scopes":["email"],"event":"token:exchange","ts":"2026-05-28T20:13:53.451385Z"}
-{"reason":"not_found","result":"failure","event":"token:exchange","ts":"2026-05-28T20:13:53.451989Z"}
-{"user_id":1,"scopes":["email"],"event":"token:exchange","ts":"2026-05-28T20:13:53.484147Z"}
-{"reason":"not_found","result":"failure","event":"token:exchange","ts":"2026-05-28T20:13:53.484404Z"}
-{"reason":"not_found","result":"failure","event":"token:exchange","ts":"2026-05-28T20:13:57.290971Z"}
-{"user_id":1,"scopes":["email"],"event":"token:exchange","ts":"2026-05-28T20:13:57.302571Z"}
-{"reason":"not_found","result":"failure","event":"token:exchange","ts":"2026-05-28T20:13:57.364881Z"}
-{"user_id":1,"scopes":["email"],"event":"token:exchange","ts":"2026-05-28T20:13:57.370353Z"}

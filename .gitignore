@@ -35,3 +35,6 @@ priv/repo/*.db-wal
 
 # Bucket storage
 /bucket/
+
+# Audit log files (created at runtime)
+priv/log/*.jsonl
