@@ -12,6 +12,7 @@ defmodule You.Application do
       You.Repo,
       {DNSCluster, query: Application.get_env(:you, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: You.PubSub},
+      You.IAM.Server,
       YouWeb.Endpoint
     ]
 

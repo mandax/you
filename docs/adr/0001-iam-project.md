@@ -37,24 +37,34 @@ You is a separate OTP application in its own repository (`~/dev/you` alongside `
 
 ### 6. You exposes REST for auth, GraphQL for user data
 
-### 7. You SDK for app integration (not Erlang distribution)
+### 7. Erlang distribution for app↔You communication with SDK
 
-Apps integrate with You via the `You.SDK` module, not Erlang distribution.
+You exposes `You.IAM.Server` — a GenServer registered on the You node.
+Consumer apps communicate with it via Erlang distribution, wrapped by the
+`You.SDK` dependency:
 
-- **Token validation**: Apps call `You.SDK.verify(jwt, public_key)` locally using You's Ed25519 public key. No network call per request.
-- **Login**: Apps call `You.SDK.login(you_url, email, password)` which makes an HTTP POST to You's `/api/login`.
-- **Token revocation**: Apps call `You.SDK.revoke(you_url, jwt)` which makes an HTTP DELETE to You's `/api/logout`.
-- **Public key**: You exposes its Ed25519 public key at `GET /.well-known/jwks.json`. Apps fetch it once on startup and cache it.
+- **Token validation**: `You.SDK.verify_token(jwt)` →
+  `GenServer.call({You.IAM.Server, you_node}, {:verify_token, jwt})` →
+  You validates signature, expiry, blocklist → returns user info
+- **User lookup**: `You.SDK.get_user(user_id)` →
+  `GenServer.call({You.IAM.Server, you_node}, {:get_user, user_id})` →
+  returns `%{id, email}`
+- **Token revocation**: `You.SDK.revoke_token(jwt)` →
+  `GenServer.call({You.IAM.Server, you_node}, {:revoke_token, jwt})` →
+  You adds JTI to blocklist
 
-This means:
-- No Erlang node coupling. Apps connect over plain HTTPS.
-- Apps asynchronously fetch and cache You's public key for local verification.
-- The SDK is a standalone library that can be published as a Hex package.
-- Apps never call You's GenServer internals or access its database.
+The SDK (`You.SDK`) is a dependency library that apps include in their
+`mix.exs`. It handles node resolution, timeouts, and returns
+`{:error, :unreachable}` when You is down. Apps never call You's
+GenServer internals or access its database directly.
 
-Rejected: Erlang distribution for token validation. Creates tight node coupling, requires both apps to be on the same BEAM cluster, and means You's GenServer is a single point of failure for all auth decisions. HTTP-based token introspection with local JWT verification is simpler, more scalable, and works with non-Elixir clients.
+Benefits:
+- Sub-millisecond latency on the same node, millisecond across a cluster
+- The SDK is a standalone Hex package
+- No HTTP overhead per request
+- If You is unreachable, the app degrades gracefully
 
-### 8. Secure transport (HTTPS)
+### 8. Secure Erlang distribution with TLS
 
 ### 9. Each app stores a lightweight `iam_tokens` cache
 
@@ -72,10 +82,10 @@ The implementation follows this sequence:
 2. ✅ **JWT layer** — replace sessions with JWT on login/logout; add `jose` signing/verification
 3. ✅ **Magic link** — reuse `UserToken` pattern for email-based passwordless login
 4. ✅ **2FA** — add `nimble_totp` column to User, pre-auth token flow, recovery codes
-5. **SDK module** — build `You.SDK` with local JWT verification and HTTP client ← CURRENT
-6. **JWKS endpoint** — expose Ed25519 public key at `GET /.well-known/jwks.json`
+5. **SDK module** — build `You.SDK` wrapping Erlang distribution calls ← CURRENT
+6. **Sockeet integration** — update Sockeet to use `You.SDK` as a dependency
 
-Steps 1–5 are self-contained within You. Step 6 adds the public key discovery endpoint.
+Steps 1–5 are self-contained within You. Step 6 is in the Sockeet repo.
 
 ## Status
 
@@ -84,6 +94,6 @@ Proposed — replaces previous version of this ADR.
 ## Consequences
 
 - You owns the full authentication flow. Apps never see passwords, TOTP secrets, or 2FA codes.
-- Apps validate JWTs locally using You's cached public key — no HTTP calls per request.
-- The `You.SDK` is a standalone library consumable as a Hex or path dependency.
-- Losing the HTTP connection to You means apps can't log in, but existing JWTs remain valid until expiry.
+- Apps connect to You via Erlang distribution for token validation — sub-millisecond latency on the same node.
+- The `You.SDK` is a standalone Hex package that wraps the GenServer calls.
+- Losing the Erlang connection to You means SDK returns `{:error, :unreachable}`.

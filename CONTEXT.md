@@ -49,12 +49,12 @@ The token format for authenticated sessions. Signed with You's Ed25519 key. Cont
 _Avoid_: Token, session token, bearer token
 
 **SDK** (`You.SDK`):
-The official library for integrating apps with You. Provides local JWT verification (using You's Ed25519 public key) and HTTP client functions for login, 2FA, and logout. Apps add it as a Hex or path dependency.
-_Avoid_: Erlang distribution, RPC, node connection
+The official library for integrating apps with You. Apps add it as a Hex or path dependency. Provides functions that call You's `You.IAM.Server` via Erlang distribution (`GenServer.call`). Handles node lookup, timeout, and graceful degradation when You is unreachable.
+_Avoid_: HTTP client, REST wrapper, direct GenServer calls
 
-**Public Key** (JWK):
-You's Ed25519 public key, exposed via `GET /.well-known/jwks.json`. Apps fetch this once and cache it for local JWT verification. No need to call You on every request.
-_Avoid_: Shared secret, API key, node cookie
+**Erlang Distribution**:
+The communication channel between You and apps (Sockeet, future services). Connected nodes exchange process messages. You registers `You.IAM.Server` — a GenServer that handles `{:verify_token, jwt}`, `{:get_user, user_id}`, `{:revoke_token, jwt}`. Apps use `You.SDK` which wraps these calls.
+_Avoid_: RPC, REST, node coupling
 
 **IAM Token Cache** (`iam_tokens` table in each app, optional):
 Lightweight local cache stored in each app's database. Stores `you_user_id`, username, email, role, and last validated timestamp. Used for display and graceful degradation when You is unreachable.

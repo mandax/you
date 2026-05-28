@@ -1,88 +1,71 @@
 defmodule You.SDK do
   @moduledoc """
-  SDK for integrating apps with the You IAM service.
+  SDK for integrating apps with the You IAM service via Erlang distribution.
 
-  Provides JWT verification (local, using You's Ed25519 public key)
-  and HTTP client calls to You's REST API.
+  Consumer apps add this as a dependency and call these functions. They communicate
+  with You's `You.IAM.Server` GenServer over Erlang distribution — no HTTP needed.
 
-  ## Usage in a consumer app
+  ## Usage in a consumer app (on a connected Erlang node)
 
-      # Login
-      You.SDK.login("https://you.example.com", email, password)
+      # Verify a JWT
+      You.SDK.verify_token(jwt, node: :"you@host")
+      # => {:ok, %{user_id: 1, email: "...", role: "user"}}
 
-      # Verify a JWT locally
-      You.SDK.verify(jwt, public_key)
+      # Look up a user
+      You.SDK.get_user(42, node: :"you@host")
+      # => {:ok, %{id: 42, email: "..."}}
 
-      # Verify 2FA
-      You.SDK.verify_2fa("https://you.example.com", pre_auth_token, totp_code)
+      # Revoke a session
+      You.SDK.revoke_token(jwt, node: :"you@host")
 
   ## Configuration
 
-  The SDK can be configured in the consumer app:
+      config :you_sdk, node: :"you@you.internal"
 
-      config :you_sdk,
-        url: "https://you.example.com",
-        public_key: %{kty: "OKP", crv: "Ed25519", ...},
-        http_timeout: 5_000
+  Calling with an explicit `node:` option overrides the configured default.
+  If no node is configured and none is passed, calls go to the local node
+  (for development when You and the app run in the same Elixir instance).
   """
 
-  alias You.SDK.Client
-  alias You.SDK.Verify
+  @default_timeout 5_000
 
   @doc """
-  Authenticates a user with email and password.
+  Validates a JWT against You's IAM Server.
 
-  Returns `{:ok, %{jwt: String.t()}}`,
-  `{:ok, %{status: "2fa_required", pre_auth_token: String.t()}}`,
-  or `{:error, reason}`.
+  Returns `{:ok, %{user_id, email, role}}` or `{:error, reason}`.
   """
-  def login(url, email, password) do
-    Client.post(url, "/api/login", %{email: email, password: password})
+  def verify_token(jwt, opts \\ []) do
+    call({:verify_token, jwt}, opts)
   end
 
   @doc """
-  Completes 2FA login with a pre-auth token and TOTP code.
+  Looks up a user by ID.
 
-  Returns `{:ok, %{jwt: String.t()}}` or `{:error, reason}`.
+  Returns `{:ok, %{id, email}}` or `{:error, :not_found}`.
   """
-  def verify_2fa(url, pre_auth_token, totp_code) do
-    Client.post(url, "/api/login/verify", %{
-      pre_auth_token: pre_auth_token,
-      totp_code: totp_code
-    })
+  def get_user(user_id, opts \\ []) do
+    call({:get_user, user_id}, opts)
   end
 
   @doc """
-  Revokes a JWT session.
-
-  Returns `:ok` or `{:error, reason}`.
+  Revokes a JWT. Returns `:ok`.
   """
-  def revoke(url, jwt) do
-    case Client.delete(url, "/api/logout", jwt) do
-      {:ok, _} -> :ok
-      other -> other
+  def revoke_token(jwt, opts \\ []) do
+    call({:revoke_token, jwt}, opts)
+  end
+
+  defp call(msg, opts) do
+    timeout = Keyword.get(opts, :timeout, @default_timeout)
+    server = Keyword.get(opts, :node) || Application.get_env(:you_sdk, :node)
+
+    target = if server, do: {You.IAM.Server, server}, else: You.IAM.Server
+
+    try do
+      GenServer.call(target, msg, timeout)
+    catch
+      :exit, {:noproc, _} -> {:error, :unreachable}
+      :exit, {:timeout, _} -> {:error, :unreachable}
+      :exit, _ -> {:error, :unreachable}
     end
-  end
-
-  @doc """
-  Fetches You's Ed25519 public key in JWK format from the
-  `.well-known/jwks.json` endpoint.
-
-  Returns `{:ok, jwk_map}` or `{:error, reason}`.
-  """
-  def fetch_public_key(url) do
-    Client.get(url, "/.well-known/jwks.json")
-  end
-
-  @doc """
-  Verifies a JWT using You's Ed25519 public key.
-
-  Checks signature and expiry. Returns `{:ok, claims}` or `{:error, reason}`.
-
-  The `public_key` should be a JWK map fetched via `fetch_public_key/1`
-  or configured in the consumer app.
-  """
-  def verify(jwt, public_key) do
-    Verify.verify(jwt, public_key)
   end
 end

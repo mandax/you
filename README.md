@@ -13,8 +13,9 @@ You ──── auth, users, roles, 2FA, billing (future)
 ```
 
 Apps never touch You's database. Communication goes through:
-- **REST API** — `POST /api/login`, `POST /api/login/verify`, `DELETE /api/logout`
-- **`You.SDK`** — library for local JWT verification and HTTP client calls
+- **REST API** — `POST /api/login`, `POST /api/login/verify`, `DELETE /api/logout` (user-facing)
+- **Erlang distribution** — token validation, user lookup, revocation via `You.IAM.Server` (app-internal)
+- **`You.SDK`** — dependency library that wraps the Erlang distribution calls
 - **GraphQL** (future) — user profile, settings, teams
 
 ## Stack
@@ -84,47 +85,40 @@ DELETE /api/logout
 Authorization: Bearer <jwt>
 ```
 
-### Public key discovery
-
-```
-GET /.well-known/jwks.json
-```
-
-```json
-{"keys": [{"kty": "OKP", "crv": "Ed25519", ...}]}
-```
-
-Apps fetch this once on startup and cache it for local JWT verification.
-
 ## SDK
 
-`You.SDK` provides the public API for integrating apps:
+`You.SDK` provides the public API for integrating apps. It communicates with
+`You.IAM.Server` over Erlang distribution — no HTTP per-request overhead.
 
 ```elixir
-# Login (calls You's REST API)
-You.SDK.login("https://you.example.com", email, password)
+# Verify a JWT (calls You's IAM Server via GenServer.call)
+You.SDK.verify_token(jwt, node: :"you@host")
+# => {:ok, %{user_id: 1, email: "...", role: "user"}}
 
-# Verify a JWT locally (no network call)
-You.SDK.verify(jwt, public_key)
-
-# Complete 2FA
-You.SDK.verify_2fa("https://you.example.com", pre_auth_token, totp_code)
+# Look up a user
+You.SDK.get_user(42, node: :"you@host")
+# => {:ok, %{id: 42, email: "..."}}
 
 # Revoke a session
-You.SDK.revoke("https://you.example.com", jwt)
-
-# Fetch You's public key
-You.SDK.fetch_public_key("https://you.example.com")
+You.SDK.revoke_token(jwt, node: :"you@host")
 ```
 
-Apps add the SDK as a dependency and use it directly — no Erlang distribution, no node coupling.
+Configure the You node in the consumer app:
+
+```elixir
+config :you_sdk, node: :"you@you.internal"
+```
+
+Acts as a dependency library — apps add it to their `mix.exs` and call it
+directly. No direct GenServer access, no HTTP overhead.
 
 ### Integration pattern
 
-1. App fetches You's public key from `GET /.well-known/jwks.json` on startup
-2. App calls `You.SDK.login(...)` to authenticate users
-3. For each authenticated request, app calls `You.SDK.verify(jwt, public_key)` locally
-4. App calls `You.SDK.revoke(...)` on logout
+1. App adds `you` as a path or Hex dependency
+2. App configures the remote You node name
+3. App calls `You.SDK.verify_token/1` for each authenticated request
+4. SDK calls `GenServer.call({You.IAM.Server, you_node}, msg)` behind the scenes
+5. If You is unreachable, SDK returns `{:error, :unreachable}`
 
 ## Sessions (HTML)
 
