@@ -12,9 +12,7 @@ defmodule You.Application do
       You.Repo,
       {DNSCluster, query: Application.get_env(:you, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: You.PubSub},
-      # Start a worker by calling: You.Worker.start_link(arg)
-      # {You.Worker, arg},
-      # Start to serve requests, typically the last entry
+      You.IAM.Server,
       YouWeb.Endpoint
     ]
 
