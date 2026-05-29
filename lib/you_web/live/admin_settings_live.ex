@@ -3,43 +3,34 @@ defmodule YouWeb.AdminSettingsLive do
 
   alias You.Settings
 
-  @defaults %{
-    session_expiry_hours: 24,
-    jwt_expiry_hours: 1,
-    code_expiry_minutes: 5,
-    magic_link_expiry_minutes: 15
-  }
+  @fields [
+    %{key: :session_expiry_hours, type: :number, label: "Session expiry (hours)"},
+    %{key: :jwt_expiry_hours, type: :number, label: "JWT expiry (hours)"},
+    %{key: :code_expiry_minutes, type: :number, label: "Auth code expiry (minutes)"},
+    %{key: :magic_link_expiry_minutes, type: :number, label: "Magic link expiry (minutes)"},
+    %{key: :erlang_node_name, type: :text, label: "Erlang node name"},
+    %{key: :epmd_port, type: :number, label: "EPMD port"}
+  ]
 
   @impl true
   def mount(_params, _session, socket) do
-    settings = load_settings()
-
-    {:ok,
-     socket
-     |> assign(:settings, settings)
-     |> assign(:saved, false)}
+    {:ok, assign(socket, fields: @fields, settings: Settings.all(), saved: false)}
   end
 
   @impl true
   def handle_event("save", params, socket) do
-    settings = socket.assigns.settings
+    Enum.each(@fields, fn field ->
+      key = field.key
+      key_str = Atom.to_string(key)
+      raw = params[key_str]
 
-    settings =
-      Enum.map(settings, fn {key, _current_value} ->
-        key_str = Atom.to_string(key)
+      if is_binary(raw) and raw != "" do
+        parsed = parse_value(raw)
+        Settings.set(key, parsed)
+      end
+    end)
 
-        case Integer.parse(params[key_str] || "") do
-          {value, ""} when value >= 0 ->
-            Settings.set(key, value)
-            {key, value}
-
-          _ ->
-            {key, settings[key]}
-        end
-      end)
-      |> Map.new()
-
-    {:noreply, assign(socket, settings: settings, saved: true)}
+    {:noreply, assign(socket, settings: Settings.all(), saved: true)}
   end
 
   @impl true
@@ -52,15 +43,15 @@ defmodule YouWeb.AdminSettingsLive do
     </div>
 
     <form phx-submit="save" class="space-y-4 max-w-md">
-      <div :for={{key, value} <- @settings} class="fieldset">
+      <div :for={field <- @fields} class="fieldset">
         <label class="label">
-          <span class="label-text"><%= key |> Atom.to_string() |> String.replace("_", " ") |> String.capitalize() %></span>
+          <span class="label-text"><%= field.label %></span>
         </label>
         <input
-          type="number"
-          min="0"
-          name={Atom.to_string(key)}
-          value={value}
+          type={if field.type == :number, do: "number", else: "text"}
+          min={if field.type == :number, do: "0"}
+          name={Atom.to_string(field.key)}
+          value={@settings[field.key]}
           class="input input-bordered w-full"
         />
       </div>
@@ -69,14 +60,23 @@ defmodule YouWeb.AdminSettingsLive do
         Save Settings
       </button>
     </form>
+
+    <div class="mt-8 text-sm text-base-content/60 space-y-1">
+      <p class="font-semibold">Erlang distribution notes:</p>
+      <p>
+        The <code>erlang_node_name</code> and cookie must also be set via
+        <code>RELEASE_NODE</code> and <code>RELEASE_COOKIE</code> environment
+        variables when starting the container — database settings alone don't
+        configure the Erlang VM's distribution layer.
+      </p>
+    </div>
     """
   end
 
-  defp load_settings do
-    @defaults
-    |> Enum.map(fn {key, _default} ->
-      {key, Settings.get(key)}
-    end)
-    |> Map.new()
+  defp parse_value(raw) do
+    cond do
+      raw =~ ~r/^\d+$/ -> String.to_integer(raw)
+      true -> raw
+    end
   end
 end

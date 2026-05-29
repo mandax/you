@@ -38,6 +38,8 @@ docker run -d \
 | `PORT` | No | `4000` | HTTP port |
 | `POOL_SIZE` | No | `10` | Ecto connection pool size |
 | `PHX_SERVER` | No | `true` | Set to start the HTTP server |
+| `RELEASE_NODE` | No | `you@you.internal` | Erlang node name (for Erlang distribution) |
+| `RELEASE_COOKIE` | No | — | Erlang cookie (required for Erlang distribution) |
 | `DNS_CLUSTER_QUERY` | No | — | DNS cluster query for distributed Erlang |
 
 ### Volumes
@@ -63,6 +65,52 @@ docker exec <container> bin/you eval \
 ```
 
 For non-interactive production use, pass the email and password as arguments.
+
+## Erlang Distribution
+
+Consumer apps (Sockeet, etc.) communicate with You via Erlang distribution.
+You must be started with a node name and cookie for this to work.
+
+### Configure
+
+```bash
+docker run -d \
+  -e RELEASE_NODE=you@you.internal \
+  -e RELEASE_COOKIE=your-secret-cookie \
+  ...
+  you:latest
+```
+
+### How consumer apps connect
+
+Consumer apps use the `You.SDK` which calls `You.IAM.Server` over Erlang
+distribution. They need to know You's node name and share the same cookie:
+
+```elixir
+# In the consumer app's config
+config :you_sdk, node: :"you@you.internal"
+```
+
+The node name is also stored in You's `settings` table as `erlang_node_name`
+for reference. The actual Erlang VM configuration must use the matching
+`RELEASE_NODE` env var.
+
+### Ports
+
+| Port | Protocol | Purpose |
+|------|----------|---------|
+| `4369` | TCP | EPMD (Erlang Port Mapper Daemon) |
+| `4000` | TCP | HTTP (Phoenix web server) |
+
+If both You and the consumer app run on the same Docker network, they can
+communicate using the service name as hostname:
+
+```bash
+docker run --network you-net \
+  -e RELEASE_NODE=you@you-svc \
+  ...
+  you:latest
+```
 
 ## Commands
 
