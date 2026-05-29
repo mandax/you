@@ -9,7 +9,8 @@ defmodule YouWeb.AdminSettingsLive do
     %{key: :code_expiry_minutes, type: :number, label: "Auth code expiry (minutes)"},
     %{key: :magic_link_expiry_minutes, type: :number, label: "Magic link expiry (minutes)"},
     %{key: :erlang_node_name, type: :text, label: "Erlang node name"},
-    %{key: :epmd_port, type: :number, label: "EPMD port"}
+    %{key: :epmd_port, type: :number, label: "EPMD port"},
+    %{key: :erlang_cookie, type: :password, label: "Erlang cookie"}
   ]
 
   @impl true
@@ -24,11 +25,14 @@ defmodule YouWeb.AdminSettingsLive do
       key_str = Atom.to_string(key)
       raw = params[key_str]
 
-      if is_binary(raw) and raw != "" do
+      if is_binary(raw) do
         parsed = parse_value(raw)
         Settings.set(key, parsed)
       end
     end)
+
+    # Apply the cookie immediately if it was changed
+    You.Accounts.CookieSync.apply_cookie()
 
     {:noreply, assign(socket, settings: Settings.all(), saved: true)}
   end
@@ -48,7 +52,7 @@ defmodule YouWeb.AdminSettingsLive do
           <span class="label-text"><%= field.label %></span>
         </label>
         <input
-          type={if field.type == :number, do: "number", else: "text"}
+          type={input_type(field.type)}
           min={if field.type == :number, do: "0"}
           name={Atom.to_string(field.key)}
           value={@settings[field.key]}
@@ -62,16 +66,19 @@ defmodule YouWeb.AdminSettingsLive do
     </form>
 
     <div class="mt-8 text-sm text-base-content/60 space-y-1">
-      <p class="font-semibold">Erlang distribution notes:</p>
+      <p class="font-semibold">Erlang distribution</p>
       <p>
-        The <code>erlang_node_name</code> and cookie must also be set via
-        <code>RELEASE_NODE</code> and <code>RELEASE_COOKIE</code> environment
-        variables when starting the container — database settings alone don't
-        configure the Erlang VM's distribution layer.
+        The <code>erlang_cookie</code> from settings is applied at boot and
+        when saved in this form. It overrides the <code>RELEASE_COOKIE</code>
+        env var. Changing the cookie breaks existing Erlang connections.
       </p>
     </div>
     """
   end
+
+  defp input_type(:number), do: "number"
+  defp input_type(:password), do: "password"
+  defp input_type(_), do: "text"
 
   defp parse_value(raw) do
     cond do

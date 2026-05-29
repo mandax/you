@@ -12,6 +12,7 @@ defmodule You.Application do
       You.Repo,
       {DNSCluster, query: Application.get_env(:you, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: You.PubSub},
+      You.Accounts.CookieSync,
       You.IAM.Server,
       You.Accounts.JtiCleanup,
       YouWeb.Endpoint

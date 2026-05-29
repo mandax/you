@@ -45,12 +45,22 @@ You's node name.
 For future multi-node You deployments, libcluster or similar can be added
 without changing the message protocol.
 
-### 3. Cookie is a shared secret, configured via env var
+### 3. Cookie configured via settings (applied at boot + dynamically)
 
-The Erlang cookie is set via `RELEASE_COOKIE` env var. It must match on all
-nodes in the cluster. This is a deployment concern — the cookie is set in
-the container orchestration (Docker Compose, Kubernetes Secret, etc.) and
-never stored in the database.
+The Erlang cookie is stored in the `erlang_cookie` setting in the database
+(seeded as empty). Unlike the node name (which must be set before the VM
+boots), the cookie can be changed at runtime via `Node.set_cookie/1`.
+
+A `You.Accounts.CookieSync` process runs at boot, reads the setting, and
+applies it. When the admin changes the cookie in the settings page, it is
+also applied immediately. The `rel/env.sh.eex` sets a temporary bootstrap
+value (`bootstrap_temp`) so the VM can start with distribution enabled;
+the DB value overrides it moments later.
+
+This means operators can manage the cookie through the admin UI without
+restarting containers. However, changing the cookie breaks any existing
+Erlang distribution connections — consumer apps must be updated with the
+new cookie value and reconnect.
 
 ### 4. `RELEASE_DISTRIBUTION` must be explicitly enabled
 

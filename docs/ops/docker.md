@@ -82,30 +82,34 @@ All nodes must share the same cookie and distribution must be enabled.
 ### How the cookie works
 
 Erlang distribution uses a **cookie-based authentication** model. Two nodes can
-communicate only if they present the same cookie. This means:
+communicate only if they present the same cookie.
 
-1. You's container must have `RELEASE_COOKIE` set
-2. **Every** consumer app container (Sockeet, etc.) must have the **same**
-   `RELEASE_COOKIE` value
-3. If cookies don't match, Erlang nodes will refuse to connect (silently)
+You manages the cookie through the **admin settings page** (`/admin/settings`):
 
-**The cookie is never stored in You's database** — it's a deployment secret
-managed by your container orchestration:
+1. The `erlang_cookie` setting is stored in the database
+2. At boot, `CookieSync` reads it and applies it via `Node.set_cookie/1`
+3. When you change it in settings, it's applied **immediately**
+4. The `RELEASE_COOKIE` env var is still supported but acts as a bootstrap
+   fallback (the DB value overrides it)
+
+**Consumer apps** (Sockeet) must have the same cookie configured on their
+side — they don't read You's database. You must share the cookie value
+out-of-band (same env var, same Kubernetes Secret, etc.).
 
 ```yaml
-# Docker Compose example — both services share the same cookie
+# Docker Compose — You's cookie comes from settings (admin panel)
+# Sockeet's cookie must match — configured via env var
 services:
   you:
     environment:
       RELEASE_DISTRIBUTION: name
       RELEASE_NODE: you@you
-      RELEASE_COOKIE: "${ERLANG_COOKIE}"   # same value
 
   sockeet:
     environment:
       RELEASE_DISTRIBUTION: name
       RELEASE_NODE: sockeet@sockeet
-      RELEASE_COOKIE: "${ERLANG_COOKIE}"   # same value
+      RELEASE_COOKIE: "${ERLANG_COOKIE}"  # must match You's setting
 ```
 
 ### How consumer apps connect
