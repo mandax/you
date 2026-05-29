@@ -1,0 +1,111 @@
+# Docker — Production Deployment
+
+Build and run You IAM as a Docker container using the multi-stage `Dockerfile`.
+
+## Build
+
+```bash
+docker build -t you:latest .
+```
+
+The build is **multi-stage**:
+1. **Builder** — compiles the app and creates an Elixir release (includes ERTS)
+2. **Runtime** — minimal Alpine image with only the release + SQLite
+
+Source code is **not present** in the final image — only the compiled release.
+
+## Run
+
+### Minimal
+
+```bash
+docker run -d \
+  -e DATABASE_PATH=/data/you/prod.db \
+  -e SECRET_KEY_BASE="$(openssl rand -base64 48)" \
+  -e PHX_HOST=you.example.com \
+  -v you-data:/data/you \
+  -p 4000:4000 \
+  you:latest
+```
+
+### All environment variables
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `DATABASE_PATH` | Yes | — | Path to the SQLite database file |
+| `SECRET_KEY_BASE` | Yes | — | Phoenix secret key (`openssl rand -base64 48`) |
+| `PHX_HOST` | Yes | — | Public hostname (e.g., `you.example.com`) |
+| `PORT` | No | `4000` | HTTP port |
+| `POOL_SIZE` | No | `10` | Ecto connection pool size |
+| `PHX_SERVER` | No | `true` | Set to start the HTTP server |
+| `DNS_CLUSTER_QUERY` | No | — | DNS cluster query for distributed Erlang |
+
+### Volumes
+
+| Mount | Purpose |
+|-------|---------|
+| `/data/you` | SQLite database and WAL files |
+| `/var/log/you` | Audit log files (optional) |
+
+## First-time Setup
+
+### 1. Run migrations
+
+```bash
+docker exec <container> bin/migrate
+```
+
+### 2. Create an admin user
+
+```bash
+docker exec <container> bin/you eval \
+  'You.Release.bootstrap_admin("admin@example.com", "your-password")'
+```
+
+For non-interactive production use, pass the email and password as arguments.
+
+## Commands
+
+```bash
+# Start the server
+docker exec <container> bin/server
+
+# Run database migrations
+docker exec <container> bin/migrate
+
+# Open an IEx console
+docker exec -it <container> bin/you remote
+
+# Run an arbitrary Elixir expression
+docker exec <container> bin/you eval 'IO.puts("hello")'
+
+# Check status
+docker exec <container> bin/you pid
+```
+
+## Building for Production
+
+### With your own config
+
+Create a `config/prod.secret.exs` (not committed) and rebuild:
+
+```bash
+# Or set config via environment variables (per runtime.exs)
+docker build -t you:latest .
+```
+
+### Arm64 / Apple Silicon
+
+The Dockerfile uses `hexpm/elixir:1.19.5-erlang-29.0.1-alpine-3.21` which supports
+both `linux/amd64` and `linux/arm64`. Build natively:
+
+```bash
+docker build --platform linux/arm64 -t you:latest .
+```
+
+## Security Notes
+
+- The final image contains **no source code** — only the compiled BEAM release
+- The release is **self-contained** — includes ERTS, no Erlang/Elixir runtime needed
+- SQLite database is stored on a **persistent volume** — data survives container restarts
+- Audit logs should be written to a **volume mount** for persistence

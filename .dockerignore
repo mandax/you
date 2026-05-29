@@ -1,0 +1,41 @@
+# Git
+.git
+.gitignore
+
+# Build artifacts
+_build/
+deps/
+
+# Environment
+.env
+.env.*
+*.local
+
+# Backups / logs
+backup.log
+priv/log/*.jsonl
+
+# Test (not needed in production build)
+test/
+
+# Dev databases
+*.db
+*.db-wal
+*.db-shm
+
+# OS artifacts
+.DS_Store
+
+# Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Erlang
+*.beam
+erl_crash.dump
+
+# Mise
+.mise.toml
+.mise.tmp
