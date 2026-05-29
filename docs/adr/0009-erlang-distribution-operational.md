@@ -45,22 +45,49 @@ You's node name.
 For future multi-node You deployments, libcluster or similar can be added
 without changing the message protocol.
 
-### 3. Cookie configured via settings (applied at boot + dynamically)
+### 3. Cookie stored encrypted in settings, applied at boot and dynamically
 
-The Erlang cookie is stored in the `erlang_cookie` setting in the database
-(seeded as empty). Unlike the node name (which must be set before the VM
-boots), the cookie can be changed at runtime via `Node.set_cookie/1`.
+The Erlang cookie is stored in the `erlang_cookie` setting in the database,
+**encrypted at rest** using `Phoenix.Token.encrypt/3`. This uses AES-256-GCM
+with a key derived from `secret_key_base` — the same key derivation that
+Phoenix uses for signed/encrypted cookies. No additional dependencies.
 
-A `You.Accounts.CookieSync` process runs at boot, reads the setting, and
-applies it. When the admin changes the cookie in the settings page, it is
-also applied immediately. The `rel/env.sh.eex` sets a temporary bootstrap
-value (`bootstrap_temp`) so the VM can start with distribution enabled;
-the DB value overrides it moments later.
+```elixir
+# On save (admin panel or seed)
+ciphertext = Phoenix.Token.encrypt(YouWeb.Endpoint, "erlang_cookie", plaintext)
+# Stored as base64 ciphertext in settings.value
 
-This means operators can manage the cookie through the admin UI without
-restarting containers. However, changing the cookie breaks any existing
-Erlang distribution connections — consumer apps must be updated with the
-new cookie value and reconnect.
+# At boot / on change
+{:ok, plaintext} = Phoenix.Token.decrypt(YouWeb.Endpoint, "erlang_cookie", ciphertext)
+Node.set_cookie(node, String.to_atom(plaintext))
+```
+
+A `CookieSync` GenServer runs at boot after the Repo starts, reads the
+setting, decrypts it, and applies it via `Node.set_cookie/1`. When the
+admin changes the cookie in the settings page, it is encrypted, persisted,
+and applied immediately.
+
+The `rel/env.sh.eex` sets a temporary bootstrap value (`bootstrap_temp`)
+so the VM can start with distribution enabled; the DB value (decrypted)
+overrides it moments later.
+
+**Implications of dynamic application:**
+
+- Changing the cookie breaks all existing Erlang distribution connections
+  immediately — consumer apps must update their cookie and reconnect.
+- In-flight `GenServer.call` messages from consumer apps fail with
+  `{:error, :unreachable}` until the consumer side is updated.
+- The operator should coordinate cookie rotation: update Sockeet first
+  (new cookie), then update You's settings — or accept brief downtime.
+
+**Encryption properties:**
+
+- Rotating `secret_key_base` invalidates all encrypted settings — the same
+  as Phoenix encrypted session cookies.
+- Each encrypted value uses a unique salt (the setting key), so reusing the
+  same `secret_key_base`-derived key produces different ciphertexts per field.
+- The base64 ciphertext is ~40% larger than the plaintext — negligible for
+  a short cookie value.
 
 ### 4. `RELEASE_DISTRIBUTION` must be explicitly enabled
 
@@ -109,5 +136,13 @@ Proposed — supersedes the Erlang distribution configuration gap in ADR 0002.
 - The settings `erlang_node_name` is a reference copy, re-deployed via the seed migration.
 - Consumer apps configure You's node name statically in their own config.
 - EPMD port 4369 must be exposed between You and consumer app containers.
-- All nodes must share the same `RELEASE_COOKIE` value.
+- The Erlang cookie is encrypted at rest using AES-256-GCM via `Phoenix.Token.encrypt/3`.
+  Key derived from `secret_key_base` — compromise of the database alone does not
+  expose the cookie.
+- Rotating `secret_key_base` invalidates the stored cookie — must be re-entered.
+- Changing the cookie in settings applies immediately via `Node.set_cookie/1`.
+  Existing Erlang distribution connections break and consumer apps must reconnect
+  with the new cookie.
+- The `rel/env.sh.eex` bootstrap value `bootstrap_temp` is a fallback — the DB
+  cookie (decrypted) overrides it during application boot.
 - Adding automatic discovery (libcluster) is deferred to a future ADR.
