@@ -40,45 +40,108 @@ defmodule YouWeb.AdminSettingsLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <h1 class="text-xl font-bold mb-4">Settings</h1>
+    <Layouts.app flash={@flash} current_scope={@current_scope} active_tab="settings">
+      <:side_panel>
+        <div class="text-[11px] font-medium text-base-content/40 uppercase tracking-widest">
+          Settings
+        </div>
+        <a
+          href="#general"
+          class="text-sm text-base-content/60 hover:text-base-content transition-colors"
+        >
+          Session
+        </a>
+        <a
+          href="#tokens"
+          class="text-sm text-base-content/60 hover:text-base-content transition-colors"
+        >
+          Tokens &amp; Expiry
+        </a>
+        <a
+          href="#erlang"
+          class="text-sm text-base-content/60 hover:text-base-content transition-colors"
+        >
+          Erlang Distribution
+        </a>
+      </:side_panel>
 
-    <div :if={@saved} class="alert alert-success mb-4">
-      Settings saved.
-    </div>
+      <div class="space-y-10">
+        <div
+          :if={@saved}
+          class="rounded-lg border border-success/30 bg-success/5 p-4 text-sm text-success-content flex items-center gap-2"
+        >
+          <.icon name="check-circle" class="size-4 shrink-0 text-success" /> Settings saved.
+        </div>
 
-    <form phx-submit="save" class="space-y-4 max-w-md">
-      <div :for={field <- @fields} class="fieldset">
-        <label class="label">
-          <span class="label-text"><%= field.label %></span>
-        </label>
-        <input
-          type={input_type(field.type)}
-          min={if field.type == :number, do: "0"}
-          name={Atom.to_string(field.key)}
-          value={@settings[field.key]}
-          class="input input-bordered w-full"
-        />
+        <form phx-submit="save" class="space-y-8 max-w-md">
+          <section id="general">
+            <h2 class="text-lg font-medium tracking-tight mb-6">Session &amp; Token Expiry</h2>
+            <div class="space-y-4">
+              <.input
+                type="number"
+                name="session_expiry_hours"
+                label="Session expiry (hours)"
+                value={@settings[:session_expiry_hours]}
+              />
+              <.input
+                type="number"
+                name="jwt_expiry_hours"
+                label="JWT expiry (hours)"
+                value={@settings[:jwt_expiry_hours]}
+              />
+              <.input
+                type="number"
+                name="code_expiry_minutes"
+                label="Auth code expiry (minutes)"
+                value={@settings[:code_expiry_minutes]}
+              />
+              <.input
+                type="number"
+                name="magic_link_expiry_minutes"
+                label="Magic link expiry (minutes)"
+                value={@settings[:magic_link_expiry_minutes]}
+              />
+            </div>
+          </section>
+
+          <div class="border-t border-base-300" />
+
+          <section id="erlang">
+            <h2 class="text-lg font-medium tracking-tight mb-6">Erlang Distribution</h2>
+            <div class="space-y-4">
+              <.input
+                type="text"
+                name="erlang_node_name"
+                label="Erlang node name"
+                value={@settings[:erlang_node_name]}
+              />
+              <.input
+                type="number"
+                name="epmd_port"
+                label="EPMD port"
+                value={@settings[:epmd_port]}
+              />
+              <.input
+                type="password"
+                name="erlang_cookie"
+                label="Erlang cookie"
+                value={@settings[:erlang_cookie]}
+              />
+            </div>
+            <p class="text-xs text-base-content/40 mt-3 leading-relaxed">
+              The erlang cookie from settings is applied at boot and when saved in this form.
+              It overrides the RELEASE_COOKIE env var. Changing the cookie breaks existing Erlang connections.
+            </p>
+          </section>
+
+          <button type="submit" class="btn btn-primary">
+            Save Settings
+          </button>
+        </form>
       </div>
-
-      <button type="submit" class="btn btn-primary">
-        Save Settings
-      </button>
-    </form>
-
-    <div class="mt-8 text-sm text-base-content/60 space-y-1">
-      <p class="font-semibold">Erlang distribution</p>
-      <p>
-        The <code>erlang_cookie</code> from settings is applied at boot and
-        when saved in this form. It overrides the <code>RELEASE_COOKIE</code>
-        env var. Changing the cookie breaks existing Erlang connections.
-      </p>
-    </div>
+    </Layouts.app>
     """
   end
-
-  defp input_type(:number), do: "number"
-  defp input_type(:password), do: "password"
-  defp input_type(_), do: "text"
 
   defp parse_value(raw) do
     cond do
