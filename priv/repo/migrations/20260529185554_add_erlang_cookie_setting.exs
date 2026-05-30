@@ -8,8 +8,6 @@ defmodule You.Repo.Migrations.AddErlangCookieSetting do
   end
 
   def down do
-    execute(
-      "DELETE FROM settings WHERE key = 'erlang_cookie'"
-    )
+    execute("DELETE FROM settings WHERE key = 'erlang_cookie'")
   end
 end

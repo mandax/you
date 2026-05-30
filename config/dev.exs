@@ -14,7 +14,18 @@ config :you, YouWeb.Endpoint,
   check_origin: false,
   code_reloader: true,
   debug_errors: true,
-  secret_key_base: "/IDzX034gJzQ59Uip5jFFMqOSZp5Lkgds2vm1W/1YlvJ9zqeofy3xmnj0JnDPltr"
+  secret_key_base: "/IDzX034gJzQ59Uip5jFFMqOSZp5Lkgds2vm1W/1YlvJ9zqeofy3xmnj0JnDPltr",
+  watchers: [
+    npx: [
+      "tailwindcss",
+      "-i",
+      "assets/css/app.css",
+      "-o",
+      "priv/static/assets/css/app.css",
+      "--watch",
+      cd: Path.expand("..", __DIR__)
+    ]
+  ]
 
 # Enable dev routes for dashboard and mailbox
 config :you, dev_routes: true

@@ -12,8 +12,6 @@ defmodule You.Repo.Migrations.AddErlangDistributionSettings do
   end
 
   def down do
-    execute(
-      "DELETE FROM settings WHERE key IN ('erlang_node_name', 'epmd_port')"
-    )
+    execute("DELETE FROM settings WHERE key IN ('erlang_node_name', 'epmd_port')")
   end
 end
