@@ -14,14 +14,22 @@
       <p :if={!@current_scope} class="text-sm text-base-content/50 mt-1">
         Don't have an account?
         <.link
-          navigate={~p"/users/register"}
+          navigate={
+            if @callback_url,
+              do: ~p"/users/register?callback_url=#{URI.encode(@callback_url)}",
+              else: ~p"/users/register"
+          }
           class="font-medium text-base-content hover:underline"
         >
           Sign up
         </.link>
         <span class="mx-3 text-base-content/20">·</span>
         <.link
-          navigate={~p"/users/reset-password"}
+          navigate={
+            if @callback_url,
+              do: ~p"/users/reset-password?callback_url=#{URI.encode(@callback_url)}",
+              else: ~p"/users/reset-password"
+          }
           class="font-medium text-base-content hover:underline"
         >
           Forgot password?

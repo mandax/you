@@ -37,7 +37,10 @@ defmodule YouWeb.UserSessionController do
       email = get_in(conn.assigns, [:current_scope, Access.key(:user), Access.key(:email)])
       form = Phoenix.Component.to_form(%{"email" => email}, as: "user")
 
-      render(conn, :new, form: form)
+      render(conn, :new,
+        form: form,
+        callback_url: get_session(conn, :callback_url)
+      )
     end
   end
 
@@ -70,7 +73,10 @@ defmodule YouWeb.UserSessionController do
       {:error, :not_found} ->
         conn
         |> put_flash(:error, "The link is invalid or it has expired.")
-        |> render(:new, form: Phoenix.Component.to_form(%{}, as: "user"))
+        |> render(:new,
+          form: Phoenix.Component.to_form(%{}, as: "user"),
+          callback_url: get_session(conn, :callback_url)
+        )
     end
   end
 
@@ -117,7 +123,7 @@ defmodule YouWeb.UserSessionController do
       # In order to prevent user enumeration attacks, don't disclose whether the email is disclosed.
       conn
       |> put_flash(:error, "Invalid email or password")
-      |> render(:new, form: form)
+      |> render(:new, form: form, callback_url: get_session(conn, :callback_url))
     end
   end
 

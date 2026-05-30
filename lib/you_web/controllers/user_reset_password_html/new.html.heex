@@ -26,7 +26,14 @@
     </.form>
 
     <p class="text-center text-sm text-base-content/50 mt-6">
-      <.link navigate={~p"/users/log-in"} class="font-medium text-base-content hover:underline">
+      <.link
+        navigate={
+          if @callback_url,
+            do: ~p"/users/log-in?callback_url=#{URI.encode(@callback_url)}",
+            else: ~p"/users/log-in"
+        }
+        class="font-medium text-base-content hover:underline"
+      >
         Back to log in
       </.link>
     </p>

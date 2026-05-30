@@ -6,22 +6,26 @@ defmodule YouWeb.UserRegistrationController do
 
   def new(conn, params) do
     conn =
-      if callback_url = params["callback_url"] do
-        conn |> put_session(:callback_url, callback_url)
+      if callback_url = params["callback_url"] || get_session(conn, :callback_url) do
+        put_session(conn, :callback_url, callback_url)
       else
-        put_session(conn, :callback_url, nil)
+        conn
       end
 
     conn =
-      if params["scope"] do
-        scopes = String.split(params["scope"], " ")
+      if param_scopes = params["scope"] do
+        scopes = String.split(param_scopes, " ")
         put_session(conn, :scopes, scopes)
       else
-        put_session(conn, :scopes, nil)
+        conn
       end
 
     changeset = Accounts.change_user_email(%User{})
-    render(conn, :new, changeset: changeset)
+
+    render(conn, :new,
+      changeset: changeset,
+      callback_url: get_session(conn, :callback_url)
+    )
   end
 
   def create(conn, %{"user" => user_params}) do
@@ -52,7 +56,7 @@ defmodule YouWeb.UserRegistrationController do
         |> redirect(to: ~p"/users/log-in")
 
       {:error, %Ecto.Changeset{} = changeset} ->
-        render(conn, :new, changeset: changeset)
+        render(conn, :new, changeset: changeset, callback_url: get_session(conn, :callback_url))
     end
   end
 end

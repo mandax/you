@@ -5,21 +5,21 @@ defmodule YouWeb.UserResetPasswordController do
 
   def new(conn, params) do
     conn =
-      if callback_url = params["callback_url"] do
+      if callback_url = params["callback_url"] || get_session(conn, :callback_url) do
         put_session(conn, :callback_url, callback_url)
       else
-        put_session(conn, :callback_url, nil)
+        conn
       end
 
     conn =
-      if params["scope"] do
-        scopes = String.split(params["scope"], " ")
+      if param_scopes = params["scope"] do
+        scopes = String.split(param_scopes, " ")
         put_session(conn, :scopes, scopes)
       else
-        put_session(conn, :scopes, nil)
+        conn
       end
 
-    render(conn, :new)
+    render(conn, :new, callback_url: get_session(conn, :callback_url))
   end
 
   def create(conn, %{"user" => %{"email" => email}}) do
@@ -57,18 +57,18 @@ defmodule YouWeb.UserResetPasswordController do
 
   def edit(conn, %{"token" => token} = params) do
     conn =
-      if callback_url = params["callback_url"] do
+      if callback_url = params["callback_url"] || get_session(conn, :callback_url) do
         put_session(conn, :callback_url, callback_url)
       else
-        put_session(conn, :callback_url, nil)
+        conn
       end
 
     conn =
-      if params["scope"] do
-        scopes = String.split(params["scope"], " ")
+      if param_scopes = params["scope"] do
+        scopes = String.split(param_scopes, " ")
         put_session(conn, :scopes, scopes)
       else
-        put_session(conn, :scopes, nil)
+        conn
       end
 
     if user = Accounts.get_user_by_reset_password_token(token) do
@@ -105,7 +105,11 @@ defmodule YouWeb.UserResetPasswordController do
           end
 
         {:error, changeset} ->
-          render(conn, :edit, changeset: changeset, token: token)
+          render(conn, :edit,
+            changeset: changeset,
+            token: token,
+            callback_url: get_session(conn, :callback_url)
+          )
       end
     else
       conn

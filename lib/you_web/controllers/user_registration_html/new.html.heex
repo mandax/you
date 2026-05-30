@@ -7,7 +7,14 @@
       <h1 class="text-xl font-medium tracking-tight">Create your account</h1>
       <p class="text-sm text-base-content/50 mt-1">
         Already registered?
-        <.link navigate={~p"/users/log-in"} class="font-medium text-base-content hover:underline">
+        <.link
+          navigate={
+            if @callback_url,
+              do: ~p"/users/log-in?callback_url=#{URI.encode(@callback_url)}",
+              else: ~p"/users/log-in"
+          }
+          class="font-medium text-base-content hover:underline"
+        >
           Log in
         </.link>
       </p>
