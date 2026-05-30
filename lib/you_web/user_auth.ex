@@ -240,4 +240,17 @@ defmodule YouWeb.UserAuth do
       |> halt()
     end
   end
+
+  @doc """
+  Used as an on_mount hook for LiveViews to fetch the current scope from the session.
+  """
+  def on_mount(:default, _params, session, socket) do
+    with token when is_binary(token) <- session["user_token"],
+         {user, _inserted_at} <- Accounts.get_user_by_session_token(token) do
+      {:cont, Phoenix.Component.assign(socket, :current_scope, Scope.for_user(user))}
+    else
+      _ ->
+        {:cont, Phoenix.Component.assign(socket, :current_scope, Scope.for_user(nil))}
+    end
+  end
 end
