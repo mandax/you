@@ -43,3 +43,6 @@ priv/log/*.jsonl
 backup.log
 dev.db
 you_dev.db
+
+# Node.js dependencies (used by Tailwind CLI build pipeline)
+/node_modules/

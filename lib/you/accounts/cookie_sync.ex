@@ -33,6 +33,7 @@ defmodule You.Accounts.CookieSync do
   """
   def apply_cookie do
     node = Node.self()
+
     if node != :nonode@nohost do
       case You.Settings.get(:erlang_cookie) do
         cookie when is_binary(cookie) and cookie != "" ->
