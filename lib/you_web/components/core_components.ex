@@ -29,6 +29,8 @@ defmodule YouWeb.CoreComponents do
   use Phoenix.Component
   use Gettext, backend: YouWeb.Gettext
 
+  alias Phoenix.LiveView.JS
+
   import YouWeb.MynauiIcons, only: [icon: 1]
 
   @doc """
@@ -78,7 +80,12 @@ defmodule YouWeb.CoreComponents do
           <p>{msg}</p>
         </div>
         <div class="flex-1" />
-        <button type="button" class="group self-start cursor-pointer" aria-label={gettext("close")}>
+        <button
+          type="button"
+          class="group self-start cursor-pointer"
+          aria-label={gettext("close")}
+          phx-click={JS.hide()}
+        >
           <.icon name="x" class="size-5 opacity-40 group-hover:opacity-70 text-base-content" />
         </button>
       </div>
