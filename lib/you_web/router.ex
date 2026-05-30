@@ -27,11 +27,13 @@ defmodule YouWeb.Router do
   scope "/admin", YouWeb do
     pipe_through [:browser, :require_authenticated_user, :require_admin]
 
-    live "/", AdminDashboardLive, :index
-    live "/settings", AdminSettingsLive, :index
-    live "/apps", AdminAppsLive, :index
-    live "/users", AdminUsersLive, :index
-    live "/audit", AdminAuditLive, :index
+    live_session :admin, on_mount: {YouWeb.UserAuth, :default} do
+      live "/", AdminDashboardLive, :index
+      live "/settings", AdminSettingsLive, :index
+      live "/apps", AdminAppsLive, :index
+      live "/users", AdminUsersLive, :index
+      live "/audit", AdminAuditLive, :index
+    end
   end
 
   # Enable LiveDashboard and Swoosh mailbox preview in development
@@ -58,6 +60,8 @@ defmodule YouWeb.Router do
 
     get "/users/register", UserRegistrationController, :new
     post "/users/register", UserRegistrationController, :create
+    get "/users/reset-password", UserResetPasswordController, :new
+    post "/users/reset-password", UserResetPasswordController, :create
   end
 
   scope "/", YouWeb do
@@ -75,6 +79,8 @@ defmodule YouWeb.Router do
     get "/users/log-in", UserSessionController, :new
     get "/users/log-in/:token", UserSessionController, :confirm
     post "/users/log-in", UserSessionController, :create
+    get "/users/reset-password/:token", UserResetPasswordController, :edit
+    put "/users/reset-password/:token", UserResetPasswordController, :update
     get "/users/log-in/totp", UserSessionController, :totp
     post "/users/log-in/totp", UserSessionController, :verify_totp
     post "/users/log-in/authorize", UserSessionController, :authorize_action

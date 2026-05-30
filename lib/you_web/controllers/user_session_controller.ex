@@ -138,8 +138,27 @@ defmodule YouWeb.UserSessionController do
     |> redirect(to: ~p"/users/log-in")
   end
 
-  def confirm(conn, %{"token" => token}) do
-    if user = Accounts.get_user_by_magic_link_token(token) do
+  def confirm(conn, params) do
+    token = params["token"]
+
+    conn =
+      if callback_url = params["callback_url"] do
+        put_session(conn, :callback_url, callback_url)
+      else
+        put_session(conn, :callback_url, nil)
+      end
+
+    conn =
+      if params["scope"] do
+        scopes = String.split(params["scope"], " ")
+        put_session(conn, :scopes, scopes)
+      else
+        put_session(conn, :scopes, nil)
+      end
+
+    user = token && Accounts.get_user_by_magic_link_token(token)
+
+    if user do
       form = Phoenix.Component.to_form(%{"token" => token}, as: "user")
 
       conn
