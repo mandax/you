@@ -1,19 +1,50 @@
-// For Phoenix.HTML support, including form and button helpers
-// copy the following scripts into your javascript bundle:
-// * deps/phoenix_html/priv/static/phoenix_html.js
+// You — Identity & Access Management
 
-// For Phoenix.Channels support, copy the following scripts
-// into your javascript bundle:
-// * deps/phoenix/priv/static/phoenix.js
+// ── Theme Toggle Hook ────────────────────────────
 
-// For Phoenix.LiveView support, copy the following scripts
-// into your javascript bundle:
-// * deps/phoenix_live_view/priv/static/phoenix_live_view.js
+const ThemeToggle = {
+  mounted() {
+    this.el.addEventListener("click", () => {
+      const isDark = document.documentElement.classList.contains("dark");
+      setTheme(isDark ? "light" : "dark");
+    });
+  },
+};
 
-// Handle flash close
-// (you can safely remove this if you don't use the default flash component)
-document.querySelectorAll("[role=alert][data-flash]").forEach((el) => {
-  el.addEventListener("click", () => {
-    el.setAttribute("hidden", "");
-  });
+// ── Theme helpers ────────────────────────────────
+
+function getTheme() {
+  return localStorage.getItem("you-theme") || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+}
+
+function setTheme(theme) {
+  localStorage.setItem("you-theme", theme);
+  applyTheme(theme);
+}
+
+function applyTheme(theme) {
+  const isDark = theme === "dark";
+  document.documentElement.classList.toggle("dark", isDark);
+  document.documentElement.setAttribute("data-theme", isDark ? "you-dark" : "you");
+}
+
+// Listen for system preference changes (only if no explicit preference is set)
+window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", (e) => {
+  if (!localStorage.getItem("you-theme")) {
+    applyTheme(e.matches ? "dark" : "light");
+  }
 });
+
+// ── Phoenix LiveView – setup ────────────────────
+
+const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content");
+const liveSocket = new window.LiveView.LiveSocket("/live", window.Phoenix.Socket, {
+  params: { _csrf_token: csrfToken },
+  hooks: { ThemeToggle },
+});
+
+// Connect if we are on a LiveView page
+liveSocket.connect();
+
+// Expose liveSocket on window for debugging
+window.liveSocket = liveSocket;
