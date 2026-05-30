@@ -1,0 +1,25 @@
+{
+  "name": "you",
+  "version": "1.0.0",
+  "description": "Cross-app identity, authentication, authorization, and user settings platform. Every service (Sockeet, future apps) delegates user management to You.",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs",
+    "lib": "lib",
+    "test": "test"
+  },
+  "scripts": {
+    "build:css": "tailwindcss -i assets/css/app.css -o priv/static/assets/css/app.css",
+    "watch:css": "tailwindcss -i assets/css/app.css -o priv/static/assets/css/app.css --watch",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@mynaui/icons": "^0.4.2",
+    "@tailwindcss/cli": "^4.3.0",
+    "daisyui": "^5.5.20",
+    "tailwindcss": "^4.3.0"
+  }
+}
