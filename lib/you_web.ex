@@ -86,6 +86,8 @@ defmodule YouWeb do
       import Phoenix.HTML
       # Core UI components
       import YouWeb.CoreComponents
+      # MynaUI icons
+      import YouWeb.MynauiIcons, only: [icon: 1]
 
       # Common modules used in templates
       alias Phoenix.LiveView.JS
