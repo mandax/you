@@ -278,6 +278,36 @@ defmodule You.Accounts do
   end
 
   @doc """
+  Delivers the reset password instructions to the given user.
+  """
+  def deliver_user_reset_password_instructions(%User{} = user, reset_url_fun)
+      when is_function(reset_url_fun, 1) do
+    {encoded_token, user_token} = UserToken.build_email_token(user, "reset_password")
+    Repo.insert!(user_token)
+    UserNotifier.deliver_reset_password_instructions(user, reset_url_fun.(encoded_token))
+  end
+
+  @doc """
+  Gets the user by reset password token.
+  """
+  def get_user_by_reset_password_token(token) do
+    with {:ok, query} <- UserToken.verify_email_token_query(token, "reset_password"),
+         {%User{} = user, _token} <- Repo.one(query) do
+      user
+    else
+      _ -> nil
+    end
+  end
+
+  @doc """
+  Deletes all tokens for a given user.
+  """
+  def delete_all_user_tokens(%User{} = user) do
+    Repo.delete_all(from(UserToken, where: [user_id: ^user.id]))
+    :ok
+  end
+
+  @doc """
   Deletes the signed token with the given context.
   """
   def delete_user_session_token(token) do

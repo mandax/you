@@ -117,14 +117,26 @@ defmodule You.Accounts.UserToken do
   """
   def verify_magic_link_token_query(token, expiry_minutes \\ nil) do
     expiry_minutes = expiry_minutes || @magic_link_validity_in_minutes
-    threshold = DateTime.add(DateTime.utc_now(), -expiry_minutes * 60, :second)
+    verify_email_token_query(token, "login", expiry_minutes * 60)
+  end
+
+  @doc """
+  Checks if the email token is valid for the given context and returns its
+  underlying lookup query. Returns `{:ok, query}` or `:error`.
+  """
+  def verify_email_token_query(
+        token,
+        context,
+        validity_in_seconds \\ @magic_link_validity_in_minutes * 60
+      ) do
+    threshold = DateTime.add(DateTime.utc_now(), -validity_in_seconds, :second)
 
     case Base.url_decode64(token, padding: false) do
       {:ok, decoded_token} ->
         hashed_token = :crypto.hash(@hash_algorithm, decoded_token)
 
         query =
-          from token in by_token_and_context_query(hashed_token, "login"),
+          from token in by_token_and_context_query(hashed_token, context),
             join: user in assoc(token, :user),
             where: token.inserted_at > ^threshold,
             where: token.sent_to == user.email,
