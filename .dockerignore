@@ -39,3 +39,12 @@ erl_crash.dump
 # Mise
 .mise.toml
 .mise.tmp
+
+# Documentation (not needed at build time)
+docs/
+AGENTS.md
+CONTEXT.md
+README.md
+
+# CI configuration
+.gitea/

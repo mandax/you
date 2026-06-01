@@ -61,11 +61,18 @@ RUN apk add --no-cache \
   curl \
   ca-certificates
 
-# Create data and log directories
-RUN mkdir -p /data/you /var/log/you
+# Create non-root user (UID 10001 to avoid conflicts with host UIDs)
+RUN addgroup -g 10001 you && \
+    adduser -D -u 10001 -G you you
+
+# Create data and log directories with world-writable perms
+# (these are typically volume mounts; 777 ensures any UID can write)
+RUN mkdir -p /data/you /var/log/you && \
+    chmod 777 /data/you /var/log/you
 
 # Copy only the release artifact — no source code
 COPY --from=builder /app/_build/prod/rel/you /app
+RUN chown -R you:you /app
 
 WORKDIR /app
 
@@ -73,6 +80,11 @@ EXPOSE 4000
 
 ENV PORT=4000
 ENV PHX_SERVER=true
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD pgrep -f "beam.smp" > /dev/null || exit 1
+
+USER you
 
 ENTRYPOINT ["/app/bin/you"]
 CMD ["start"]
