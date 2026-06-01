@@ -23,7 +23,7 @@
 # =============================================================================
 
 # ---- Build stage ----
-FROM hexpm/elixir:1.19.5-erlang-29.0.1-alpine-3.21 AS builder
+FROM hexpm/elixir:1.19.5-erlang-28.5.0.1-alpine-3.21.7 AS builder
 
 RUN apk add --no-cache build-base git
 
@@ -49,7 +49,7 @@ RUN MIX_ENV=prod mix phx.digest
 RUN MIX_ENV=prod mix release
 
 # ---- Runtime stage ----
-FROM alpine:3.21 AS runtime
+FROM alpine:3.21.7 AS runtime
 
 # Runtime dependencies: SQLite (backup/restore), libstdc++ (ERTS), ncurses, bash, openssl
 RUN apk add --no-cache \
@@ -57,7 +57,9 @@ RUN apk add --no-cache \
   libstdc++ \
   ncurses-libs \
   sqlite \
-  openssl
+  openssl \
+  curl \
+  ca-certificates
 
 # Create data and log directories
 RUN mkdir -p /data/you /var/log/you
