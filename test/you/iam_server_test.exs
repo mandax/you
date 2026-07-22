@@ -85,6 +85,60 @@ defmodule You.IAMServerTest do
     end
   end
 
+  describe "client_credentials" do
+    test "issues a service JWT for valid client_id and secret" do
+      {:ok, app, secret} =
+        You.Admin.create_app(%{
+          slug: "my-service",
+          name: "My Service",
+          callback_url: "https://my-service.example.com/cb"
+        })
+
+      assert {:ok, %{jwt: jwt}} =
+               GenServer.call(You.IAM.Server, {:client_credentials, app.slug, secret})
+
+      assert is_binary(jwt)
+
+      # JWT verifies and carries the expected service claims
+      assert {:ok, claims} = You.JWT.verify(jwt)
+      assert claims["sub"] == app.slug
+      assert claims["app"] == "you"
+      assert claims["type"] == "service"
+    end
+
+    test "rejects wrong secret" do
+      {:ok, app, _secret} =
+        You.Admin.create_app(%{
+          slug: "my-service",
+          name: "My Service",
+          callback_url: "https://my-service.example.com/cb"
+        })
+
+      assert {:error, :invalid_client} =
+               GenServer.call(You.IAM.Server, {:client_credentials, app.slug, "wrong-secret"})
+    end
+
+    test "rejects unknown client_id" do
+      assert {:error, :invalid_client} =
+               GenServer.call(You.IAM.Server, {:client_credentials, "ghost", "some-secret"})
+    end
+
+    test "rejects app with no secret configured" do
+      # Bypass create_app — insert directly without a secret hash
+      {:ok, app} =
+        %You.Admin.App{}
+        |> You.Admin.App.changeset(%{
+          slug: "no-secret-app",
+          name: "No Secret",
+          callback_url: "https://no-secret.example.com/cb"
+        })
+        |> You.Repo.insert()
+
+      assert {:error, :invalid_client} =
+               GenServer.call(You.IAM.Server, {:client_credentials, app.slug, "any-secret"})
+    end
+  end
+
   describe "refresh" do
     test "rotates the refresh token and mints a new JWT for the same scopes" do
       admin = AccountsFixtures.user_fixture() |> AccountsFixtures.set_password()

@@ -6,12 +6,13 @@ defmodule You.Admin.App do
     field :slug, :string
     field :name, :string
     field :callback_url, :string
+    field :client_secret_hash, :binary
     timestamps()
   end
 
   def changeset(app, attrs) do
     app
-    |> cast(attrs, [:slug, :name, :callback_url])
+    |> cast(attrs, [:slug, :name, :callback_url, :client_secret_hash])
     |> validate_required([:slug, :name, :callback_url])
     |> unique_constraint(:slug)
   end

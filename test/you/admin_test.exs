@@ -21,8 +21,8 @@ defmodule You.AdminTest do
   end
 
   describe "create_app/1" do
-    test "registers a new app" do
-      assert {:ok, app} =
+    test "registers a new app and returns the client secret once" do
+      assert {:ok, app, client_secret} =
                Admin.create_app(%{
                  slug: "sockeet",
                  name: "Sockeet",
@@ -31,6 +31,10 @@ defmodule You.AdminTest do
 
       assert app.slug == "sockeet"
       assert app.name == "Sockeet"
+      assert is_binary(client_secret)
+      assert byte_size(client_secret) > 0
+      # Secret is not stored in the DB — only its hash
+      refute app.client_secret_hash == client_secret
     end
 
     test "validates unique slug" do
@@ -49,9 +53,24 @@ defmodule You.AdminTest do
     end
   end
 
+  describe "rotate_app_secret/1" do
+    test "rotates the client secret" do
+      {:ok, app, original_secret} =
+        Admin.create_app(%{
+          slug: "rotate-me",
+          name: "Rotate Test",
+          callback_url: "https://example.com/cb"
+        })
+
+      assert {:ok, _app, new_secret} = Admin.rotate_app_secret(app)
+      assert is_binary(new_secret)
+      assert new_secret != original_secret
+    end
+  end
+
   describe "lookup_app_by_callback/1" do
     setup do
-      {:ok, app} =
+      {:ok, app, _secret} =
         Admin.create_app(%{
           slug: "sockeet",
           name: "Sockeet",

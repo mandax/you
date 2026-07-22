@@ -139,7 +139,7 @@ defmodule YouWeb.UserSessionControllerTest do
     test "OAuth callback redirect carries code and echoes state", %{conn: conn, user: user} do
       user = set_password(user)
 
-      {:ok, _app} =
+      {:ok, _app, _secret} =
         You.Admin.create_app(%{
           slug: "sockeet",
           name: "Sockeet",

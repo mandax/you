@@ -12,6 +12,7 @@ defmodule You.IAM.Server do
     - `{:verify_token, jwt}` → `{:ok, %{user_id, email, role}}` | `{:error, reason}`
     - `{:get_user, user_id}` → `{:ok, %{id, email}}` | `{:error, :not_found}`
     - `{:revoke_token, jwt}` → `:ok`
+    - `{:client_credentials, client_id, client_secret}` → `{:ok, %{jwt: jwt}}` | `{:error, :invalid_client}`
   """
 
   use GenServer
@@ -19,6 +20,7 @@ defmodule You.IAM.Server do
   alias You.JWT
   alias You.Repo
   alias You.Accounts
+  alias You.Admin.App
 
   # Client
 
@@ -57,6 +59,17 @@ defmodule You.IAM.Server do
   """
   def refresh(refresh_token) do
     GenServer.call(__MODULE__, {:refresh, refresh_token})
+  end
+
+  @doc """
+  Client-credentials (M2M) grant. Verifies the app slug and secret, and on
+  success issues a service JWT with `type: "service"` and no user identity.
+
+  Returns `{:ok, %{jwt: jwt}}` or `{:error, :invalid_client}`.
+  """
+  def client_credentials(client_id, client_secret)
+      when is_binary(client_id) and is_binary(client_secret) do
+    GenServer.call(__MODULE__, {:client_credentials, client_id, client_secret})
   end
 
   # Server
@@ -159,6 +172,55 @@ defmodule You.IAM.Server do
         {:error, _reason} ->
           :telemetry.execute([:you, :audit, :token, :refresh], %{}, %{result: :failure})
           {:error, :invalid}
+      end
+
+    {:reply, result, state}
+  end
+
+  @doc false
+  def handle_call({:client_credentials, client_id, client_secret}, _from, state) do
+    result =
+      case Repo.get_by(App, slug: client_id) do
+        nil ->
+          :telemetry.execute(
+            [:you, :audit, :token, :client_credentials],
+            %{},
+            %{result: :failure, reason: :unknown_client}
+          )
+
+          {:error, :invalid_client}
+
+        %App{client_secret_hash: nil} ->
+          :telemetry.execute(
+            [:you, :audit, :token, :client_credentials],
+            %{},
+            %{result: :failure, reason: :no_secret}
+          )
+
+          {:error, :invalid_client}
+
+        %App{client_secret_hash: hash, slug: slug} ->
+          if :crypto.hash_equals(hash, :crypto.hash(:sha256, client_secret)) do
+            jwt_expiry = You.Settings.get(:jwt_expiry_hours) * 3600
+
+            {:ok, jwt} =
+              JWT.sign(%{sub: slug, app: "you", type: "service"}, jwt_expiry)
+
+            :telemetry.execute([:you, :audit, :token, :client_credentials], %{}, %{
+              client_id: slug,
+              result: :success
+            })
+
+            {:ok, %{jwt: jwt}}
+          else
+            :telemetry.execute(
+              [:you, :audit, :token, :client_credentials],
+              %{},
+              %{result: :failure, reason: :invalid_secret}
+            )
+
+            {:error, :invalid_client}
+          end
       end
 
     {:reply, result, state}

@@ -45,13 +45,45 @@ defmodule You.Admin do
     |> Repo.update()
   end
 
+  @hash_algorithm :sha256
+  @rand_size 32
+
   @doc """
-  Registers a new app. Returns `{:ok, app}` or `{:error, changeset}`.
+  Registers a new app. Generates a client secret, stores its SHA-256 hash,
+  and returns the plaintext secret once.
+
+  Returns `{:ok, app, client_secret}` or `{:error, changeset}`.
   """
   def create_app(attrs) do
+    secret = :crypto.strong_rand_bytes(@rand_size) |> Base.url_encode64(padding: false)
+    hashed = :crypto.hash(@hash_algorithm, secret)
+
     %App{}
-    |> App.changeset(attrs)
+    |> App.changeset(Map.put(attrs, :client_secret_hash, hashed))
     |> Repo.insert()
+    |> case do
+      {:ok, app} -> {:ok, app, secret}
+      {:error, changeset} -> {:error, changeset}
+    end
+  end
+
+  @doc """
+  Rotates the client secret for an existing app. Stores the new hash and
+  returns the plaintext secret once.
+
+  Returns `{:ok, app, new_secret}` or `{:error, changeset}`.
+  """
+  def rotate_app_secret(%App{} = app) do
+    secret = :crypto.strong_rand_bytes(@rand_size) |> Base.url_encode64(padding: false)
+    hashed = :crypto.hash(@hash_algorithm, secret)
+
+    app
+    |> App.changeset(%{client_secret_hash: hashed})
+    |> Repo.update()
+    |> case do
+      {:ok, app} -> {:ok, app, secret}
+      {:error, changeset} -> {:error, changeset}
+    end
   end
 
   @doc """

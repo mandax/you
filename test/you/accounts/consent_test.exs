@@ -9,7 +9,7 @@ defmodule You.Accounts.ConsentTest do
     setup do
       user = AccountsFixtures.user_fixture()
 
-      {:ok, app} =
+      {:ok, app, _secret} =
         Admin.create_app(%{
           slug: "sockeet",
           name: "Sockeet",
@@ -34,7 +34,7 @@ defmodule You.Accounts.ConsentTest do
     test "check_consent returns error when no consent exists" do
       user = AccountsFixtures.user_fixture()
 
-      {:ok, other_app} =
+      {:ok, other_app, _secret} =
         Admin.create_app(%{
           slug: "other",
           name: "Other",
