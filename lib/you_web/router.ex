@@ -87,6 +87,11 @@ defmodule YouWeb.Router do
     get "/users/settings/access_data", UserSettingsController, :access_data
     delete "/users/settings/sessions", UserSettingsController, :revoke_other_sessions
     delete "/users/settings/sessions/:id", UserSettingsController, :revoke_session
+
+    get "/users/settings/passkeys", WebAuthnController, :index
+    post "/users/settings/passkeys/register/start", WebAuthnController, :start_registration
+    post "/users/settings/passkeys/register/finish", WebAuthnController, :finish_registration
+    delete "/users/settings/passkeys/:id", WebAuthnController, :delete_passkey
   end
 
   scope "/", YouWeb do
@@ -104,5 +109,8 @@ defmodule YouWeb.Router do
     post "/users/log-in/totp", UserSessionController, :verify_totp
     post "/users/log-in/authorize", UserSessionController, :authorize_action
     delete "/users/log-out", UserSessionController, :delete
+
+    post "/users/log-in/passkey/start", WebAuthnController, :start_authentication
+    post "/users/log-in/passkey/finish", WebAuthnController, :finish_authentication
   end
 end

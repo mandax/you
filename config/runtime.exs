@@ -37,4 +37,8 @@ if config_env() == :prod do
     secret_key_base: secret_key_base
 
   config :you, You.Mailer, adapter: Swoosh.Adapters.Local
+
+  config :wax_,
+    origin: "https://#{host}",
+    rp_id: :auto
 end

@@ -27,5 +27,7 @@ config :phoenix,
 config :you, :audit, enabled: false
 config :you, :audit_webhook_url, nil
 
+config :wax_, origin: "http://localhost:4002", rp_id: :auto
+
 # No network in tests — the Pwned Passwords check is exercised via its pure parser.
 config :you, check_pwned_passwords: false

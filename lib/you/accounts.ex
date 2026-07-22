@@ -6,7 +6,15 @@ defmodule You.Accounts do
   import Ecto.Query, warn: false
   alias You.Repo
 
-  alias You.Accounts.{User, UserToken, UserNotifier, RecoveryCode, Consent, FederatedIdentity}
+  alias You.Accounts.{
+    User,
+    UserToken,
+    UserNotifier,
+    RecoveryCode,
+    Consent,
+    FederatedIdentity,
+    Passkey
+  }
 
   ## Database getters
 
@@ -685,6 +693,78 @@ defmodule You.Accounts do
       )
 
     count
+  end
+
+  ## Passkeys (WebAuthn)
+
+  @doc """
+  Lists all passkeys registered for the given user, newest first.
+  """
+  def list_user_passkeys(%User{id: user_id}) do
+    Repo.all(
+      from p in Passkey,
+        where: p.user_id == ^user_id,
+        order_by: [desc: p.inserted_at]
+    )
+  end
+
+  @doc """
+  Gets a passkey by its credential ID.
+
+  Returns `%Passkey{}` or `nil`.
+  """
+  def get_passkey_by_credential_id(credential_id) when is_binary(credential_id) do
+    Repo.get_by(Passkey, credential_id: credential_id)
+  end
+
+  @doc """
+  Stores a verified WebAuthn credential for the given user.
+
+  The `attrs` map may contain:
+    - `:credential_id` — binary credential ID from the authenticator
+    - `:public_key` — COSE key **map** (will be term_to_binary encoded) or already-encoded binary
+    - `:sign_count` — initial sign count (usually 0 or 1)
+    - `:label` — optional human-readable label
+    - `:aaguid` — optional AAGUID from the authenticator
+
+  Returns `{:ok, %Passkey{}}` or `{:error, %Ecto.Changeset{}}`.
+  """
+  def register_passkey(%User{id: user_id}, attrs) do
+    attrs =
+      if is_map(attrs[:public_key]) do
+        Map.put(attrs, :public_key, Passkey.encode_cose_key(attrs[:public_key]))
+      else
+        attrs
+      end
+
+    %Passkey{}
+    |> Passkey.changeset(Map.put(attrs, :user_id, user_id))
+    |> Repo.insert()
+  end
+
+  @doc """
+  Updates the sign count for a passkey after successful authentication.
+
+  This is used for clone detection: if the stored sign count is ever *greater*
+  than the one returned by the authenticator, the credential may have been
+  cloned and should be rejected.
+  """
+  def update_passkey_sign_count(%Passkey{} = passkey, sign_count)
+      when is_integer(sign_count) and sign_count >= 0 do
+    passkey
+    |> Ecto.Changeset.change(sign_count: sign_count)
+    |> Repo.update()
+  end
+
+  @doc """
+  Deletes a passkey, scoped to the owning user. Returns `{1, nil}` if
+  deleted, `{0, nil}` if not found (or not owned by this user).
+  """
+  def delete_user_passkey(%User{id: user_id}, passkey_id) do
+    Repo.delete_all(
+      from p in Passkey,
+        where: p.id == ^passkey_id and p.user_id == ^user_id
+    )
   end
 
   ## Token helper

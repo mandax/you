@@ -1,0 +1,60 @@
+<Layouts.app flash={@flash} current_scope={@current_scope} active_tab="settings">
+  <:side_panel>
+    <div class="text-[11px] font-medium text-muted-foreground uppercase tracking-widest">
+      Settings
+    </div>
+    <a
+      href="#passkeys"
+      class="text-sm text-muted-foreground hover:text-foreground transition-colors"
+    >
+      Passkeys
+    </a>
+  </:side_panel>
+
+  <div class="space-y-8">
+    <div>
+      <h2 class="text-lg font-medium tracking-tight mb-1">Passkeys</h2>
+      <p class="text-sm text-muted-foreground">
+        Use a passkey (e.g. fingerprint, face unlock, or security key) to sign in without a password.
+      </p>
+    </div>
+
+    <section class="space-y-4">
+      <div class="flex items-center justify-between">
+        <h3 class="text-sm font-medium">Registered passkeys</h3>
+        <button
+          id="register-passkey"
+          type="button"
+          class="inline-flex items-center justify-center rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+          data-start-url={~p"/users/settings/passkeys/register/start"}
+        >
+          Add passkey
+        </button>
+      </div>
+
+      <ul class="divide-y divide-border rounded-lg border border-border">
+        <li :for={pk <- @passkeys} class="flex items-center justify-between px-4 py-3">
+          <div class="text-sm">
+            <div class="flex items-center gap-2">
+              <span class="text-muted-foreground"><%= pk.label || "Passkey" %></span>
+            </div>
+            <div class="mt-1 font-mono text-xs text-muted-foreground">
+              Registered <%= Calendar.strftime(pk.inserted_at, "%Y-%m-%d %H:%M UTC") %>
+            </div>
+          </div>
+          <.link
+            href={~p"/users/settings/passkeys/#{pk.id}"}
+            method="delete"
+            data-confirm="Remove this passkey?"
+            class="text-sm text-muted-foreground hover:text-destructive"
+          >
+            Remove
+          </.link>
+        </li>
+        <li :if={@passkeys == []} class="px-4 py-8 text-center text-sm text-muted-foreground">
+          No passkeys registered yet.
+        </li>
+      </ul>
+    </section>
+  </div>
+</Layouts.app>

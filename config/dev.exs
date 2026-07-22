@@ -50,3 +50,5 @@ config :phoenix, :stacktrace_depth, 20
 config :phoenix, :plug_init_mode, :runtime
 
 config :swoosh, :api_client, false
+
+config :wax_, origin: "http://localhost:4000", rp_id: :auto

@@ -57,6 +57,38 @@ const Hooks = {
   }
 }
 
+// ── WebAuthn (Passkey) —────────────────────────────
+
+import {registerPasskey} from "./webauthn"
+
+// Auto-attach the "Add passkey" button on the settings page
+document.addEventListener("DOMContentLoaded", () => {
+  const btn = document.getElementById("register-passkey")
+  if (!btn) return
+  const csrfToken = document.querySelector("meta[name='csrf-token']")?.getAttribute("content")
+  btn.addEventListener("click", async () => {
+    btn.disabled = true
+    btn.textContent = "Registering…"
+    try {
+      const label = prompt("Name this passkey (optional):") || undefined
+      const result = await registerPasskey(
+        btn.dataset.startUrl || "/users/settings/passkeys/register/start",
+        "/users/settings/passkeys/register/finish",
+        csrfToken,
+        label,
+      )
+      console.log("Passkey registered:", result)
+      window.location.reload()
+    } catch (err) {
+      console.error("Passkey registration failed:", err)
+      alert(err.message || "Passkey registration failed. Please try again.")
+    } finally {
+      btn.disabled = false
+      btn.textContent = "Add passkey"
+    }
+  })
+})
+
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
