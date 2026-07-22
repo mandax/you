@@ -28,6 +28,18 @@ defmodule YouWeb.UserSettingsController do
     conn |> put_flash(:info, info) |> redirect(to: ~p"/users/settings")
   end
 
+  def unlink_identity(conn, %{"id" => id}) do
+    user = conn.assigns.current_scope.user
+
+    info =
+      case Accounts.delete_user_federated_identity(user, id) do
+        {1, _} -> "Connected account removed."
+        _ -> "Connected account not found."
+      end
+
+    conn |> put_flash(:info, info) |> redirect(to: ~p"/users/settings")
+  end
+
   def revoke_other_sessions(conn, _params) do
     user = conn.assigns.current_scope.user
     count = Accounts.delete_other_user_sessions(user, get_session(conn, :user_token))
@@ -125,6 +137,7 @@ defmodule YouWeb.UserSettingsController do
     |> assign(:password_changeset, Accounts.change_user_password(user))
     |> assign(:sessions, Accounts.list_user_sessions(user))
     |> assign(:current_token, get_session(conn, :user_token))
+    |> assign(:federated_identities, Accounts.list_federated_identities_for_user(user))
   end
 
   defp get_user_consents(user_id) do

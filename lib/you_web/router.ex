@@ -93,6 +93,7 @@ defmodule YouWeb.Router do
     get "/users/settings/access_data", UserSettingsController, :access_data
     delete "/users/settings/sessions", UserSettingsController, :revoke_other_sessions
     delete "/users/settings/sessions/:id", UserSettingsController, :revoke_session
+    delete "/users/settings/federated/:id", UserSettingsController, :unlink_identity
 
     get "/users/settings/passkeys", WebAuthnController, :index
     post "/users/settings/passkeys/register/start", WebAuthnController, :start_registration

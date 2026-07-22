@@ -17,6 +17,17 @@ defmodule YouWeb.UserSessionControllerTest do
       assert response =~ "Log in with email"
     end
 
+    test "shows a federated provider button only when configured", %{conn: conn} do
+      refute get(conn, ~p"/users/log-in") |> html_response(200) =~ "Sign in with Google"
+
+      Application.put_env(:you, :oidc_providers, %{"google" => %{}})
+      on_exit(fn -> Application.put_env(:you, :oidc_providers, %{}) end)
+
+      html = get(conn, ~p"/users/log-in") |> html_response(200)
+      assert html =~ "Sign in with Google"
+      assert html =~ ~p"/auth/google"
+    end
+
     test "renders login page with email filled in (sudo mode)", %{conn: conn, user: user} do
       html =
         conn

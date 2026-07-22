@@ -43,9 +43,15 @@ defmodule YouWeb.UserSessionController do
 
       render(conn, :new,
         form: form,
-        callback_url: get_session(conn, :callback_url)
+        callback_url: get_session(conn, :callback_url),
+        providers: oidc_providers()
       )
     end
+  end
+
+  # Configured upstream OIDC providers, as a sorted list of ids ("google", …).
+  defp oidc_providers do
+    Application.get_env(:you, :oidc_providers, %{}) |> Map.keys() |> Enum.sort()
   end
 
   # magic link login
@@ -79,7 +85,8 @@ defmodule YouWeb.UserSessionController do
         |> put_flash(:error, "The link is invalid or it has expired.")
         |> render(:new,
           form: Phoenix.Component.to_form(%{}, as: "user"),
-          callback_url: get_session(conn, :callback_url)
+          callback_url: get_session(conn, :callback_url),
+          providers: oidc_providers()
         )
     end
   end
@@ -127,7 +134,11 @@ defmodule YouWeb.UserSessionController do
       # In order to prevent user enumeration attacks, don't disclose whether the email is disclosed.
       conn
       |> put_flash(:error, "Invalid email or password")
-      |> render(:new, form: form, callback_url: get_session(conn, :callback_url))
+      |> render(:new,
+        form: form,
+        callback_url: get_session(conn, :callback_url),
+        providers: oidc_providers()
+      )
     end
   end
 

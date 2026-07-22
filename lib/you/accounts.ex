@@ -695,6 +695,18 @@ defmodule You.Accounts do
     count
   end
 
+  @doc """
+  Deletes a federated identity by id, scoped to the owning user.
+
+  Returns `{count, nil}` — `{1, nil}` when unlinked, `{0, nil}` when the id
+  does not exist or is not owned by this user.
+  """
+  def delete_user_federated_identity(%User{id: user_id}, id) do
+    Repo.delete_all(
+      from(f in FederatedIdentity, where: f.id == ^id and f.user_id == ^user_id)
+    )
+  end
+
   ## Passkeys (WebAuthn)
 
   @doc """

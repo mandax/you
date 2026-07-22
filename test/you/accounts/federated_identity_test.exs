@@ -120,4 +120,20 @@ defmodule You.Accounts.FederatedIdentityTest do
       assert Accounts.delete_federated_identity("nope", "nope") == 0
     end
   end
+
+  describe "delete_user_federated_identity/2" do
+    test "unlinks only when owned by the user" do
+      {:ok, owner} = Accounts.find_or_create_user_by_federated_identity("google", "own", "o@e.com")
+      other = You.AccountsFixtures.user_fixture()
+      [identity] = Accounts.list_federated_identities_for_user(owner)
+
+      # A different user cannot unlink someone else's identity.
+      assert {0, _} = Accounts.delete_user_federated_identity(other, identity.id)
+      assert Accounts.get_federated_identity("google", "own")
+
+      # The owner can.
+      assert {1, _} = Accounts.delete_user_federated_identity(owner, identity.id)
+      assert Accounts.get_federated_identity("google", "own") == nil
+    end
+  end
 end
