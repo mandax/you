@@ -84,10 +84,26 @@ defmodule YouWeb do
 
       # HTML escaping functionality
       import Phoenix.HTML
-      # Core UI components
-      import YouWeb.CoreComponents
+      # Core UI components. `button/1` is superseded by
+      # YouWeb.Components.Base.Button (the form-aware `input/1` here is kept —
+      # the Base layer's input primitive is the unstyled `base_input/1`).
+      import YouWeb.CoreComponents, except: [button: 1]
       # MynaUI icons
       import YouWeb.MynauiIcons, only: [icon: 1]
+
+      # Base UI–inspired primitives.
+      import YouWeb.Components.Base.Badge
+      import YouWeb.Components.Base.Button
+      import YouWeb.Components.Base.Card
+      import YouWeb.Components.Base.CopyButton
+      import YouWeb.Components.Base.Dialog
+      import YouWeb.Components.Base.DropdownMenu
+      import YouWeb.Components.Base.Input
+      import YouWeb.Components.Base.Separator
+      import YouWeb.Components.Base.Tooltip
+
+      # Shared presentational pieces (eyebrow, status dot, sparkline, …)
+      import YouWeb.Components.Bits
 
       # Common modules used in templates
       alias Phoenix.LiveView.JS

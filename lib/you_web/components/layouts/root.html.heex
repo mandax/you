@@ -1,20 +1,16 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="you">
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="csrf-token" content={get_csrf_token()} />
     <.live_title default="You" suffix=" · You" phx-no-format>{assigns[:page_title]}</.live_title>
     <link phx-track-static rel="stylesheet" href={~p"/assets/css/app.css"} />
-    <script src={~p"/assets/vendor/phoenix.js"}>
-    </script>
-    <script src={~p"/assets/vendor/phoenix_live_view.js"}>
-    </script>
-    <script src={~p"/assets/vendor/phoenix_html.js"}>
-    </script>
     <script defer phx-track-static type="text/javascript" src={~p"/assets/js/app.js"}>
     </script>
     <script>
+      // Applies the theme before first paint to avoid a flash of the wrong one.
+      // Same storage key and "system" semantics as the theme toggle hook.
       (function() {
         var theme = localStorage.getItem('you-theme');
         if (!theme) {
@@ -22,12 +18,11 @@
         }
         if (theme === 'dark') {
           document.documentElement.classList.add('dark');
-          document.documentElement.setAttribute('data-theme', 'you-dark');
         }
       })();
     </script>
   </head>
-  <body class="min-h-screen bg-base-100 text-base-content antialiased">
+  <body class="min-h-screen bg-background text-foreground antialiased">
     {@inner_content}
   </body>
 </html>

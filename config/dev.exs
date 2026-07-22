@@ -28,6 +28,7 @@ config :you, YouWeb.Endpoint,
   debug_errors: true,
   secret_key_base: "/IDzX034gJzQ59Uip5jFFMqOSZp5Lkgds2vm1W/1YlvJ9zqeofy3xmnj0JnDPltr",
   watchers: [
+    esbuild: {Esbuild, :install_and_run, [:you, ~w(--sourcemap=inline --watch)]},
     npx: [
       "tailwindcss",
       "-i",

@@ -49,6 +49,14 @@ defmodule You.MixProject do
       {:phoenix_live_view, "~> 1.1.0"},
       {:lazy_html, ">= 0.1.0", only: :test},
       {:phoenix_live_dashboard, "~> 0.8.3"},
+      {:esbuild, "~> 0.10", runtime: Mix.env() == :dev},
+      {:lucide,
+       github: "lucide-icons/lucide",
+       tag: "1.25.0",
+       sparse: "icons",
+       app: false,
+       compile: false,
+       depth: 1},
       {:jose, "~> 1.11"},
       {:absinthe, "~> 1.7"},
       {:absinthe_plug, "~> 1.5"},
@@ -73,10 +81,20 @@ defmodule You.MixProject do
   # See the documentation for `Mix` for more info on aliases.
   defp aliases do
     [
-      setup: ["deps.get", "ecto.setup"],
+      setup: ["deps.get", "ecto.setup", "assets.setup", "assets.build"],
       "ecto.setup": ["ecto.create", "ecto.migrate", "run priv/repo/seeds.exs"],
       "ecto.reset": ["ecto.drop", "ecto.setup"],
       test: ["ecto.create --quiet", "ecto.migrate --quiet", "test"],
+      "assets.setup": ["esbuild.install --if-missing"],
+      "assets.build": ["compile", "cmd npx tailwindcss -i assets/css/app.css -o priv/static/assets/css/app.css", "esbuild you"],
+      "assets.deploy": [
+        # `compile` must come first: colocated hooks are only extracted when the
+        # components defining them are compiled, and esbuild reads them from there.
+        "compile",
+        "cmd npx tailwindcss -i assets/css/app.css -o priv/static/assets/css/app.css --minify",
+        "esbuild you --minify",
+        "phx.digest"
+      ],
       precommit: ["compile --warnings-as-errors", "deps.unlock --unused", "format", "test"]
     ]
   end

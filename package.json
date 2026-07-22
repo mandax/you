@@ -19,7 +19,6 @@
   "dependencies": {
     "@mynaui/icons": "^0.4.2",
     "@tailwindcss/cli": "^4.3.0",
-    "daisyui": "^5.5.20",
     "tailwindcss": "^4.3.0"
   }
 }
