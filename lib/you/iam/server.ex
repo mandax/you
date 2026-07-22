@@ -44,10 +44,19 @@ defmodule You.IAM.Server do
   end
 
   @doc """
-  Exchanges an authorization code for a JWT. Returns `{:ok, %{user_id, email, jwt}}` or `{:error, reason}`.
+  Exchanges an authorization code for a JWT + refresh token.
+  Returns `{:ok, %{user_id, email, jwt, refresh_token}}` or `{:error, reason}`.
   """
   def exchange_code(code) do
     GenServer.call(__MODULE__, {:exchange_code, code})
+  end
+
+  @doc """
+  Rotates a refresh token for a new JWT + refresh token.
+  Returns `{:ok, %{user_id, email, jwt, refresh_token}}` or `{:error, :invalid}`.
+  """
+  def refresh(refresh_token) do
+    GenServer.call(__MODULE__, {:refresh, refresh_token})
   end
 
   # Server
@@ -114,10 +123,7 @@ defmodule You.IAM.Server do
     result =
       case Accounts.consume_auth_code(code) do
         {:ok, user, scopes} ->
-          claims = build_scoped_claims(user, scopes || ["email"])
-
-          jwt_expiry = You.Settings.get(:jwt_expiry_hours) * 3600
-          {:ok, jwt} = JWT.sign(claims, jwt_expiry)
+          scopes = scopes || ["email"]
 
           :telemetry.execute(
             [:you, :audit, :token, :exchange],
@@ -125,7 +131,7 @@ defmodule You.IAM.Server do
             %{user_id: user.id, scopes: scopes}
           )
 
-          {:ok, %{user_id: user.id, email: user.email, jwt: jwt}}
+          {:ok, token_bundle(user, scopes, Accounts.create_refresh_token(user, scopes))}
 
         {:error, reason} ->
           :telemetry.execute(
@@ -138,6 +144,31 @@ defmodule You.IAM.Server do
       end
 
     {:reply, result, state}
+  end
+
+  def handle_call({:refresh, refresh_token}, _from, state) do
+    result =
+      case Accounts.rotate_refresh_token(refresh_token) do
+        {:ok, user, scopes, new_refresh} ->
+          scopes = scopes || ["email"]
+
+          :telemetry.execute([:you, :audit, :token, :refresh], %{}, %{user_id: user.id})
+
+          {:ok, token_bundle(user, scopes, new_refresh)}
+
+        {:error, _reason} ->
+          :telemetry.execute([:you, :audit, :token, :refresh], %{}, %{result: :failure})
+          {:error, :invalid}
+      end
+
+    {:reply, result, state}
+  end
+
+  # Signs a scoped JWT and returns the token bundle handed back to consumers.
+  defp token_bundle(user, scopes, refresh_token) do
+    jwt_expiry = You.Settings.get(:jwt_expiry_hours) * 3600
+    {:ok, jwt} = JWT.sign(build_scoped_claims(user, scopes), jwt_expiry)
+    %{user_id: user.id, email: user.email, jwt: jwt, refresh_token: refresh_token}
   end
 
   defp build_scoped_claims(user, scopes) do

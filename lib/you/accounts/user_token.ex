@@ -192,6 +192,37 @@ defmodule You.Accounts.UserToken do
     token
   end
 
+  @refresh_validity_in_days 30
+
+  @doc """
+  Builds a refresh token (hashed at rest) carrying the granted scopes, so a new
+  JWT can be minted for the same scopes without re-running the login flow.
+  """
+  def build_refresh_token(user, scopes) do
+    {token, user_token} = build_hashed_token(user, "refresh", user.email)
+    {token, %{user_token | meta: scopes && Jason.encode!(%{"scopes" => scopes})}}
+  end
+
+  @doc "Lookup query for a valid (non-expired) refresh token. `{:ok, query}` or `:error`."
+  def verify_refresh_token_query(token, expiry_days \\ @refresh_validity_in_days) do
+    case Base.url_decode64(token, padding: false) do
+      {:ok, decoded_token} ->
+        hashed_token = :crypto.hash(@hash_algorithm, decoded_token)
+        threshold = DateTime.add(DateTime.utc_now(), -expiry_days * 86_400, :second)
+
+        query =
+          from token in by_token_and_context_query(hashed_token, "refresh"),
+            join: user in assoc(token, :user),
+            where: token.inserted_at > ^threshold,
+            select: {user, token}
+
+        {:ok, query}
+
+      :error ->
+        :error
+    end
+  end
+
   @doc """
   Verifies an auth code and returns the underlying lookup query.
 

@@ -77,9 +77,45 @@ defmodule You.IAMServerTest do
       assert {:error, :not_found} = GenServer.call(You.IAM.Server, {:exchange_code, "invalid"})
     end
 
+    test "issues a refresh token" do
+      user = AccountsFixtures.user_fixture() |> AccountsFixtures.set_password()
+      {:ok, code} = You.Accounts.generate_auth_code(user, ["email"])
+      assert {:ok, %{refresh_token: rt}} = GenServer.call(You.IAM.Server, {:exchange_code, code})
+      assert is_binary(rt)
+    end
+  end
+
+  describe "refresh" do
+    test "rotates the refresh token and mints a new JWT for the same scopes" do
+      admin = AccountsFixtures.user_fixture() |> AccountsFixtures.set_password()
+
+      You.Repo.update_all(from(u in You.Accounts.User, where: u.id == ^admin.id),
+        set: [is_admin: true]
+      )
+
+      {:ok, code} = You.Accounts.generate_auth_code(admin, ["email", "roles"])
+
+      {:ok, %{refresh_token: rt1}} = GenServer.call(You.IAM.Server, {:exchange_code, code})
+      {:ok, %{refresh_token: rt2, jwt: jwt2}} = GenServer.call(You.IAM.Server, {:refresh, rt1})
+
+      assert rt2 != rt1
+      # scopes carried over → role still present
+      assert {:ok, %{"role" => "admin"}} = You.JWT.verify(jwt2)
+      # old refresh token is single-use — rotated away
+      assert {:error, :invalid} = GenServer.call(You.IAM.Server, {:refresh, rt1})
+    end
+
+    test "rejects an invalid refresh token" do
+      assert {:error, :invalid} = GenServer.call(You.IAM.Server, {:refresh, "nope"})
+    end
+
     test "JWT role reflects is_admin when the roles scope is requested" do
       admin = AccountsFixtures.user_fixture() |> AccountsFixtures.set_password()
-      You.Repo.update_all(from(u in You.Accounts.User, where: u.id == ^admin.id), set: [is_admin: true])
+
+      You.Repo.update_all(from(u in You.Accounts.User, where: u.id == ^admin.id),
+        set: [is_admin: true]
+      )
+
       user = AccountsFixtures.user_fixture() |> AccountsFixtures.set_password()
 
       {:ok, admin_code} = You.Accounts.generate_auth_code(admin, ["email", "roles"])

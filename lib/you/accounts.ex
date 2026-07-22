@@ -385,6 +385,29 @@ defmodule You.Accounts do
     end
   end
 
+  @doc "Issues a refresh token for the user carrying the granted scopes."
+  def create_refresh_token(%User{} = user, scopes) do
+    {token, user_token} = UserToken.build_refresh_token(user, scopes)
+    Repo.insert!(user_token)
+    token
+  end
+
+  @doc """
+  Rotates a refresh token: validates it, deletes it (single-use), and issues a
+  fresh one for the same user and scopes. Returns
+  `{:ok, user, scopes, new_token}` or `{:error, :invalid}`.
+  """
+  def rotate_refresh_token(token) when is_binary(token) do
+    with {:ok, query} <- UserToken.verify_refresh_token_query(token),
+         {user, old_token} <- Repo.one(query) do
+      scopes = parse_meta_scopes(old_token.meta)
+      Repo.delete!(old_token)
+      {:ok, user, scopes, create_refresh_token(user, scopes)}
+    else
+      _ -> {:error, :invalid}
+    end
+  end
+
   defp parse_meta_scopes(nil), do: ["email"]
 
   defp parse_meta_scopes(meta) when is_binary(meta) do
