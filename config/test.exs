@@ -25,3 +25,6 @@ config :phoenix,
   sort_verified_routes_query_params: true
 
 config :you, :audit, enabled: false
+
+# No network in tests — the Pwned Passwords check is exercised via its pure parser.
+config :you, check_pwned_passwords: false

@@ -73,6 +73,8 @@ defmodule YouWeb.Router do
     put "/users/settings", UserSettingsController, :update
     get "/users/settings/confirm-email/:token", UserSettingsController, :confirm_email
     get "/users/settings/access_data", UserSettingsController, :access_data
+    delete "/users/settings/sessions", UserSettingsController, :revoke_other_sessions
+    delete "/users/settings/sessions/:id", UserSettingsController, :revoke_session
   end
 
   scope "/", YouWeb do

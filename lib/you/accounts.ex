@@ -315,6 +315,40 @@ defmodule You.Accounts do
     :ok
   end
 
+  @doc "Lists a user's active session tokens, newest first."
+  def list_user_sessions(%User{id: user_id}) do
+    Repo.all(
+      from t in UserToken,
+        where: t.user_id == ^user_id and t.context == "session",
+        order_by: [desc: t.inserted_at]
+    )
+  end
+
+  @doc """
+  Revokes one of the user's sessions by token id. Scoped to the user, so a user
+  can only end their own sessions. Returns the number deleted (0 or 1).
+  """
+  def delete_user_session(%User{id: user_id}, id) do
+    {count, _} =
+      Repo.delete_all(
+        from t in UserToken,
+          where: t.id == ^id and t.user_id == ^user_id and t.context == "session"
+      )
+
+    count
+  end
+
+  @doc "Revokes every session except the one holding `current_token`."
+  def delete_other_user_sessions(%User{id: user_id}, current_token) do
+    {count, _} =
+      Repo.delete_all(
+        from t in UserToken,
+          where: t.user_id == ^user_id and t.context == "session" and t.token != ^current_token
+      )
+
+    count
+  end
+
   ## Auth Code
 
   @doc """

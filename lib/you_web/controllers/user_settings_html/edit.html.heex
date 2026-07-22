@@ -63,5 +63,52 @@
         </div>
       </.form>
     </section>
+
+    <section class="space-y-4">
+      <div class="flex items-center justify-between">
+        <div>
+          <h2 class="text-lg font-medium">Active sessions</h2>
+          <p class="text-sm text-muted-foreground">Devices currently signed in to your account.</p>
+        </div>
+        <.link
+          :if={length(@sessions) > 1}
+          href={~p"/users/settings/sessions"}
+          method="delete"
+          data-confirm="Sign out of all other sessions?"
+          class="text-sm text-destructive hover:underline"
+        >
+          Sign out everywhere else
+        </.link>
+      </div>
+
+      <ul class="divide-y divide-border rounded-lg border border-border">
+        <li :for={s <- @sessions} class="flex items-center justify-between px-4 py-3">
+          <div class="text-sm">
+            <div class="flex items-center gap-2">
+              <span class="lucide-monitor size-4 block text-muted-foreground" />
+              <span>Session</span>
+              <span
+                :if={s.token == @current_token}
+                class="rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary"
+              >
+                This device
+              </span>
+            </div>
+            <div class="mt-1 font-mono text-xs text-muted-foreground">
+              signed in {Calendar.strftime(s.authenticated_at || s.inserted_at, "%Y-%m-%d %H:%M UTC")}
+            </div>
+          </div>
+          <.link
+            :if={s.token != @current_token}
+            href={~p"/users/settings/sessions/#{s.id}"}
+            method="delete"
+            data-confirm="Revoke this session?"
+            class="text-sm text-muted-foreground hover:text-destructive"
+          >
+            Revoke
+          </.link>
+        </li>
+      </ul>
+    </section>
   </div>
 </Layouts.app>

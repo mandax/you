@@ -85,12 +85,35 @@ defmodule You.Accounts.User do
     changeset
     |> validate_required([:password])
     |> validate_length(:password, min: 12, max: 72)
-    # Examples of additional password validation:
-    # |> validate_format(:password, ~r/[a-z]/, message: "at least one lower case character")
-    # |> validate_format(:password, ~r/[A-Z]/, message: "at least one upper case character")
-    # |> validate_format(:password, ~r/[!?@#$%^&*_0-9]/, message: "at least one digit or punctuation character")
+    |> validate_not_pwned(opts)
     |> maybe_hash_password(opts)
   end
+
+  # Rejects passwords found in known breaches (Have I Been Pwned). Only runs on
+  # a real submit (`hash_password: true`) — not on every LiveView keystroke —
+  # and fails open if HIBP is unreachable.
+  defp validate_not_pwned(changeset, opts) do
+    check? = Keyword.get(opts, :hash_password, true) and pwned_check_enabled?()
+    password = get_change(changeset, :password)
+
+    if (check? and password) && changeset.valid? do
+      case You.Accounts.PwnedPasswords.breach_count(password) do
+        {:ok, count} when count > 0 ->
+          add_error(
+            changeset,
+            :password,
+            "has appeared in a known data breach — please choose a different one"
+          )
+
+        _ ->
+          changeset
+      end
+    else
+      changeset
+    end
+  end
+
+  defp pwned_check_enabled?, do: Application.get_env(:you, :check_pwned_passwords, true)
 
   defp maybe_hash_password(changeset, opts) do
     hash_password? = Keyword.get(opts, :hash_password, true)

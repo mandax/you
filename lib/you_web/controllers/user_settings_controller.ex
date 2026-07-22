@@ -16,6 +16,27 @@ defmodule YouWeb.UserSettingsController do
     render(conn, :edit)
   end
 
+  def revoke_session(conn, %{"id" => id}) do
+    user = conn.assigns.current_scope.user
+
+    info =
+      case Accounts.delete_user_session(user, id) do
+        1 -> "Session revoked."
+        _ -> "Session not found."
+      end
+
+    conn |> put_flash(:info, info) |> redirect(to: ~p"/users/settings")
+  end
+
+  def revoke_other_sessions(conn, _params) do
+    user = conn.assigns.current_scope.user
+    count = Accounts.delete_other_user_sessions(user, get_session(conn, :user_token))
+
+    conn
+    |> put_flash(:info, "Signed out of #{count} other session(s).")
+    |> redirect(to: ~p"/users/settings")
+  end
+
   def access_data(conn, _params) do
     user = conn.assigns.current_scope.user
 
@@ -102,6 +123,8 @@ defmodule YouWeb.UserSettingsController do
     conn
     |> assign(:email_changeset, Accounts.change_user_email(user))
     |> assign(:password_changeset, Accounts.change_user_password(user))
+    |> assign(:sessions, Accounts.list_user_sessions(user))
+    |> assign(:current_token, get_session(conn, :user_token))
   end
 
   defp get_user_consents(user_id) do
