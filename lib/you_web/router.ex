@@ -18,6 +18,11 @@ defmodule YouWeb.Router do
     plug :accepts, ["json"]
   end
 
+  pipeline :scim do
+    plug :accepts, ["json"]
+    plug YouWeb.SCIM.BearerAuth
+  end
+
   scope "/", YouWeb do
     pipe_through :browser
 
@@ -112,5 +117,16 @@ defmodule YouWeb.Router do
 
     post "/users/log-in/passkey/start", WebAuthnController, :start_authentication
     post "/users/log-in/passkey/finish", WebAuthnController, :finish_authentication
+  end
+
+  scope "/scim/v2", YouWeb.SCIM do
+    pipe_through :scim
+
+    get "/Users", UsersController, :index
+    get "/Users/:id", UsersController, :show
+    post "/Users", UsersController, :create
+    put "/Users/:id", UsersController, :update
+    patch "/Users/:id", UsersController, :patch
+    delete "/Users/:id", UsersController, :delete
   end
 end
