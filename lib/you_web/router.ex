@@ -55,6 +55,18 @@ defmodule YouWeb.Router do
     end
   end
 
+  ## OIDC — public JSON endpoints for standard OpenID Connect discovery and
+  ## token exchange. These allow non-BEAM consumers to integrate without
+  ## Erlang distribution.
+
+  scope "/", YouWeb do
+    pipe_through :api
+
+    get "/.well-known/openid-configuration", OIDCController, :discovery
+    get "/.well-known/jwks.json", OIDCController, :jwks
+    post "/oauth/token", OIDCController, :create_token
+  end
+
   ## Authentication routes
 
   scope "/", YouWeb do
