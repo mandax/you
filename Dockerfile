@@ -25,7 +25,8 @@
 # ---- Build stage ----
 FROM hexpm/elixir:1.19.5-erlang-28.5.0.1-alpine-3.21.7 AS builder
 
-RUN apk add --no-cache build-base git
+# build-base/git for native deps; nodejs/npm for the Tailwind v4 CLI.
+RUN apk add --no-cache build-base git nodejs npm
 
 WORKDIR /app
 
@@ -37,15 +38,21 @@ COPY mix.exs mix.lock ./
 RUN mix deps.get --only prod
 RUN mix deps.compile
 
+# Node deps for the Tailwind CLI (cached by package.json)
+COPY package.json ./
+RUN npm install
+
 # Copy the rest of the application
+COPY assets assets
 COPY lib lib
 COPY priv priv
 COPY config config
 COPY rel rel
 
-# Compile and build the release
-RUN MIX_ENV=prod mix compile
-RUN MIX_ENV=prod mix phx.digest
+# Build assets in the image (compile → tailwind → esbuild → digest), so the
+# CSS/JS bundles are produced here rather than committed. Then cut the release.
+RUN MIX_ENV=prod mix esbuild.install --if-missing
+RUN MIX_ENV=prod mix assets.deploy
 RUN MIX_ENV=prod mix release
 
 # ---- Runtime stage ----

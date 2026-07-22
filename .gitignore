@@ -46,3 +46,12 @@ you_dev.db
 
 # Node.js dependencies (used by Tailwind CLI build pipeline)
 /node_modules/
+
+# Built asset bundles — produced by `mix assets.deploy` (now built in the Docker image)
+/priv/static/assets/css/app.css
+/priv/static/assets/js/app.js
+
+# phx.digest outputs: hashed copies, gzips, and the manifest
+/priv/static/cache_manifest.json
+priv/static/**/*.gz
+priv/static/**/*-????????????????????????????????.*
