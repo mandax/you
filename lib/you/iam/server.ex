@@ -147,8 +147,14 @@ defmodule You.IAM.Server do
     |> Enum.reduce(base, fn
       "email", acc -> Map.put(acc, :email, user.email)
       "profile", acc -> acc |> Map.put(:email, user.email) |> Map.put(:name, user.email)
-      "roles", acc -> acc |> Map.put(:email, user.email) |> Map.put(:role, "user")
+      "roles", acc -> acc |> Map.put(:email, user.email) |> Map.put(:role, user_role(user))
       _, acc -> acc
     end)
   end
+
+  # Real role from the account's admin flag, so consumer apps (Sockeet) can gate
+  # on it. A fuller role model (multiple named roles) is roadmap; this closes the
+  # "role is always 'user'" gap that blocked admin authorization downstream.
+  defp user_role(%{is_admin: true}), do: "admin"
+  defp user_role(_), do: "user"
 end

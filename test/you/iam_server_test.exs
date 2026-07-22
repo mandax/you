@@ -76,5 +76,20 @@ defmodule You.IAMServerTest do
     test "returns error for invalid auth code" do
       assert {:error, :not_found} = GenServer.call(You.IAM.Server, {:exchange_code, "invalid"})
     end
+
+    test "JWT role reflects is_admin when the roles scope is requested" do
+      admin = AccountsFixtures.user_fixture() |> AccountsFixtures.set_password()
+      You.Repo.update_all(from(u in You.Accounts.User, where: u.id == ^admin.id), set: [is_admin: true])
+      user = AccountsFixtures.user_fixture() |> AccountsFixtures.set_password()
+
+      {:ok, admin_code} = You.Accounts.generate_auth_code(admin, ["email", "roles"])
+      {:ok, user_code} = You.Accounts.generate_auth_code(user, ["email", "roles"])
+
+      {:ok, %{jwt: admin_jwt}} = GenServer.call(You.IAM.Server, {:exchange_code, admin_code})
+      {:ok, %{jwt: user_jwt}} = GenServer.call(You.IAM.Server, {:exchange_code, user_code})
+
+      assert {:ok, %{"role" => "admin"}} = You.JWT.verify(admin_jwt)
+      assert {:ok, %{"role" => "user"}} = You.JWT.verify(user_jwt)
+    end
   end
 end
