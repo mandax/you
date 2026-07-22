@@ -47,10 +47,15 @@ defmodule You.IAM.Server do
 
   @doc """
   Exchanges an authorization code for a JWT + refresh token.
-  Returns `{:ok, %{user_id, email, jwt, refresh_token}}` or `{:error, reason}`.
+
+  Pass `code_verifier` when the code was issued with a PKCE challenge; it must
+  satisfy `base64url(sha256(code_verifier)) == code_challenge`.
+
+  Returns `{:ok, %{user_id, email, jwt, refresh_token}}` or `{:error, reason}`
+  (`:invalid_grant` on PKCE failure).
   """
-  def exchange_code(code) do
-    GenServer.call(__MODULE__, {:exchange_code, code})
+  def exchange_code(code, code_verifier \\ nil) do
+    GenServer.call(__MODULE__, {:exchange_code, code, code_verifier})
   end
 
   @doc """
@@ -132,9 +137,14 @@ defmodule You.IAM.Server do
   end
 
   @impl true
-  def handle_call({:exchange_code, code}, _from, state) do
+  def handle_call({:exchange_code, code}, from, state) do
+    # Backward-compatible with pre-PKCE clients that send the 2-tuple message.
+    handle_call({:exchange_code, code, nil}, from, state)
+  end
+
+  def handle_call({:exchange_code, code, code_verifier}, _from, state) do
     result =
-      case Accounts.consume_auth_code(code) do
+      case Accounts.consume_auth_code(code, code_verifier) do
         {:ok, user, scopes} ->
           scopes = scopes || ["email"]
 

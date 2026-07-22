@@ -24,6 +24,10 @@ defmodule YouWeb.UserSessionController do
     # callback redirect, so the consumer can prove the response matches its request.
     conn = put_session(conn, :state, params["state"])
 
+    # PKCE: stash the consumer's code_challenge (S256) so it can be bound to the
+    # auth code minted after login and verified at exchange time.
+    conn = put_session(conn, :code_challenge, params["code_challenge"])
+
     if conn.assigns[:current_scope] && conn.assigns.current_scope.user &&
          get_session(conn, :callback_url) do
       app_name =
@@ -68,7 +72,7 @@ defmodule YouWeb.UserSessionController do
           record_consent_for_app(conn, user)
           scopes = get_session(conn, :scopes) || ["email"]
           state = get_session(conn, :state)
-          {:ok, code} = Accounts.generate_auth_code(user, scopes)
+          {:ok, code} = Accounts.generate_auth_code(user, scopes, get_session(conn, :code_challenge))
 
           conn
           |> put_flash(:info, info)
@@ -110,7 +114,7 @@ defmodule YouWeb.UserSessionController do
           record_consent_for_app(conn, user)
           scopes = get_session(conn, :scopes) || ["email"]
           state = get_session(conn, :state)
-          {:ok, code} = Accounts.generate_auth_code(user, scopes)
+          {:ok, code} = Accounts.generate_auth_code(user, scopes, get_session(conn, :code_challenge))
 
           conn
           |> put_flash(:info, "Welcome back!")
@@ -220,7 +224,7 @@ defmodule YouWeb.UserSessionController do
           record_consent_for_app(conn, user)
           scopes = get_session(conn, :scopes) || ["email"]
           state = get_session(conn, :state)
-          {:ok, auth_code} = Accounts.generate_auth_code(user, scopes)
+          {:ok, auth_code} = Accounts.generate_auth_code(user, scopes, get_session(conn, :code_challenge))
 
           conn
           |> UserAuth.create_user_session(user, %{})
@@ -252,7 +256,7 @@ defmodule YouWeb.UserSessionController do
       record_consent_for_app(conn, user)
       scopes = get_session(conn, :scopes) || ["email"]
       state = get_session(conn, :state)
-      {:ok, code} = Accounts.generate_auth_code(user, scopes)
+      {:ok, code} = Accounts.generate_auth_code(user, scopes, get_session(conn, :code_challenge))
 
       redirect_with_code(conn, callback_url, code, state)
     else

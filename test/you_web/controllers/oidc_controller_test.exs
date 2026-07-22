@@ -15,6 +15,7 @@ defmodule YouWeb.OIDCControllerTest do
                "jwks_uri" => jwks_uri,
                "response_types_supported" => ["code"],
                "grant_types_supported" => ["authorization_code"],
+               "code_challenge_methods_supported" => ["S256"],
                "scopes_supported" => ["email", "profile", "roles"],
                "id_token_signing_alg_values_supported" => ["EdDSA"],
                "subject_types_supported" => ["public"],
@@ -94,6 +95,19 @@ defmodule YouWeb.OIDCControllerTest do
       # Second use with the same code fails
       conn2 = post(conn, ~p"/oauth/token", code: code)
       assert %{"error" => "invalid_grant"} = json_response(conn2, 400)
+    end
+
+    test "PKCE: correct verifier succeeds, wrong one is rejected", %{conn: conn, user: user} do
+      verifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+      challenge = :crypto.hash(:sha256, verifier) |> Base.url_encode64(padding: false)
+
+      {:ok, bad} = Accounts.generate_auth_code(user, ["email"], challenge)
+      resp = post(conn, ~p"/oauth/token", code: bad, code_verifier: "nope")
+      assert %{"error" => "invalid_grant"} = json_response(resp, 400)
+
+      {:ok, good} = Accounts.generate_auth_code(user, ["email"], challenge)
+      resp = post(conn, ~p"/oauth/token", code: good, code_verifier: verifier)
+      assert %{"access_token" => _} = json_response(resp, 200)
     end
   end
 end

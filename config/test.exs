@@ -6,7 +6,11 @@ config :bcrypt_elixir, :log_rounds, 1
 config :you, You.Repo,
   database: "priv/repo/you_test.db",
   pool: Ecto.Adapters.SQL.Sandbox,
-  pool_size: System.schedulers_online() * 2
+  pool_size: System.schedulers_online() * 2,
+  # SQLite serializes writers; under async load a blocked writer otherwise
+  # errors immediately with "Database busy". Wait for the lock instead.
+  busy_timeout: 5_000,
+  journal_mode: :wal
 
 config :you, YouWeb.Endpoint,
   http: [ip: {127, 0, 0, 1}, port: 4002],

@@ -25,6 +25,7 @@ defmodule YouWeb.OIDCController do
       jwks_uri: "#{base}/.well-known/jwks.json",
       response_types_supported: ["code"],
       grant_types_supported: ["authorization_code"],
+      code_challenge_methods_supported: ["S256"],
       scopes_supported: ["email", "profile", "roles"],
       id_token_signing_alg_values_supported: ["EdDSA"],
       subject_types_supported: ["public"],
@@ -70,8 +71,8 @@ defmodule YouWeb.OIDCController do
   token. This is the HTTP twin of the Erlang-distribution `exchange_code` call
   on `You.IAM.Server`.
   """
-  def create_token(conn, %{"code" => code}) do
-    case Accounts.consume_auth_code(code) do
+  def create_token(conn, %{"code" => code} = params) do
+    case Accounts.consume_auth_code(code, params["code_verifier"]) do
       {:ok, user, scopes} ->
         jwt_expiry = You.Settings.get(:jwt_expiry_hours) * 3600
         {:ok, jwt} = JWT.sign(build_scoped_claims(user, scopes), jwt_expiry)
@@ -91,18 +92,21 @@ defmodule YouWeb.OIDCController do
           refresh_token: refresh_token
         })
 
-      {:error, :not_found} ->
+      {:error, reason} when reason in [:not_found, :invalid_grant] ->
         :telemetry.execute([:you, :audit, :token, :exchange], %{}, %{
           result: :failure,
-          reason: :not_found
+          reason: reason
         })
+
+        description =
+          case reason do
+            :invalid_grant -> "PKCE verification failed."
+            :not_found -> "The authorization code is invalid or has expired."
+          end
 
         conn
         |> put_status(:bad_request)
-        |> json(%{
-          error: "invalid_grant",
-          error_description: "The authorization code is invalid or has expired."
-        })
+        |> json(%{error: "invalid_grant", error_description: description})
     end
   end
 

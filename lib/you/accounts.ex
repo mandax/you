@@ -363,9 +363,12 @@ defmodule You.Accounts do
   Generates a single-use authorization code for the OAuth-like redirect flow.
 
   The code is valid for 5 minutes. Returns `{:ok, code}`.
+
+  Pass `code_challenge` (base64url SHA-256 of the client's code_verifier) to
+  bind the code to a PKCE verifier that must be presented at exchange time.
   """
-  def generate_auth_code(%User{} = user, scopes \\ nil) do
-    {code, user_token} = UserToken.build_auth_token(user, scopes)
+  def generate_auth_code(%User{} = user, scopes \\ nil, code_challenge \\ nil) do
+    {code, user_token} = UserToken.build_auth_token(user, scopes, code_challenge)
     Repo.insert!(user_token)
     {:ok, code}
   end
@@ -373,17 +376,29 @@ defmodule You.Accounts do
   @doc """
   Consumes an authorization code, returning the user if valid.
 
-  Returns `{:ok, user}` or `{:error, :not_found}`.
+  When the code was issued with a PKCE `code_challenge`, `code_verifier` is
+  required and must satisfy `base64url(sha256(code_verifier)) == code_challenge`;
+  otherwise the code is rejected. The code is single-use — it is always deleted
+  once found, so a failed verification cannot be retried.
+
+  Returns `{:ok, user, scopes}`, `{:error, :invalid_grant}` (PKCE failure), or
+  `{:error, :not_found}`.
   """
-  def consume_auth_code(code) when is_binary(code) do
+  def consume_auth_code(code, code_verifier \\ nil) when is_binary(code) do
     expiry = You.Settings.get(:code_expiry_minutes)
 
     with {:ok, query} <- UserToken.verify_auth_code_query(code, expiry) do
       case Repo.one(query) do
         {user, token} ->
           scopes = parse_meta_scopes(token.meta)
+          challenge = parse_meta_challenge(token.meta)
           Repo.delete!(token)
-          {:ok, user, scopes}
+
+          if pkce_ok?(challenge, code_verifier) do
+            {:ok, user, scopes}
+          else
+            {:error, :invalid_grant}
+          end
 
         nil ->
           {:error, :not_found}
@@ -391,6 +406,15 @@ defmodule You.Accounts do
     else
       :error -> {:error, :not_found}
     end
+  end
+
+  # No challenge was bound → PKCE not required (backward compatible).
+  defp pkce_ok?(nil, _verifier), do: true
+  defp pkce_ok?(_challenge, verifier) when not is_binary(verifier), do: false
+
+  defp pkce_ok?(challenge, verifier) do
+    computed = :crypto.hash(:sha256, verifier) |> Base.url_encode64(padding: false)
+    Plug.Crypto.secure_compare(computed, challenge)
   end
 
   @doc "Issues a refresh token for the user carrying the granted scopes."
@@ -422,6 +446,15 @@ defmodule You.Accounts do
     case Jason.decode(meta) do
       {:ok, %{"scopes" => scopes}} when is_list(scopes) -> scopes
       _ -> ["email"]
+    end
+  end
+
+  defp parse_meta_challenge(nil), do: nil
+
+  defp parse_meta_challenge(meta) when is_binary(meta) do
+    case Jason.decode(meta) do
+      {:ok, %{"code_challenge" => challenge}} when is_binary(challenge) -> challenge
+      _ -> nil
     end
   end
 

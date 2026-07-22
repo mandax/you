@@ -177,20 +177,29 @@ defmodule You.Accounts.UserToken do
   end
 
   @doc false
-  def build_auth_token(user, scopes \\ nil) do
-    token_parts = build_hashed_token(user, "oauth_code", user.email)
+  def build_auth_token(user, scopes \\ nil, code_challenge \\ nil) do
+    case build_hashed_token(user, "oauth_code", user.email) do
+      {token, user_token} ->
+        {token, %{user_token | meta: encode_meta(scopes, code_challenge)}}
 
-    token =
-      case token_parts do
-        {token, user_token} ->
-          {token, %{user_token | meta: scopes && Jason.encode!(%{"scopes" => scopes})}}
-
-        other ->
-          other
-      end
-
-    token
+      other ->
+        other
+    end
   end
+
+  # Auth-code metadata is a JSON blob carrying the granted scopes and, for
+  # PKCE, the code_challenge to verify against at exchange time.
+  defp encode_meta(nil, nil), do: nil
+
+  defp encode_meta(scopes, code_challenge) do
+    %{}
+    |> maybe_put("scopes", scopes)
+    |> maybe_put("code_challenge", code_challenge)
+    |> Jason.encode!()
+  end
+
+  defp maybe_put(map, _key, nil), do: map
+  defp maybe_put(map, key, value), do: Map.put(map, key, value)
 
   @refresh_validity_in_days 30
 

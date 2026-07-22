@@ -71,6 +71,13 @@ defmodule YouWeb.UserResetPasswordController do
         conn
       end
 
+    conn =
+      if challenge = params["code_challenge"] do
+        put_session(conn, :code_challenge, challenge)
+      else
+        conn
+      end
+
     if user = Accounts.get_user_by_reset_password_token(token) do
       changeset = Accounts.change_user_password(user)
       render(conn, :edit, changeset: changeset, token: token)
@@ -91,12 +98,14 @@ defmodule YouWeb.UserResetPasswordController do
           scopes = get_session(conn, :scopes)
 
           if callback_url do
-            {:ok, code} = Accounts.generate_auth_code(user, scopes)
+            {:ok, code} =
+              Accounts.generate_auth_code(user, scopes, get_session(conn, :code_challenge))
 
             conn
             |> put_flash(:info, "Password reset successfully.")
             |> put_session(:callback_url, nil)
             |> put_session(:scopes, nil)
+            |> put_session(:code_challenge, nil)
             |> redirect(external: "#{callback_url}?code=#{code}")
           else
             conn

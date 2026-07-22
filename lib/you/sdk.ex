@@ -57,10 +57,14 @@ defmodule You.SDK do
   @doc """
   Exchanges an authorization code for a JWT.
 
-  Returns `{:ok, %{user_id, email, jwt}}` or `{:error, reason | :unreachable}`.
+  For PKCE, pass the `:code_verifier` option matching the `code_challenge` sent
+  at authorize time.
+
+  Returns `{:ok, %{user_id, email, jwt}}` or `{:error, reason | :unreachable}`
+  (`:invalid_grant` on PKCE failure).
   """
   def exchange_code(code, opts \\ []) do
-    call({:exchange_code, code}, opts)
+    call({:exchange_code, code, opts[:code_verifier]}, opts)
   end
 
   defp call(msg, opts) do

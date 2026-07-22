@@ -18,11 +18,18 @@ defmodule You.Audit.HandlerTest do
     )
 
     :timer.sleep(50)
-    lines = File.read!(Path.join(tmp_dir, "login.jsonl")) |> String.trim() |> String.split("\n")
-    assert length(lines) == 1
+    # The handler attaches to :telemetry globally, so concurrent tests may also
+    # emit login:attempt events into this file — assert on our specific event
+    # (user_id: 1) rather than the exact line count.
+    events =
+      Path.join(tmp_dir, "login.jsonl")
+      |> File.read!()
+      |> String.trim()
+      |> String.split("\n")
+      |> Enum.map(&Jason.decode!/1)
 
-    event = Jason.decode!(hd(lines))
-    assert event["user_id"] == 1
+    event = Enum.find(events, &(&1["user_id"] == 1))
+    assert event
     assert event["result"] == "success"
     assert event["event"] == "login:attempt"
   end
