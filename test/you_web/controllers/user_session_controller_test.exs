@@ -89,7 +89,7 @@ defmodule YouWeb.UserSessionControllerTest do
       conn = get(conn, ~p"/")
       response = html_response(conn, 200)
       assert response =~ "Dashboard"
-      assert response =~ ~p"/admin"
+      assert response =~ ~p"/console"
     end
 
     test "logs the user in with remember me", %{conn: conn, user: user} do
@@ -190,7 +190,7 @@ defmodule YouWeb.UserSessionControllerTest do
       conn = get(conn, ~p"/")
       response = html_response(conn, 200)
       assert response =~ "Dashboard"
-      assert response =~ ~p"/admin"
+      assert response =~ ~p"/console"
     end
 
     test "confirms unconfirmed user", %{conn: conn, unconfirmed_user: user} do
@@ -213,7 +213,7 @@ defmodule YouWeb.UserSessionControllerTest do
       conn = get(conn, ~p"/")
       response = html_response(conn, 200)
       assert response =~ "Dashboard"
-      assert response =~ ~p"/admin"
+      assert response =~ ~p"/console"
     end
 
     test "emits error message when magic link is invalid", %{conn: conn} do

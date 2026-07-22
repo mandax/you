@@ -42,24 +42,24 @@ defmodule YouWeb.AdminSettingsLive do
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope} active_tab="settings">
       <:side_panel>
-        <div class="text-[11px] font-medium text-base-content/40 uppercase tracking-widest">
+        <div class="text-[11px] font-medium text-muted-foreground uppercase tracking-widest">
           Settings
         </div>
         <a
           href="#general"
-          class="text-sm text-base-content/60 hover:text-base-content transition-colors"
+          class="text-sm text-muted-foreground hover:text-foreground transition-colors"
         >
           Session
         </a>
         <a
           href="#tokens"
-          class="text-sm text-base-content/60 hover:text-base-content transition-colors"
+          class="text-sm text-muted-foreground hover:text-foreground transition-colors"
         >
           Tokens &amp; Expiry
         </a>
         <a
           href="#erlang"
-          class="text-sm text-base-content/60 hover:text-base-content transition-colors"
+          class="text-sm text-muted-foreground hover:text-foreground transition-colors"
         >
           Erlang Distribution
         </a>
@@ -68,9 +68,9 @@ defmodule YouWeb.AdminSettingsLive do
       <div class="space-y-10">
         <div
           :if={@saved}
-          class="rounded-lg border border-success/30 bg-success/5 p-4 text-sm text-success-content flex items-center gap-2"
+          class="rounded-lg border border-signal-ok/30 bg-signal-ok/5 p-4 text-sm text-foreground flex items-center gap-2"
         >
-          <.icon name="check-circle" class="size-4 shrink-0 text-success" /> Settings saved.
+          <.icon name="check-circle" class="size-4 shrink-0 text-signal-ok" /> Settings saved.
         </div>
 
         <form phx-submit="save" class="space-y-8 max-w-md">
@@ -104,7 +104,7 @@ defmodule YouWeb.AdminSettingsLive do
             </div>
           </section>
 
-          <div class="border-t border-base-300" />
+          <div class="border-t border-border" />
 
           <section id="erlang">
             <h2 class="text-lg font-medium tracking-tight mb-6">Erlang Distribution</h2>
@@ -128,15 +128,15 @@ defmodule YouWeb.AdminSettingsLive do
                 value={@settings[:erlang_cookie]}
               />
             </div>
-            <p class="text-xs text-base-content/40 mt-3 leading-relaxed">
+            <p class="text-xs text-muted-foreground mt-3 leading-relaxed">
               The erlang cookie from settings is applied at boot and when saved in this form.
               It overrides the RELEASE_COOKIE env var. Changing the cookie breaks existing Erlang connections.
             </p>
           </section>
 
-          <button type="submit" class="btn btn-primary">
+          <.button type="submit">
             Save Settings
-          </button>
+          </.button>
         </form>
       </div>
     </Layouts.app>

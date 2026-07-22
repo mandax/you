@@ -17,11 +17,11 @@ defmodule YouWeb.Layouts do
   def public(assigns) do
     ~H"""
     <div class="min-h-screen flex flex-col">
-      <header class="sticky top-0 z-40 border-b border-base-300/50 bg-base-100/80 backdrop-blur-md">
+      <header class="sticky top-0 z-40 border-b border-border bg-background/80 backdrop-blur-md">
         <div class="mx-auto max-w-6xl px-6 h-14 flex items-center justify-between">
           <div class="flex items-center gap-2">
             <.link navigate={~p"/"} class="flex items-center gap-2 font-medium text-sm tracking-tight">
-              <div class="size-6 rounded-md bg-neutral text-neutral-content flex items-center justify-center">
+              <div class="size-6 rounded-md bg-primary text-primary-foreground flex items-center justify-center">
                 <span class="text-[10px] font-bold">Y</span>
               </div>
               You
@@ -29,21 +29,18 @@ defmodule YouWeb.Layouts do
           </div>
           <nav class="flex items-center gap-6 text-sm">
             <span class="hidden sm:flex items-center gap-6">
-              <.link
-                navigate="/"
-                class="text-base-content/60 hover:text-base-content transition-colors"
-              >
+              <.link navigate="/" class="text-muted-foreground hover:text-foreground transition-colors">
                 Home
               </.link>
               <.link
                 navigate="/docs"
-                class="text-base-content/60 hover:text-base-content transition-colors"
+                class="text-muted-foreground hover:text-foreground transition-colors"
               >
                 Docs
               </.link>
               <.link
-                navigate="/pricing"
-                class="text-base-content/60 hover:text-base-content transition-colors"
+                navigate="/#pricing"
+                class="text-muted-foreground hover:text-foreground transition-colors"
               >
                 Pricing
               </.link>
@@ -51,25 +48,15 @@ defmodule YouWeb.Layouts do
             <div class="flex items-center gap-3 ml-2">
               <.theme_toggle id="public-theme" />
               <%= if @current_scope do %>
-                <.link
-                  navigate={~p"/admin"}
-                  class="btn btn-primary btn-sm"
-                >
-                  Dashboard
-                </.link>
+                <.button size="sm" navigate={~p"/console"}>Console</.button>
               <% else %>
                 <.link
                   navigate={~p"/users/log-in"}
-                  class="text-sm text-base-content/60 hover:text-base-content transition-colors"
+                  class="text-sm text-muted-foreground hover:text-foreground transition-colors"
                 >
                   Log in
                 </.link>
-                <.link
-                  navigate={~p"/users/register"}
-                  class="btn btn-primary btn-sm"
-                >
-                  Sign up
-                </.link>
+                <.button size="sm" navigate={~p"/users/register"}>Sign up</.button>
               <% end %>
             </div>
           </nav>
@@ -80,7 +67,7 @@ defmodule YouWeb.Layouts do
         {render_slot(@inner_block)}
       </main>
 
-      <footer class="border-t border-base-300 py-8 text-center text-xs text-base-content/40">
+      <footer class="border-t border-border py-8 text-center text-xs text-muted-foreground">
         You — Identity &amp; Access Management
       </footer>
     </div>
@@ -108,65 +95,65 @@ defmodule YouWeb.Layouts do
     ~H"""
     <div class="min-h-screen flex flex-col">
       <!-- Slim top bar -->
-      <header class="h-12 shrink-0 border-b border-base-300 bg-base-100/80 backdrop-blur-md flex items-center">
+      <header class="h-12 shrink-0 border-b border-border bg-background/80 backdrop-blur-md flex items-center">
         <!-- Logo -->
-        <div class="w-56 shrink-0 px-5 border-r border-base-300 h-full flex items-center">
+        <div class="w-56 shrink-0 px-5 border-r border-border h-full flex items-center">
           <.link
-            navigate={~p"/admin"}
+            navigate={~p"/console"}
             class="flex items-center gap-2 font-medium text-sm tracking-tight"
           >
-            <div class="size-6 rounded-md bg-neutral text-neutral-content flex items-center justify-center">
+            <div class="size-6 rounded-md bg-primary text-primary-foreground flex items-center justify-center">
               <span class="text-[10px] font-bold">Y</span>
             </div>
             You
           </.link>
         </div>
-        
+
     <!-- Tabs -->
         <nav class="flex items-center h-full px-4 gap-0.5">
-          <.tab_link active={@active_tab == "dashboard"} navigate={~p"/admin"}>
+          <.tab_link active={@active_tab == "dashboard"} navigate={~p"/console"}>
             Dashboard
           </.tab_link>
-          <.tab_link active={@active_tab == "users"} navigate={~p"/admin/users"}>
+          <.tab_link active={@active_tab == "users"} navigate={~p"/console/users"}>
             Users
             <span
               :if={@user_count}
-              class="text-[10px] ml-1 px-1.5 py-0.5 rounded-full bg-base-300 text-base-content/60"
+              class="text-[10px] ml-1 px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground"
             >
               {@user_count}
             </span>
           </.tab_link>
-          <.tab_link active={@active_tab == "apps"} navigate={~p"/admin/apps"}>
+          <.tab_link active={@active_tab == "apps"} navigate={~p"/console/apps"}>
             Apps
             <span
               :if={@app_count}
-              class="text-[10px] ml-1 px-1.5 py-0.5 rounded-full bg-base-300 text-base-content/60"
+              class="text-[10px] ml-1 px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground"
             >
               {@app_count}
             </span>
           </.tab_link>
-          <.tab_link active={@active_tab == "audit"} navigate={~p"/admin/audit"}>
+          <.tab_link active={@active_tab == "audit"} navigate={~p"/console/audit"}>
             Audit Log
           </.tab_link>
-          <.tab_link active={@active_tab == "settings"} navigate={~p"/admin/settings"}>
+          <.tab_link active={@active_tab == "settings"} navigate={~p"/console/settings"}>
             Settings
           </.tab_link>
         </nav>
-        
+
     <!-- Right side -->
         <div class="flex items-center gap-2 px-5 ml-auto">
           <.theme_toggle id="app-theme" />
           <.user_dropdown current_scope={@current_scope} />
         </div>
       </header>
-      
+
     <!-- Body: side panel + content -->
       <div class="flex flex-1 min-h-0">
         <!-- Contextual side panel -->
-        <aside class="w-56 shrink-0 border-r border-base-300 bg-base-200/50 p-4 flex flex-col gap-3 text-sm">
+        <aside class="w-56 shrink-0 border-r border-border bg-sidebar p-4 flex flex-col gap-3 text-sm">
           {render_slot(@side_panel)}
         </aside>
-        
+
     <!-- Page content -->
         <main class="flex-1 overflow-auto p-6">
           <div class="max-w-4xl animate-fade-in">
@@ -195,8 +182,8 @@ defmodule YouWeb.Layouts do
       class={[
         "inline-flex items-center px-3 h-8 rounded-md text-sm font-medium transition-all duration-150",
         if(@active,
-          do: "bg-base-300 text-base-content",
-          else: "text-base-content/50 hover:text-base-content hover:bg-base-300/50"
+          do: "bg-muted text-foreground",
+          else: "text-muted-foreground hover:text-foreground hover:bg-muted/50"
         )
       ]}
     >
@@ -209,35 +196,24 @@ defmodule YouWeb.Layouts do
 
   defp user_dropdown(assigns) do
     ~H"""
-    <div class="dropdown dropdown-end">
-      <button
-        tabindex="0"
-        role="button"
-        class="size-8 rounded-full bg-base-300 flex items-center justify-center text-xs font-medium hover:bg-base-300/80 transition-colors"
-      >
-        <%= if @current_scope do %>
-          {String.at(@current_scope.user.email, 0) |> String.upcase()}
-        <% else %>
-          ?
-        <% end %>
-      </button>
-      <ul
-        tabindex="0"
-        class="dropdown-content menu menu-sm rounded-lg bg-base-100 border border-base-300 shadow-sm w-44 mt-1 z-50"
-      >
-        <%= if @current_scope do %>
-          <li class="px-3 py-2 text-xs text-base-content/50 border-b border-base-300 truncate">
-            {@current_scope.user.email}
-          </li>
-          <li><.link href={~p"/users/settings"} class="px-3 py-2">Settings</.link></li>
-          <li>
-            <.link href={~p"/users/log-out"} method="delete" class="px-3 py-2 text-error">
-              Log out
-            </.link>
-          </li>
-        <% end %>
-      </ul>
-    </div>
+    <.dropdown_menu id="user-menu" align="end">
+      <:trigger>
+        <span class="size-8 rounded-full bg-muted flex items-center justify-center text-xs font-medium hover:bg-muted/80 transition-colors">
+          <%= if @current_scope do %>
+            {String.at(@current_scope.user.email, 0) |> String.upcase()}
+          <% else %>
+            ?
+          <% end %>
+        </span>
+      </:trigger>
+      <div :if={@current_scope} class="px-2 py-1.5 text-xs text-muted-foreground border-b border-border truncate">
+        {@current_scope.user.email}
+      </div>
+      <.menu_item :if={@current_scope} navigate={~p"/users/settings"}>Settings</.menu_item>
+      <.menu_item :if={@current_scope} href={~p"/users/log-out"} method="delete" class="text-destructive">
+        Log out
+      </.menu_item>
+    </.dropdown_menu>
     """
   end
 
@@ -249,10 +225,10 @@ defmodule YouWeb.Layouts do
       id={@id}
       phx-hook="ThemeToggle"
       aria-label="Toggle theme"
-      class="size-8 rounded-lg border border-base-300 flex items-center justify-center hover:bg-base-300/50 transition-colors"
+      class="size-8 rounded-lg border border-border flex items-center justify-center hover:bg-muted/50 transition-colors"
     >
-      <.icon name="moon" class="size-4 text-indigo-400 block dark:hidden" />
-      <.icon name="sun" class="size-4 text-amber-500 hidden dark:block" />
+      <.icon name="moon" class="size-4 text-azure-brand block dark:hidden" />
+      <.icon name="sun" class="size-4 text-signal-warn hidden dark:block" />
     </button>
     """
   end

@@ -21,10 +21,12 @@ defmodule YouWeb.Router do
   scope "/", YouWeb do
     pipe_through :browser
 
-    live "/", LandingLive, :index
+    live_session :public, on_mount: {YouWeb.UserAuth, :default} do
+      live "/", LandingLive, :index
+    end
   end
 
-  scope "/admin", YouWeb do
+  scope "/console", YouWeb do
     pipe_through [:browser, :require_authenticated_user, :require_admin]
 
     live_session :admin, on_mount: {YouWeb.UserAuth, :default} do

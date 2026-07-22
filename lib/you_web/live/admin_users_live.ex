@@ -17,34 +17,30 @@ defmodule YouWeb.AdminUsersLive do
       app_count={0}
     >
       <:side_panel>
-        <div class="text-[11px] font-medium text-base-content/40 uppercase tracking-widest">
+        <div class="text-[11px] font-medium text-muted-foreground uppercase tracking-widest">
           Filters
         </div>
-        <a href="#" class="text-sm text-base-content/60 hover:text-base-content transition-colors">
+        <a href="#" class="text-sm text-muted-foreground hover:text-foreground transition-colors">
           All Users
         </a>
-        <a href="#" class="text-sm text-base-content/60 hover:text-base-content transition-colors">
+        <a href="#" class="text-sm text-muted-foreground hover:text-foreground transition-colors">
           Active
         </a>
-        <a href="#" class="text-sm text-base-content/60 hover:text-base-content transition-colors">
+        <a href="#" class="text-sm text-muted-foreground hover:text-foreground transition-colors">
           Pending
         </a>
-        <a href="#" class="text-sm text-base-content/60 hover:text-base-content transition-colors">
+        <a href="#" class="text-sm text-muted-foreground hover:text-foreground transition-colors">
           Blocked
         </a>
-        <div class="mt-auto pt-4 border-t border-base-300">
-          <button class="btn btn-soft btn-sm w-full justify-center">+ Invite User</button>
+        <div class="mt-auto pt-4 border-t border-border">
+          <.button variant="outline" size="sm" class="w-full justify-center">+ Invite User</.button>
         </div>
       </:side_panel>
 
       <div class="space-y-6">
         <div class="flex items-center justify-between">
           <h2 class="text-xl font-medium tracking-tight">Users</h2>
-          <input
-            type="search"
-            placeholder="Search users..."
-            class="input input-sm max-w-56"
-          />
+          <.base_input type="search" placeholder="Search users..." class="h-8 max-w-56 text-sm" />
         </div>
 
         <.table id="users" rows={@users}>

@@ -65,16 +65,20 @@ defmodule YouWeb.CoreComponents do
       id={@id}
       data-flash
       role="alert"
-      class="toast toast-top toast-end z-50"
+      class="fixed top-4 right-4 z-50 w-80 sm:w-96"
       {@rest}
     >
       <div class={[
-        "alert w-80 sm:w-96 max-w-80 sm:max-w-96 text-wrap",
-        @kind == :info && "alert-info",
-        @kind == :error && "alert-error"
+        "flex items-start gap-3 rounded-lg border p-4 text-sm text-wrap shadow-lg",
+        @kind == :info && "border-azure-brand/30 bg-card text-foreground",
+        @kind == :error && "border-destructive/30 bg-card text-foreground"
       ]}>
-        <.icon :if={@kind == :info} name="info-circle" class="size-5 shrink-0 text-info" />
-        <.icon :if={@kind == :error} name="danger-circle" class="size-5 shrink-0 text-error" />
+        <.icon
+          :if={@kind == :info}
+          name="info-circle"
+          class="size-5 shrink-0 text-azure-brand"
+        />
+        <.icon :if={@kind == :error} name="danger-circle" class="size-5 shrink-0 text-destructive" />
         <div>
           <p :if={@title} class="font-semibold">{@title}</p>
           <p>{msg}</p>
@@ -86,7 +90,7 @@ defmodule YouWeb.CoreComponents do
           aria-label={gettext("close")}
           phx-click={JS.hide()}
         >
-          <.icon name="x" class="size-5 opacity-40 group-hover:opacity-70 text-base-content" />
+          <.icon name="x" class="size-5 opacity-40 group-hover:opacity-70 text-foreground" />
         </button>
       </div>
     </div>
@@ -219,8 +223,8 @@ defmodule YouWeb.CoreComponents do
       end)
 
     ~H"""
-    <div class="fieldset mb-2">
-      <label for={@id}>
+    <div class="mb-2">
+      <label for={@id} class="flex items-center gap-2 text-sm text-foreground">
         <input
           type="hidden"
           name={@name}
@@ -228,17 +232,18 @@ defmodule YouWeb.CoreComponents do
           disabled={@rest[:disabled]}
           form={@rest[:form]}
         />
-        <span class="label">
-          <input
-            type="checkbox"
-            id={@id}
-            name={@name}
-            value="true"
-            checked={@checked}
-            class={@class || "checkbox checkbox-sm"}
-            {@rest}
-          />{@label}
-        </span>
+        <input
+          type="checkbox"
+          id={@id}
+          name={@name}
+          value="true"
+          checked={@checked}
+          class={
+            @class ||
+              "size-4 rounded border border-input text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          }
+          {@rest}
+        />{@label}
       </label>
       <.error :for={msg <- @errors}>{msg}</.error>
     </div>
@@ -247,13 +252,17 @@ defmodule YouWeb.CoreComponents do
 
   def input(%{type: "select"} = assigns) do
     ~H"""
-    <div class="fieldset mb-2">
+    <div class="mb-2">
       <label for={@id}>
-        <span :if={@label} class="label mb-1">{@label}</span>
+        <span :if={@label} class="mb-1 block text-sm font-medium text-foreground">{@label}</span>
         <select
           id={@id}
           name={@name}
-          class={[@class || "w-full select", @errors != [] && (@error_class || "select-error")]}
+          class={[
+            @class ||
+              "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+            @errors != [] && (@error_class || "border-destructive")
+          ]}
           multiple={@multiple}
           {@rest}
         >
@@ -268,15 +277,16 @@ defmodule YouWeb.CoreComponents do
 
   def input(%{type: "textarea"} = assigns) do
     ~H"""
-    <div class="fieldset mb-2">
+    <div class="mb-2">
       <label for={@id}>
-        <span :if={@label} class="label mb-1">{@label}</span>
+        <span :if={@label} class="mb-1 block text-sm font-medium text-foreground">{@label}</span>
         <textarea
           id={@id}
           name={@name}
           class={[
-            @class || "w-full textarea",
-            @errors != [] && (@error_class || "textarea-error")
+            @class ||
+              "flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+            @errors != [] && (@error_class || "border-destructive")
           ]}
           {@rest}
         >{Phoenix.HTML.Form.normalize_value("textarea", @value)}</textarea>
@@ -289,17 +299,18 @@ defmodule YouWeb.CoreComponents do
   # All other inputs text, datetime-local, url, password, etc. are handled here...
   def input(assigns) do
     ~H"""
-    <div class="fieldset mb-2">
+    <div class="mb-2">
       <label for={@id}>
-        <span :if={@label} class="label mb-1">{@label}</span>
+        <span :if={@label} class="mb-1 block text-sm font-medium text-foreground">{@label}</span>
         <input
           type={@type}
           name={@name}
           id={@id}
           value={Phoenix.HTML.Form.normalize_value(@type, @value)}
           class={[
-            @class || "w-full input",
-            @errors != [] && (@error_class || "input-error")
+            @class ||
+              "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+            @errors != [] && (@error_class || "border-destructive")
           ]}
           {@rest}
         />
@@ -312,8 +323,8 @@ defmodule YouWeb.CoreComponents do
   # Helper used by inputs to generate form errors
   defp error(assigns) do
     ~H"""
-    <p class="mt-1.5 flex gap-2 items-center text-sm text-error">
-      <.icon name="danger-circle" class="size-5 text-error" />
+    <p class="mt-1.5 flex gap-2 items-center text-sm text-destructive">
+      <.icon name="danger-circle" class="size-5 text-destructive" />
       {render_slot(@inner_block)}
     </p>
     """
@@ -333,7 +344,7 @@ defmodule YouWeb.CoreComponents do
         <h1 class="text-lg font-semibold leading-8">
           {render_slot(@inner_block)}
         </h1>
-        <p :if={@subtitle != []} class="text-sm text-base-content/70">
+        <p :if={@subtitle != []} class="text-sm text-muted-foreground">
           {render_slot(@subtitle)}
         </p>
       </div>
@@ -374,25 +385,31 @@ defmodule YouWeb.CoreComponents do
       end
 
     ~H"""
-    <table class="table table-zebra">
+    <table class="w-full text-sm">
       <thead>
-        <tr>
-          <th :for={col <- @col}>{col[:label]}</th>
-          <th :if={@action != []}>
+        <tr class="border-b border-border bg-muted/40 text-left">
+          <th :for={col <- @col} class="px-4 py-3 font-medium text-muted-foreground">
+            {col[:label]}
+          </th>
+          <th :if={@action != []} class="px-4 py-3">
             <span class="sr-only">{gettext("Actions")}</span>
           </th>
         </tr>
       </thead>
       <tbody id={@id} phx-update={is_struct(@rows, Phoenix.LiveView.LiveStream) && "stream"}>
-        <tr :for={row <- @rows} id={@row_id && @row_id.(row)}>
+        <tr
+          :for={row <- @rows}
+          id={@row_id && @row_id.(row)}
+          class="border-b border-border odd:bg-muted/20 last:border-0"
+        >
           <td
             :for={col <- @col}
             phx-click={@row_click && @row_click.(row)}
-            class={@row_click && "hover:cursor-pointer"}
+            class={["px-4 py-3", @row_click && "hover:cursor-pointer"]}
           >
             {render_slot(col, @row_item.(row))}
           </td>
-          <td :if={@action != []} class="w-0 font-semibold">
+          <td :if={@action != []} class="w-0 px-4 py-3 font-semibold">
             <div class="flex gap-4">
               <%= for action <- @action do %>
                 {render_slot(action, @row_item.(row))}
@@ -421,11 +438,11 @@ defmodule YouWeb.CoreComponents do
 
   def list(assigns) do
     ~H"""
-    <ul class="list">
-      <li :for={item <- @item} class="list-row">
-        <div class="list-col-grow">
-          <div class="font-bold">{item.title}</div>
-          <div>{render_slot(item)}</div>
+    <ul class="divide-y divide-border">
+      <li :for={item <- @item} class="py-3">
+        <div class="flex-1">
+          <div class="font-semibold text-foreground">{item.title}</div>
+          <div class="text-muted-foreground">{render_slot(item)}</div>
         </div>
       </li>
     </ul>

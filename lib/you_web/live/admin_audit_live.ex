@@ -11,17 +11,17 @@ defmodule YouWeb.AdminAuditLive do
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope} active_tab="audit">
       <:side_panel>
-        <div class="text-[11px] font-medium text-base-content/40 uppercase tracking-widest">
+        <div class="text-[11px] font-medium text-muted-foreground uppercase tracking-widest">
           Audit Log
         </div>
-        <div class="text-xs text-base-content/50 leading-relaxed">
+        <div class="text-xs text-muted-foreground leading-relaxed">
           Track all changes made across your You instance.
         </div>
       </:side_panel>
 
       <div class="space-y-6">
         <h2 class="text-xl font-medium tracking-tight">Audit Log</h2>
-        <p class="text-sm text-base-content/50">No audit events recorded yet.</p>
+        <p class="text-sm text-muted-foreground">No audit events recorded yet.</p>
       </div>
     </Layouts.app>
     """

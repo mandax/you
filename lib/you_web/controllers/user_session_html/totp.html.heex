@@ -1,18 +1,18 @@
 <Layouts.public flash={@flash} current_scope={@current_scope}>
   <div class="mx-auto max-w-sm pt-24 pb-32 space-y-6">
     <div class="text-center">
-      <div class="size-10 rounded-xl bg-neutral text-neutral-content flex items-center justify-center mx-auto mb-4">
+      <div class="size-10 rounded-xl bg-primary text-primary-foreground flex items-center justify-center mx-auto mb-4">
         <span class="text-sm font-bold">Y</span>
       </div>
       <h1 class="text-xl font-medium tracking-tight">Two-Factor Authentication</h1>
-      <p class="text-sm text-base-content/50 mt-2">Enter the code from your authenticator app.</p>
+      <p class="text-sm text-muted-foreground mt-2">Enter the code from your authenticator app.</p>
     </div>
 
     <div
       :if={assigns[:error]}
-      class="rounded-lg border border-error/30 bg-error/5 p-3 text-sm text-error-content flex items-center gap-2"
+      class="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-foreground flex items-center gap-2"
     >
-      <.icon name="danger-circle" class="size-4 shrink-0 text-error" />
+      <.icon name="danger-circle" class="size-4 shrink-0 text-destructive" />
       {@error}
     </div>
 
@@ -27,7 +27,7 @@
           required
           phx-mounted={JS.focus()}
         />
-        <.button class="btn btn-primary w-full">Verify <span aria-hidden="true">→</span></.button>
+        <.button class="w-full">Verify <span aria-hidden="true">→</span></.button>
       </div>
     </.form>
   </div>

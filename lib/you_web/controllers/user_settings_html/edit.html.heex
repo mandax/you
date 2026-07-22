@@ -1,17 +1,17 @@
 <Layouts.app flash={@flash} current_scope={@current_scope} active_tab="settings">
   <:side_panel>
-    <div class="text-[11px] font-medium text-base-content/40 uppercase tracking-widest">
+    <div class="text-[11px] font-medium text-muted-foreground uppercase tracking-widest">
       Settings
     </div>
     <a
       href="#general"
-      class="text-sm text-base-content/60 hover:text-base-content transition-colors"
+      class="text-sm text-muted-foreground hover:text-foreground transition-colors"
     >
       General
     </a>
     <a
       href="#password"
-      class="text-sm text-base-content/60 hover:text-base-content transition-colors"
+      class="text-sm text-muted-foreground hover:text-foreground transition-colors"
     >
       Password
     </a>
@@ -36,7 +36,7 @@
       </.form>
     </section>
 
-    <div class="border-t border-base-300" />
+    <div class="border-t border-border" />
 
     <section id="password">
       <h2 class="text-lg font-medium tracking-tight mb-6">Password</h2>

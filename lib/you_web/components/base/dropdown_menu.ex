@@ -168,7 +168,7 @@ defmodule YouWeb.Components.Base.DropdownMenu do
   attr :class, :any, default: nil
   attr :navigate, :string, default: nil
   attr :href, :any, default: nil
-  attr :rest, :global
+  attr :rest, :global, include: ~w(method download)
 
   slot :inner_block, required: true
 
