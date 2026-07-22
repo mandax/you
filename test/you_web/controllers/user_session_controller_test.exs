@@ -135,6 +135,33 @@ defmodule YouWeb.UserSessionControllerTest do
       assert response =~ "Log in"
       assert response =~ "Invalid email or password"
     end
+
+    test "OAuth callback redirect carries code and echoes state", %{conn: conn, user: user} do
+      user = set_password(user)
+
+      {:ok, _app} =
+        You.Admin.create_app(%{
+          slug: "sockeet",
+          name: "Sockeet",
+          callback_url: "https://sockeet.example.com/auth/callback"
+        })
+
+      conn =
+        conn
+        |> init_test_session(
+          callback_url: "https://sockeet.example.com/auth/callback",
+          scopes: ["email"],
+          state: "opaque-xyz"
+        )
+        |> post(~p"/users/log-in", %{
+          "user" => %{"email" => user.email, "password" => valid_user_password()}
+        })
+
+      location = redirected_to(conn)
+      assert location =~ "https://sockeet.example.com/auth/callback?"
+      assert location =~ "code="
+      assert location =~ "state=opaque-xyz"
+    end
   end
 
   describe "POST /users/log-in - magic link" do

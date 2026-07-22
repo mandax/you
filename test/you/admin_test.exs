@@ -49,6 +49,37 @@ defmodule You.AdminTest do
     end
   end
 
+  describe "lookup_app_by_callback/1" do
+    setup do
+      {:ok, app} =
+        Admin.create_app(%{
+          slug: "sockeet",
+          name: "Sockeet",
+          callback_url: "https://sockeet.example.com/auth/callback"
+        })
+
+      %{app: app}
+    end
+
+    test "matches the exact registered callback", %{app: app} do
+      assert {:ok, found} =
+               Admin.lookup_app_by_callback("https://sockeet.example.com/auth/callback")
+
+      assert found.id == app.id
+    end
+
+    test "rejects a prefix-only match (open-redirect guard)" do
+      # Would have matched under the old String.starts_with?/2 logic.
+      assert :error =
+               Admin.lookup_app_by_callback(
+                 "https://sockeet.example.com/auth/callback.evil.com/x"
+               )
+
+      assert :error =
+               Admin.lookup_app_by_callback("https://sockeet.example.com/auth/callback/sub")
+    end
+  end
+
   describe "bootstrap_admin/2" do
     test "creates user, confirms, and promotes to admin" do
       assert {:ok, user} = Admin.bootstrap_admin("admin@example.com", "a-strong-password!")

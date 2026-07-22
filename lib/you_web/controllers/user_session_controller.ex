@@ -20,6 +20,10 @@ defmodule YouWeb.UserSessionController do
         put_session(conn, :scopes, nil)
       end
 
+    # OAuth CSRF: the consumer's opaque `state` is stashed and echoed back on the
+    # callback redirect, so the consumer can prove the response matches its request.
+    conn = put_session(conn, :state, params["state"])
+
     if conn.assigns[:current_scope] && conn.assigns.current_scope.user &&
          get_session(conn, :callback_url) do
       app_name =
@@ -57,13 +61,13 @@ defmodule YouWeb.UserSessionController do
         if callback_url = safe_callback_url(conn) do
           record_consent_for_app(conn, user)
           scopes = get_session(conn, :scopes) || ["email"]
+          state = get_session(conn, :state)
           {:ok, code} = Accounts.generate_auth_code(user, scopes)
 
           conn
           |> put_flash(:info, info)
           |> UserAuth.create_user_session(user, user_params)
-          |> put_session(:callback_url, nil)
-          |> redirect(external: "#{callback_url}?code=#{code}")
+          |> redirect_with_code(callback_url, code, state)
         else
           conn
           |> put_flash(:info, info)
@@ -98,13 +102,13 @@ defmodule YouWeb.UserSessionController do
         if callback_url = safe_callback_url(conn) do
           record_consent_for_app(conn, user)
           scopes = get_session(conn, :scopes) || ["email"]
+          state = get_session(conn, :state)
           {:ok, code} = Accounts.generate_auth_code(user, scopes)
 
           conn
           |> put_flash(:info, "Welcome back!")
           |> UserAuth.create_user_session(user, user_params)
-          |> put_session(:callback_url, nil)
-          |> redirect(external: "#{callback_url}?code=#{code}")
+          |> redirect_with_code(callback_url, code, state)
         else
           conn
           |> put_flash(:info, "Welcome back!")
@@ -162,6 +166,8 @@ defmodule YouWeb.UserSessionController do
         put_session(conn, :scopes, nil)
       end
 
+    conn = put_session(conn, :state, params["state"])
+
     user = token && Accounts.get_user_by_magic_link_token(token)
 
     if user do
@@ -202,13 +208,13 @@ defmodule YouWeb.UserSessionController do
         if callback_url do
           record_consent_for_app(conn, user)
           scopes = get_session(conn, :scopes) || ["email"]
+          state = get_session(conn, :state)
           {:ok, auth_code} = Accounts.generate_auth_code(user, scopes)
 
           conn
           |> UserAuth.create_user_session(user, %{})
           |> put_session(:totp_user_id, nil)
-          |> put_session(:callback_url, nil)
-          |> redirect(external: "#{callback_url}?code=#{auth_code}")
+          |> redirect_with_code(callback_url, auth_code, state)
         else
           conn
           |> put_flash(:info, "Welcome back!")
@@ -234,17 +240,35 @@ defmodule YouWeb.UserSessionController do
     if user && callback_url do
       record_consent_for_app(conn, user)
       scopes = get_session(conn, :scopes) || ["email"]
+      state = get_session(conn, :state)
       {:ok, code} = Accounts.generate_auth_code(user, scopes)
 
-      conn
-      |> put_session(:callback_url, nil)
-      |> put_session(:scopes, nil)
-      |> redirect(external: "#{callback_url}?code=#{code}")
+      redirect_with_code(conn, callback_url, code, state)
     else
       conn
       |> put_flash(:error, "Session expired, please log in again.")
       |> redirect(to: ~p"/users/log-in")
     end
+  end
+
+  # Redirects back to the consumer's callback with the auth code, echoing the
+  # OAuth `state` for CSRF, and clears the one-shot flow session keys.
+  #
+  # `state` is passed in, not read here: the login paths renew the session
+  # (anti-fixation) before this runs, which would have wiped it. Callers capture
+  # it before mutating the session.
+  defp redirect_with_code(conn, callback_url, code, state) do
+    query =
+      case state do
+        nil -> URI.encode_query(code: code)
+        state -> URI.encode_query(code: code, state: state)
+      end
+
+    conn
+    |> put_session(:callback_url, nil)
+    |> put_session(:scopes, nil)
+    |> put_session(:state, nil)
+    |> redirect(external: "#{callback_url}?#{query}")
   end
 
   defp safe_callback_url(conn) do

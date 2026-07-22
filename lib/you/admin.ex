@@ -103,13 +103,16 @@ defmodule You.Admin do
   end
 
   @doc """
-  Finds the registered app whose callback URL matches the given URL as a prefix.
+  Finds the registered app whose callback URL is an exact match for the given URL.
   Returns `{:ok, app}` or `:error`.
+
+  Exact match, not prefix: a prefix match lets a registered `https://app.com/cb`
+  approve a redirect to `https://app.com/cb.attacker.com/…`, i.e. an open
+  redirect that leaks the auth code. Consumers must register their exact
+  callback URL.
   """
   def lookup_app_by_callback(callback_url) when is_binary(callback_url) do
-    case Enum.find(Repo.all(App), fn app ->
-           String.starts_with?(callback_url, app.callback_url)
-         end) do
+    case Repo.get_by(App, callback_url: callback_url) do
       nil -> :error
       app -> {:ok, app}
     end
