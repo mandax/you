@@ -87,7 +87,7 @@ defmodule YouWeb do
       # Core UI components. `button/1` is superseded by
       # YouWeb.Components.Base.Button (the form-aware `input/1` here is kept —
       # the Base layer's input primitive is the unstyled `base_input/1`).
-      import YouWeb.CoreComponents, except: [button: 1]
+      import YouWeb.CoreComponents
       # MynaUI icons
       import YouWeb.MynauiIcons, only: [icon: 1]
 
