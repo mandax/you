@@ -149,5 +149,22 @@
         </li>
       </ul>
     </section>
+
+    <section class="space-y-4">
+      <div class="flex items-center justify-between">
+        <div>
+          <h2 class="text-lg font-medium">Passkeys</h2>
+          <p class="text-sm text-muted-foreground">
+            Sign in without a password using a fingerprint, face unlock, or security key.
+          </p>
+        </div>
+        <.link
+          navigate={~p"/users/settings/passkeys"}
+          class="text-sm text-foreground hover:underline whitespace-nowrap"
+        >
+          Manage passkeys →
+        </.link>
+      </div>
+    </section>
   </div>
 </Layouts.app>

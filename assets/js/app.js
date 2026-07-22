@@ -59,7 +59,29 @@ const Hooks = {
 
 // ── WebAuthn (Passkey) —────────────────────────────
 
-import {registerPasskey} from "./webauthn"
+import {registerPasskey, authenticatePasskey} from "./webauthn"
+
+// Auto-attach the "Sign in with a passkey" button on the login page
+document.addEventListener("DOMContentLoaded", () => {
+  const btn = document.getElementById("passkey-login")
+  if (!btn) return
+  btn.addEventListener("click", async () => {
+    btn.disabled = true
+    try {
+      const email = document.querySelector("input[name='user[email]']")?.value || undefined
+      await authenticatePasskey(
+        btn.dataset.startUrl || "/users/log-in/passkey/start",
+        btn.dataset.finishUrl || "/users/log-in/passkey/finish",
+        email,
+      )
+    } catch (err) {
+      console.error("Passkey sign-in failed:", err)
+      alert(err.message || "Passkey sign-in failed. Please try again.")
+    } finally {
+      btn.disabled = false
+    }
+  })
+})
 
 // Auto-attach the "Add passkey" button on the settings page
 document.addEventListener("DOMContentLoaded", () => {

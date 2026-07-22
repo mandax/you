@@ -118,11 +118,15 @@ export async function registerPasskey(startUrl, finishUrl, csrfToken, label) {
 // ── Authentication ──────────────────────────────────
 
 export async function authenticatePasskey(startUrl, finishUrl, email) {
+  const csrfToken =
+    document.querySelector("meta[name='csrf-token']")?.getAttribute("content") || ""
+
   // 1. Fetch authentication options from the server
   const body = email ? JSON.stringify({email}) : "{}"
   const startRes = await fetch(startUrl, {
     method: "POST",
     headers: {
+      "X-CSRF-Token": csrfToken,
       "Content-Type": "application/json",
       "Accept": "application/json",
     },
@@ -143,7 +147,7 @@ export async function authenticatePasskey(startUrl, finishUrl, email) {
   const finishRes = await fetch(finishUrl, {
     method: "POST",
     headers: {
-      "X-CSRF-Token": document.querySelector("meta[name='csrf-token']")?.getAttribute("content") || "",
+      "X-CSRF-Token": csrfToken,
       "Content-Type": "application/json",
       "Accept": "application/json",
     },

@@ -15,6 +15,9 @@ defmodule YouWeb.UserSessionControllerTest do
       assert response =~ "Log in"
       assert response =~ ~p"/users/register"
       assert response =~ "Log in with email"
+      # passkey sign-in entry point
+      assert response =~ "Sign in with a passkey"
+      assert response =~ ~p"/users/log-in/passkey/start"
     end
 
     test "shows a federated provider button only when configured", %{conn: conn} do
