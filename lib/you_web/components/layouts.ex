@@ -84,7 +84,7 @@ defmodule YouWeb.Layouts do
 
   attr :active_tab, :string,
     required: true,
-    doc: "one of: dashboard, users, apps, audit, settings"
+    doc: "one of: dashboard, users, apps, orgs, audit, settings"
 
   attr :user_count, :integer, default: nil
   attr :app_count, :integer, default: nil
@@ -131,6 +131,9 @@ defmodule YouWeb.Layouts do
             >
               {@app_count}
             </span>
+          </.tab_link>
+          <.tab_link active={@active_tab == "orgs"} navigate={~p"/console/orgs"}>
+            Orgs
           </.tab_link>
           <.tab_link active={@active_tab == "audit"} navigate={~p"/console/audit"}>
             Audit Log

@@ -39,6 +39,7 @@ defmodule YouWeb.Router do
       live "/settings", AdminSettingsLive, :index
       live "/apps", AdminAppsLive, :index
       live "/users", AdminUsersLive, :index
+      live "/orgs", AdminOrgsLive, :index
       live "/audit", AdminAuditLive, :index
     end
   end

@@ -1,9 +1,28 @@
 defmodule YouWeb.AdminUsersLive do
   use YouWeb, :live_view
 
+  alias You.Admin
+
   @impl true
   def mount(_params, _session, socket) do
-    {:ok, assign(socket, :users, [])}
+    {:ok, load_users(socket)}
+  end
+
+  @impl true
+  def handle_event("promote", %{"id" => id}, socket) do
+    Admin.get_user!(id) |> Admin.promote_admin()
+    {:noreply, socket |> load_users() |> put_flash(:info, "User promoted to admin.")}
+  end
+
+  @impl true
+  def handle_event("demote", %{"id" => id}, socket) do
+    Admin.get_user!(id) |> Admin.demote_admin()
+    {:noreply, socket |> load_users() |> put_flash(:info, "Admin rights revoked.")}
+  end
+
+  defp load_users(socket) do
+    rows = Admin.list_users_with_stats()
+    assign(socket, rows: rows, user_count: length(rows))
   end
 
   @impl true
@@ -13,40 +32,57 @@ defmodule YouWeb.AdminUsersLive do
       flash={@flash}
       current_scope={@current_scope}
       active_tab="users"
-      user_count={0}
-      app_count={0}
+      user_count={@user_count}
     >
       <:side_panel>
         <div class="text-[11px] font-medium text-muted-foreground uppercase tracking-widest">
-          Filters
+          Users
         </div>
-        <a href="#" class="text-sm text-muted-foreground hover:text-foreground transition-colors">
-          All Users
-        </a>
-        <a href="#" class="text-sm text-muted-foreground hover:text-foreground transition-colors">
-          Active
-        </a>
-        <a href="#" class="text-sm text-muted-foreground hover:text-foreground transition-colors">
-          Pending
-        </a>
-        <a href="#" class="text-sm text-muted-foreground hover:text-foreground transition-colors">
-          Blocked
-        </a>
-        <div class="mt-auto pt-4 border-t border-border">
-          <.button variant="outline" size="sm" class="w-full justify-center">+ Invite User</.button>
+        <div class="text-xs text-muted-foreground leading-relaxed">
+          Everyone with an account on this instance, including federated and passkey sign-ins.
         </div>
       </:side_panel>
 
       <div class="space-y-6">
-        <div class="flex items-center justify-between">
-          <h2 class="text-xl font-medium tracking-tight">Users</h2>
-          <.base_input type="search" placeholder="Search users..." class="h-8 max-w-56 text-sm" />
-        </div>
+        <h2 class="text-xl font-medium tracking-tight">Users</h2>
 
-        <.table id="users" rows={@users}>
-          <:col :let={_user} label="Email">—</:col>
-          <:col :let={_user} label="Status">—</:col>
-          <:col :let={_user} label="Apps">—</:col>
+        <p :if={@rows == []} class="text-sm text-muted-foreground">No users yet.</p>
+
+        <.table :if={@rows != []} id="users" rows={@rows}>
+          <:col :let={row} label="Email">{row.user.email}</:col>
+          <:col :let={row} label="Status">
+            <.badge variant={if row.user.confirmed_at, do: "success", else: "warning"}>
+              {if row.user.confirmed_at, do: "confirmed", else: "pending"}
+            </.badge>
+          </:col>
+          <:col :let={row} label="Role">
+            <.badge variant={if row.user.is_admin, do: "info", else: "neutral"}>
+              {if row.user.is_admin, do: "admin", else: "user"}
+            </.badge>
+          </:col>
+          <:col :let={row} label="Passkeys">{row.passkeys}</:col>
+          <:col :let={row} label="Federated">{row.identities}</:col>
+          <:action :let={row}>
+            <.button
+              :if={!row.user.is_admin}
+              variant="ghost"
+              size="xs"
+              phx-click="promote"
+              phx-value-id={row.user.id}
+            >
+              Make admin
+            </.button>
+            <.button
+              :if={row.user.is_admin && row.user.id != @current_scope.user.id}
+              variant="ghost"
+              size="xs"
+              class="text-destructive"
+              phx-click="demote"
+              phx-value-id={row.user.id}
+            >
+              Revoke admin
+            </.button>
+          </:action>
         </.table>
       </div>
     </Layouts.app>
