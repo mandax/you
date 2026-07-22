@@ -22,7 +22,8 @@ config :you, :scopes,
 
 config :you,
   ecto_repos: [You.Repo],
-  generators: [timestamp_type: :utc_datetime]
+  generators: [timestamp_type: :utc_datetime],
+  audit_webhook_url: nil
 
 # Configure the endpoint
 config :you, YouWeb.Endpoint,

@@ -25,6 +25,9 @@ defmodule You.Application do
         children
       end
 
+    # Always include the Streamer — it is a no-op when unconfigured.
+    children = [You.Audit.Streamer | children]
+
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options
     opts = [strategy: :one_for_one, name: You.Supervisor]
