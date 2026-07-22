@@ -1,5 +1,17 @@
 import Config
 
+# Address the dev endpoint binds to. Loopback unless BIND_IP says otherwise —
+# set BIND_IP=0.0.0.0 to reach the dev server from another machine on the LAN.
+# Dev has no auth on the admin unless configured, so only expose on trusted nets.
+bind_ip =
+  System.get_env("BIND_IP", "127.0.0.1")
+  |> String.to_charlist()
+  |> :inet.parse_address()
+  |> case do
+    {:ok, address} -> address
+    {:error, :einval} -> raise "BIND_IP is not a valid IP address"
+  end
+
 # Configure your database
 config :you, You.Repo,
   database: "priv/repo/you_dev.db",
@@ -10,7 +22,7 @@ config :you, You.Repo,
 # For development, we disable any cache and enable
 # debugging and code reloading.
 config :you, YouWeb.Endpoint,
-  http: [ip: {127, 0, 0, 1}],
+  http: [ip: bind_ip],
   check_origin: false,
   code_reloader: true,
   debug_errors: true,
