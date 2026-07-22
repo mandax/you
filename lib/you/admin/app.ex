@@ -12,7 +12,7 @@ defmodule You.Admin.App do
 
   def changeset(app, attrs) do
     app
-    |> cast(attrs, [:slug, :name, :callback_url, :client_secret_hash])
+    |> cast(attrs, [:slug, :name, :callback_url])
     |> validate_required([:slug, :name, :callback_url])
     |> unique_constraint(:slug)
   end

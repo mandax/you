@@ -5,7 +5,7 @@ defmodule You.Admin do
 
   import Ecto.Query, warn: false
   alias You.Repo
-  alias You.Accounts.User
+  alias You.Accounts.{User, Passkey, FederatedIdentity}
   alias You.Admin.App
 
   require Bcrypt
@@ -59,7 +59,8 @@ defmodule You.Admin do
     hashed = :crypto.hash(@hash_algorithm, secret)
 
     %App{}
-    |> App.changeset(Map.put(attrs, :client_secret_hash, hashed))
+    |> App.changeset(attrs)
+    |> Ecto.Changeset.put_change(:client_secret_hash, hashed)
     |> Repo.insert()
     |> case do
       {:ok, app} -> {:ok, app, secret}
@@ -78,7 +79,7 @@ defmodule You.Admin do
     hashed = :crypto.hash(@hash_algorithm, secret)
 
     app
-    |> App.changeset(%{client_secret_hash: hashed})
+    |> Ecto.Changeset.change(client_secret_hash: hashed)
     |> Repo.update()
     |> case do
       {:ok, app} -> {:ok, app, secret}
@@ -87,10 +88,41 @@ defmodule You.Admin do
   end
 
   @doc """
+  Fetches a single user by id, raising if not found.
+  """
+  def get_user!(id), do: Repo.get!(User, id)
+
+  @doc """
   Lists all users.
   """
   def list_users do
-    Repo.all(User)
+    Repo.all(from u in User, order_by: [asc: u.email])
+  end
+
+  @doc """
+  Lists all users with their passkey and federated-identity counts.
+
+  Returns a list of `%{user:, passkeys:, identities:}` maps, ordered by email.
+  Counts are gathered in two grouped queries (no N+1).
+  """
+  def list_users_with_stats do
+    users = Repo.all(from u in User, order_by: [asc: u.email])
+
+    passkey_counts =
+      Repo.all(from p in Passkey, group_by: p.user_id, select: {p.user_id, count(p.id)})
+      |> Map.new()
+
+    identity_counts =
+      Repo.all(from f in FederatedIdentity, group_by: f.user_id, select: {f.user_id, count(f.id)})
+      |> Map.new()
+
+    Enum.map(users, fn u ->
+      %{
+        user: u,
+        passkeys: Map.get(passkey_counts, u.id, 0),
+        identities: Map.get(identity_counts, u.id, 0)
+      }
+    end)
   end
 
   @doc """
@@ -132,6 +164,25 @@ defmodule You.Admin do
   """
   def list_apps do
     Repo.all(App)
+  end
+
+  @doc """
+  Fetches a single app by id, raising if it does not exist.
+  """
+  def get_app!(id), do: Repo.get!(App, id)
+
+  @doc """
+  Deletes a registered app. Returns `{:ok, app}` or `{:error, changeset}`.
+  """
+  def delete_app(%App{} = app) do
+    result = Repo.delete(app)
+
+    :telemetry.execute([:you, :audit, :admin, :action], %{}, %{
+      action: "delete_app",
+      app_slug: app.slug
+    })
+
+    result
   end
 
   @doc """

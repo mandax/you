@@ -43,7 +43,39 @@ defmodule You.Audit.Streamer do
       :no_config
     )
 
-    {:ok, %{}}
+    reload()
+    {:ok, %{recent: []}}
+  end
+
+  @max_recent 100
+
+  @doc """
+  Returns the most recent audit events (newest first), capped at #{@max_recent}.
+
+  In-memory only — this is a live activity view, not a durable log. Durable
+  retention is the job of the outbound webhook (`reload/0`).
+  """
+  def recent do
+    GenServer.call(__MODULE__, :recent)
+  end
+
+  @doc """
+  Refreshes the active webhook URL from the `:audit_webhook_url` instance
+  setting into fast config env. Call after the setting changes so the
+  per-event hot path never touches the database.
+
+  Falls back to the compile-time `config :you, :audit_webhook_url` when the
+  setting is blank.
+  """
+  def reload do
+    url =
+      case You.Settings.get(:audit_webhook_url) do
+        v when is_binary(v) and v != "" -> v
+        _ -> Application.get_env(:you, :audit_webhook_url)
+      end
+
+    Application.put_env(:you, :audit_webhook_url, url)
+    :ok
   end
 
   @doc """
@@ -68,23 +100,33 @@ defmodule You.Audit.Streamer do
 
   @doc false
   def handle_event(event_name, measurements, metadata, _config) do
-    Task.start(fn ->
-      url = Application.get_env(:you, :audit_webhook_url)
+    payload = build_payload(event_name, measurements, metadata)
+    GenServer.cast(__MODULE__, {:record, payload})
 
-      if is_binary(url) and url != "" do
-        payload = build_payload(event_name, measurements, metadata)
-        send_webhook(url, payload)
-      end
-    end)
+    url = Application.get_env(:you, :audit_webhook_url)
+
+    if is_binary(url) and url != "" do
+      Task.start(fn -> send_webhook(url, payload) end)
+    end
 
     :ok
+  end
+
+  @impl true
+  def handle_call(:recent, _from, state) do
+    {:reply, state.recent, state}
+  end
+
+  @impl true
+  def handle_cast({:record, payload}, state) do
+    {:noreply, %{state | recent: Enum.take([payload | state.recent], @max_recent)}}
   end
 
   defp send_webhook(url, payload) do
     case Req.post(url,
            json: payload,
            receive_timeout: 5_000,
-           retry: :never
+           retry: false
          ) do
       {:ok, %{status: status}} when status in 200..299 ->
         :ok

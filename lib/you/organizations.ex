@@ -51,7 +51,22 @@ defmodule You.Organizations do
   Lists all organizations.
   """
   def list_organizations do
-    Repo.all(Organization)
+    Repo.all(from o in Organization, order_by: [asc: o.name])
+  end
+
+  @doc """
+  Lists all organizations with their member count, newest first.
+
+  Returns a list of `{organization, member_count}` tuples.
+  """
+  def list_organizations_with_counts do
+    from(o in Organization,
+      left_join: m in assoc(o, :memberships),
+      group_by: o.id,
+      order_by: [asc: o.name],
+      select: {o, count(m.id)}
+    )
+    |> Repo.all()
   end
 
   @doc """

@@ -19,7 +19,9 @@ defmodule You.Settings do
     magic_link_expiry_minutes: 15,
     erlang_cookie: "",
     erlang_node_name: "you@you.internal",
-    epmd_port: 4369
+    epmd_port: 4369,
+    scim_bearer_token: "",
+    audit_webhook_url: ""
   }
 
   @doc """
