@@ -6,7 +6,7 @@ defmodule You.Accounts do
   import Ecto.Query, warn: false
   alias You.Repo
 
-  alias You.Accounts.{User, UserToken, UserNotifier, RecoveryCode, Consent}
+  alias You.Accounts.{User, UserToken, UserNotifier, RecoveryCode, Consent, FederatedIdentity}
 
   ## Database getters
 
@@ -595,6 +595,96 @@ defmodule You.Accounts do
       _ ->
         {:error, :no_consent}
     end
+  end
+
+  ## Federated Identity
+
+  @doc """
+  Finds or creates a user by federated identity.
+
+  - If a `FederatedIdentity` already exists for the given provider + subject,
+    returns the linked user (idempotent re-login).
+  - If a user with the given email already exists, links the federated identity
+    to that user (account linking).
+  - Otherwise, creates a confirmed user with no password and creates the
+    federated identity record.
+
+  Returns `{:ok, user}` or `{:error, changeset}`.
+  """
+  def find_or_create_user_by_federated_identity(provider, subject, email)
+      when is_binary(provider) and is_binary(subject) and is_binary(email) do
+    case get_federated_identity(provider, subject) do
+      %FederatedIdentity{} = fed ->
+        {:ok, get_user!(fed.user_id)}
+
+      nil ->
+        case do_find_or_create(provider, subject, email) do
+          {:ok, user} -> {:ok, user}
+          {:error, _reason} -> {:error, :transaction_aborted}
+        end
+    end
+  end
+
+  defp do_find_or_create(provider, subject, email) do
+    Repo.transact(fn ->
+      user =
+        case get_user_by_email(email) do
+          %User{} = existing -> existing
+          nil -> insert_confirmed_user!(email)
+        end
+
+      %FederatedIdentity{}
+      |> FederatedIdentity.changeset(%{
+        user_id: user.id,
+        provider: provider,
+        subject: subject,
+        email: email
+      })
+      |> Repo.insert!()
+
+      {:ok, user}
+    end)
+  end
+
+  defp insert_confirmed_user!(email) do
+    %User{}
+    |> User.email_changeset(%{email: email})
+    |> Ecto.Changeset.put_change(:confirmed_at, DateTime.utc_now(:second))
+    |> Repo.insert!()
+  end
+
+  @doc """
+  Gets a federated identity by provider and subject.
+
+  Returns `%FederatedIdentity{}` or `nil`.
+  """
+  def get_federated_identity(provider, subject)
+      when is_binary(provider) and is_binary(subject) do
+    Repo.get_by(FederatedIdentity, provider: provider, subject: subject)
+  end
+
+  @doc """
+  Lists all federated identities for a given user.
+
+  Returns a list of `%FederatedIdentity{}`.
+  """
+  def list_federated_identities_for_user(%User{} = user) do
+    Repo.all(from(f in FederatedIdentity, where: f.user_id == ^user.id))
+  end
+
+  @doc """
+  Deletes a federated identity by provider and subject.
+
+  Returns the number of deleted rows (0 or 1).
+  """
+  def delete_federated_identity(provider, subject)
+      when is_binary(provider) and is_binary(subject) do
+    {count, _} =
+      Repo.delete_all(
+        from(f in FederatedIdentity, where: f.provider == ^provider and f.subject == ^subject)
+      )
+
+    count
   end
 
   ## Token helper

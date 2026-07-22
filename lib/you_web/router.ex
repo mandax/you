@@ -92,6 +92,9 @@ defmodule YouWeb.Router do
   scope "/", YouWeb do
     pipe_through [:browser]
 
+    get "/auth/:provider", FederatedAuthController, :authorize
+    get "/auth/:provider/callback", FederatedAuthController, :callback
+
     get "/users/log-in", UserSessionController, :new
     get "/users/log-in/:token", UserSessionController, :confirm
     post "/users/log-in", UserSessionController, :create
