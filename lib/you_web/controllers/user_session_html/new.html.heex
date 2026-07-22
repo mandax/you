@@ -61,7 +61,7 @@
           required
           phx-mounted={JS.focus()}
         />
-        <.button class="w-full">
+        <.button type="submit" class="w-full">
           Log in with email <span aria-hidden="true">→</span>
         </.button>
       </div>
@@ -91,10 +91,10 @@
           autocomplete="current-password"
           spellcheck="false"
         />
-        <.button class="w-full" name={@form[:remember_me].name} value="true">
+        <.button type="submit" class="w-full" name={@form[:remember_me].name} value="true">
           Log in and stay logged in <span aria-hidden="true">→</span>
         </.button>
-        <.button variant="outline" class="w-full mt-2">
+        <.button type="submit" variant="outline" class="w-full mt-2">
           Log in only this time
         </.button>
       </div>
