@@ -8796,12 +8796,46 @@ removing illegal node: "${(childNode.outerHTML || childNode.nodeValue).trim()}"
     }
   };
 
+  // ../_build/dev/phoenix-colocated/you/YouWeb.LandingLive/48_k4jmbw6b4mwg37ag27pmhfcudq.js
+  var k4jmbw6b4mwg37ag27pmhfcudq_default = {
+    // The two samples have different heights; without this the pane snaps
+    // between them. Capture the outgoing height before LiveView patches the
+    // <pre>, then transition from it to the new natural height.
+    reduced() {
+      return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    },
+    beforeUpdate() {
+      this.prev = this.el.offsetHeight;
+    },
+    updated() {
+      if (this.reduced() || this.prev == null) return;
+      const target = this.el.scrollHeight;
+      if (target === this.prev) return;
+      this.el.style.height = this.prev + "px";
+      void this.el.offsetHeight;
+      this.el.style.transition = "height 240ms ease";
+      this.el.style.height = target + "px";
+      const done = () => {
+        this.el.style.height = "";
+        this.el.style.transition = "";
+        this.el.removeEventListener("transitionend", done);
+        clearTimeout(this.fallback);
+      };
+      this.el.addEventListener("transitionend", done);
+      this.fallback = setTimeout(done, 400);
+    },
+    destroyed() {
+      clearTimeout(this.fallback);
+    }
+  };
+
   // ../_build/dev/phoenix-colocated/you/index.js
   var imp_nbxw623t = {};
   imp_nbxw623t["YouWeb.Components.Base.CopyButton.CopyButton"] = ab4cbd474z5jc7bcq2fewz5he_default;
   imp_nbxw623t["YouWeb.Components.Base.Dialog.Dialog"] = dzgjiq32nc4xvceuoruijkndii_default;
   imp_nbxw623t["YouWeb.Components.Base.DropdownMenu.DropdownMenu"] = cxchekpzupmkes33am6nazq5va_default;
   imp_nbxw623t["YouWeb.Components.Base.Tooltip.Tooltip"] = qsspfro4d5z2i5houqtw2dkbs4_default;
+  imp_nbxw623t["YouWeb.LandingLive.TerminalHeight"] = k4jmbw6b4mwg37ag27pmhfcudq_default;
 
   // js/app.js
   var ThemeToggle = {

@@ -102,11 +102,11 @@ defmodule YouWeb.Components.Bits do
     ~H"""
     <div class={
       cx([
-        "mb-3 inline-flex items-center gap-2 font-mono text-xs uppercase tracking-widest text-cyan-brand",
+        "mb-3 inline-flex items-center gap-2 font-mono text-xs uppercase tracking-widest text-azure-brand",
         @class
       ])
     }>
-      <span class="h-px w-6 bg-cyan-brand/50" />
+      <span class="h-px w-6 bg-azure-brand/50" />
       {render_slot(@inner_block)}
     </div>
     """
@@ -118,7 +118,7 @@ defmodule YouWeb.Components.Bits do
   """
   attr :data, :list, required: true
   attr :area, :boolean, default: true
-  attr :stroke, :string, default: "hsl(var(--brand-cyan))"
+  attr :stroke, :string, default: "hsl(var(--brand-azure))"
   attr :class, :any, default: nil
 
   def sparkline(assigns) do

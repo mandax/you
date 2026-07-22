@@ -21,7 +21,7 @@ defmodule YouWeb.Router do
   scope "/", YouWeb do
     pipe_through :browser
 
-    get "/", PageController, :home
+    live "/", LandingLive, :index
   end
 
   scope "/admin", YouWeb do

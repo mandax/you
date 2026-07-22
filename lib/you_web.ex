@@ -105,6 +105,9 @@ defmodule YouWeb do
       # Shared presentational pieces (eyebrow, status dot, sparkline, …)
       import YouWeb.Components.Bits
 
+      # Public-site chrome (wordmark, nav, footer) shared by landing and docs
+      import YouWeb.Components.SiteChrome
+
       # Common modules used in templates
       alias Phoenix.LiveView.JS
       alias YouWeb.Layouts
