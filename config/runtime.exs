@@ -8,7 +8,9 @@ config :you, YouWeb.Endpoint, http: [port: String.to_integer(System.get_env("POR
 
 # In dev/test, honour PHX_HOST for generated URLs (magic-link emails, OIDC
 # discovery) so links resolve over the LAN/Tailscale, not just localhost.
-if config_env() != :prod and (phx_host = System.get_env("PHX_HOST")) do
+phx_host = System.get_env("PHX_HOST")
+
+if config_env() != :prod and phx_host do
   config :you, YouWeb.Endpoint,
     url: [
       host: phx_host,
