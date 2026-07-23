@@ -145,4 +145,89 @@ defmodule YouWeb.UserSettingsControllerTest do
       assert redirected_to(conn) == ~p"/users/log-in"
     end
   end
+
+  describe "GET /users/settings/totp" do
+    test "renders setup page with QR code and code form", %{conn: conn, user: user} do
+      refute user.totp_enabled
+
+      conn = get(conn, ~p"/users/settings/totp")
+      response = html_response(conn, 200)
+      assert response =~ "<svg"
+      assert response =~ "code"
+    end
+
+    test "redirects if TOTP is already enabled", %{conn: conn, user: user} do
+      {:ok, %{secret: secret}} = Accounts.generate_totp_setup(user)
+      user = Accounts.get_user!(user.id)
+      {:ok, _} = Accounts.enable_totp(user, NimbleTOTP.verification_code(secret))
+
+      conn = get(conn, ~p"/users/settings/totp")
+      assert redirected_to(conn) == ~p"/users/settings"
+
+      assert Phoenix.Flash.get(conn.assigns.flash, :info) =~
+               "already enabled"
+    end
+
+    @tag token_authenticated_at: DateTime.add(DateTime.utc_now(:second), -11, :minute)
+    test "redirects if user is not in sudo mode", %{conn: conn} do
+      conn = get(conn, ~p"/users/settings/totp")
+      assert redirected_to(conn) == ~p"/users/log-in"
+    end
+  end
+
+  describe "POST /users/settings/totp" do
+    test "enables TOTP with a valid code and shows recovery codes", %{conn: conn, user: user} do
+      {:ok, %{secret: secret}} = Accounts.generate_totp_setup(user)
+      valid_code = NimbleTOTP.verification_code(secret)
+
+      conn = post(conn, ~p"/users/settings/totp", %{"code" => valid_code})
+      response = html_response(conn, 200)
+      assert response =~ "Recovery codes"
+      assert response =~ "These codes will not be shown again"
+
+      db_user = Accounts.get_user!(user.id)
+      assert db_user.totp_enabled
+    end
+
+    test "re-renders setup with error on invalid code", %{conn: conn, user: user} do
+      {:ok, _} = Accounts.generate_totp_setup(user)
+
+      conn = post(conn, ~p"/users/settings/totp", %{"code" => "000000"})
+      response = html_response(conn, 200)
+      assert response =~ "Set up authenticator app"
+      assert response =~ "Invalid code"
+
+      db_user = Accounts.get_user!(user.id)
+      refute db_user.totp_enabled
+    end
+
+    @tag token_authenticated_at: DateTime.add(DateTime.utc_now(:second), -11, :minute)
+    test "redirects if user is not in sudo mode", %{conn: conn} do
+      conn = post(conn, ~p"/users/settings/totp", %{"code" => "000000"})
+      assert redirected_to(conn) == ~p"/users/log-in"
+    end
+  end
+
+  describe "DELETE /users/settings/totp" do
+    test "disables TOTP and redirects to settings", %{conn: conn, user: user} do
+      {:ok, %{secret: secret}} = Accounts.generate_totp_setup(user)
+      user = Accounts.get_user!(user.id)
+      {:ok, _} = Accounts.enable_totp(user, NimbleTOTP.verification_code(secret))
+
+      conn = delete(conn, ~p"/users/settings/totp")
+      assert redirected_to(conn) == ~p"/users/settings"
+
+      assert Phoenix.Flash.get(conn.assigns.flash, :info) =~
+               "disabled"
+
+      db_user = Accounts.get_user!(user.id)
+      refute db_user.totp_enabled
+    end
+
+    @tag token_authenticated_at: DateTime.add(DateTime.utc_now(:second), -11, :minute)
+    test "redirects if user is not in sudo mode", %{conn: conn} do
+      conn = delete(conn, ~p"/users/settings/totp")
+      assert redirected_to(conn) == ~p"/users/log-in"
+    end
+  end
 end

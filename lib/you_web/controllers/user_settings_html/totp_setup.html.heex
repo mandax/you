@@ -1,0 +1,47 @@
+<Layouts.app flash={@flash} current_scope={@current_scope} active_tab="settings">
+  <:side_panel>
+    <Layouts.account_nav active="settings" />
+  </:side_panel>
+
+  <div class="space-y-8 max-w-md">
+    <div>
+      <h2 class="text-lg font-medium tracking-tight mb-2">Set up authenticator app</h2>
+      <p class="text-sm text-muted-foreground">
+        Scan this QR code with your authenticator app (Google Authenticator, Authy, 1Password, etc.)
+        or enter the secret key manually.
+      </p>
+    </div>
+
+    <div class="flex justify-center bg-white p-4 rounded-lg border border-border">
+      {raw(@totp_svg)}
+    </div>
+
+    <div class="space-y-2">
+      <label class="text-sm font-medium">Secret key (for manual entry)</label>
+      <div class="font-mono text-sm bg-muted/50 rounded-md px-3 py-2 select-all break-all">
+        {@totp_secret}
+      </div>
+    </div>
+
+    <.form :let={f} for={%{}} action={~p"/users/settings/totp"}>
+      <div class="space-y-4">
+        <.input
+          field={f[:code]}
+          type="text"
+          inputmode="numeric"
+          pattern="[0-9]*"
+          maxlength="6"
+          minlength="6"
+          autocomplete="one-time-code"
+          label="Enter the 6-digit code from your app"
+          placeholder="000000"
+          required
+        />
+
+        <p :if={@totp_error} class="text-sm text-destructive">{@totp_error}</p>
+
+        <.button type="submit" variant="default">Verify and enable</.button>
+      </div>
+    </.form>
+  </div>
+</Layouts.app>

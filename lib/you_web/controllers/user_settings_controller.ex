@@ -115,6 +115,58 @@ defmodule YouWeb.UserSettingsController do
     end
   end
 
+  def totp_setup(conn, _params) do
+    user = conn.assigns.current_scope.user
+
+    if user.totp_enabled do
+      conn
+      |> put_flash(:info, "Two-factor authentication is already enabled.")
+      |> redirect(to: ~p"/users/settings")
+    else
+      {:ok, %{secret: secret, uri: uri}} = Accounts.generate_totp_setup(user)
+
+      totp_svg = EQRCode.encode(uri) |> EQRCode.svg(width: 200)
+
+      conn
+      |> assign(:totp_svg, totp_svg)
+      |> assign(:totp_secret, secret)
+      |> assign(:totp_error, nil)
+      |> render(:totp_setup)
+    end
+  end
+
+  def totp_enable(conn, %{"code" => code}) do
+    user = conn.assigns.current_scope.user
+
+    case Accounts.enable_totp(user, code) do
+      {:ok, %{recovery_codes: recovery_codes}} ->
+        conn
+        |> put_flash(:info, "Two-factor authentication enabled.")
+        |> assign(:recovery_codes, recovery_codes)
+        |> render(:totp_recovery)
+
+      {:error, :invalid_code} ->
+        {:ok, %{secret: secret, uri: uri}} = Accounts.generate_totp_setup(user)
+
+        totp_svg = EQRCode.encode(uri) |> EQRCode.svg(width: 200)
+
+        conn
+        |> assign(:totp_svg, totp_svg)
+        |> assign(:totp_secret, secret)
+        |> assign(:totp_error, "Invalid code. Please try again.")
+        |> render(:totp_setup)
+    end
+  end
+
+  def totp_disable(conn, _params) do
+    user = conn.assigns.current_scope.user
+    {:ok, _user} = Accounts.disable_totp(user)
+
+    conn
+    |> put_flash(:info, "Two-factor authentication disabled.")
+    |> redirect(to: ~p"/users/settings")
+  end
+
   def confirm_email(conn, %{"token" => token}) do
     case Accounts.update_user_email(conn.assigns.current_scope.user, token) do
       {:ok, _user} ->

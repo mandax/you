@@ -1,0 +1,39 @@
+<Layouts.app flash={@flash} current_scope={@current_scope} active_tab="settings">
+  <:side_panel>
+    <Layouts.account_nav active="settings" />
+  </:side_panel>
+
+  <div class="space-y-6 max-w-lg">
+    <div>
+      <h2 class="text-lg font-medium tracking-tight mb-2">Recovery codes</h2>
+      <p class="text-sm text-muted-foreground">
+        Store these recovery codes somewhere safe. Each code can be used once
+        to sign in if you lose access to your authenticator app.
+      </p>
+    </div>
+
+    <div
+      class="rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm text-foreground flex items-start gap-3"
+    >
+      <.icon name="danger-circle" class="size-5 shrink-0 text-destructive mt-0.5" />
+      <div>
+        <strong>These codes will not be shown again.</strong>
+        {" "}Copy or download them now. Without your authenticator app, these are
+        the only way to recover access to your account.
+      </div>
+    </div>
+
+    <div class="grid grid-cols-2 gap-2">
+      <div
+        :for={code <- @recovery_codes}
+        class="font-mono text-sm bg-muted/50 rounded-md px-3 py-1.5 select-all"
+      >
+        {code}
+      </div>
+    </div>
+
+    <.link navigate={~p"/users/settings"} class="inline-flex items-center text-sm text-foreground hover:underline">
+      Done — back to settings
+    </.link>
+  </div>
+</Layouts.app>

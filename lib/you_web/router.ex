@@ -106,6 +106,10 @@ defmodule YouWeb.Router do
     post "/users/settings/passkeys/register/start", WebAuthnController, :start_registration
     post "/users/settings/passkeys/register/finish", WebAuthnController, :finish_registration
     delete "/users/settings/passkeys/:id", WebAuthnController, :delete_passkey
+
+    get "/users/settings/totp", UserSettingsController, :totp_setup
+    post "/users/settings/totp", UserSettingsController, :totp_enable
+    delete "/users/settings/totp", UserSettingsController, :totp_disable
   end
 
   scope "/", YouWeb do

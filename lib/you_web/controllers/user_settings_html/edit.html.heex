@@ -139,6 +139,38 @@
     <section class="space-y-4">
       <div class="flex items-center justify-between">
         <div>
+          <h2 class="text-lg font-medium">Two-factor authentication</h2>
+          <p class="text-sm text-muted-foreground">
+            <%= if @current_scope.user.totp_enabled do %>
+              Authenticator app is enabled.
+            <% else %>
+              Add an extra layer of security by requiring a code from your authenticator app.
+            <% end %>
+          </p>
+        </div>
+        <%= if @current_scope.user.totp_enabled do %>
+          <.link
+            href={~p"/users/settings/totp"}
+            method="delete"
+            data-confirm="Disable two-factor authentication?"
+            class="text-sm text-destructive hover:underline whitespace-nowrap"
+          >
+            Disable
+          </.link>
+        <% else %>
+          <.link
+            navigate={~p"/users/settings/totp"}
+            class="text-sm text-foreground hover:underline whitespace-nowrap"
+          >
+            Set up authenticator app →
+          </.link>
+        <% end %>
+      </div>
+    </section>
+
+    <section class="space-y-4">
+      <div class="flex items-center justify-between">
+        <div>
           <h2 class="text-lg font-medium">Passkeys</h2>
           <p class="text-sm text-muted-foreground">
             Sign in without a password using a fingerprint, face unlock, or security key.
