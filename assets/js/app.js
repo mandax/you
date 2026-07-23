@@ -2,6 +2,39 @@
 
 // Include phoenix_html to handle method=PUT/DELETE in forms and buttons.
 import "phoenix_html"
+
+// ── Auto-dismiss flash toasts ──────────────────────────────────
+// Works on both LiveView and controller (dead-view) pages: scan the initial
+// DOM and observe later insertions (LiveView), then fade + hide each toast.
+const FLASH_TIMEOUT_MS = 5000
+
+function armFlash(el) {
+  if (el.dataset.flashArmed) return
+  el.dataset.flashArmed = "1"
+  setTimeout(() => {
+    el.style.transition = "opacity 300ms ease, transform 300ms ease"
+    el.style.opacity = "0"
+    el.style.transform = "translateY(-6px)"
+    setTimeout(() => {
+      el.style.display = "none"
+    }, 320)
+  }, FLASH_TIMEOUT_MS)
+}
+
+function scanFlashes(root) {
+  if (root.matches && root.matches("[data-flash]")) armFlash(root)
+  root.querySelectorAll && root.querySelectorAll("[data-flash]").forEach(armFlash)
+}
+
+document.addEventListener("DOMContentLoaded", () => scanFlashes(document))
+
+new MutationObserver((mutations) => {
+  for (const m of mutations) {
+    for (const node of m.addedNodes) {
+      if (node.nodeType === 1) scanFlashes(node)
+    }
+  }
+}).observe(document.documentElement, {childList: true, subtree: true})
 // Establish Phoenix Socket and LiveView configuration.
 import {Socket} from "phoenix"
 import {LiveSocket} from "phoenix_live_view"
