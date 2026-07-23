@@ -19,7 +19,7 @@
     <div class="space-y-2">
       <label class="text-sm font-medium">Secret key (for manual entry)</label>
       <div class="font-mono text-sm bg-muted/50 rounded-md px-3 py-2 select-all break-all">
-        {@totp_secret}
+        {Base.encode32(@totp_secret, padding: false)}
       </div>
     </div>
 
