@@ -167,6 +167,22 @@ defmodule YouWeb.UserSettingsController do
     |> redirect(to: ~p"/users/settings")
   end
 
+  def email_2fa_enable(conn, _params) do
+    {:ok, _user} = Accounts.enable_email_2fa(conn.assigns.current_scope.user)
+
+    conn
+    |> put_flash(:info, "Email verification codes enabled.")
+    |> redirect(to: ~p"/users/settings")
+  end
+
+  def email_2fa_disable(conn, _params) do
+    {:ok, _user} = Accounts.disable_email_2fa(conn.assigns.current_scope.user)
+
+    conn
+    |> put_flash(:info, "Email verification codes disabled.")
+    |> redirect(to: ~p"/users/settings")
+  end
+
   def confirm_email(conn, %{"token" => token}) do
     case Accounts.update_user_email(conn.assigns.current_scope.user, token) do
       {:ok, _user} ->

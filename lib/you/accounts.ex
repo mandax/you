@@ -516,6 +516,66 @@ defmodule You.Accounts do
     end)
   end
 
+  ## Email 2FA (one-time code emailed as a second factor)
+
+  @email_2fa_validity_minutes 10
+
+  @doc "Turns on email-based 2FA (a code emailed at each password login)."
+  def enable_email_2fa(%User{} = user) do
+    user |> Ecto.Changeset.change(email_2fa_enabled: true) |> Repo.update()
+  end
+
+  @doc "Turns off email-based 2FA and clears any outstanding codes."
+  def disable_email_2fa(%User{} = user) do
+    Repo.delete_all(from t in UserToken, where: t.user_id == ^user.id and t.context == "email_2fa")
+    user |> Ecto.Changeset.change(email_2fa_enabled: false) |> Repo.update()
+  end
+
+  @doc """
+  Generates a fresh 6-digit email 2FA code, stores its hash (superseding any
+  previous one), and emails the plaintext code to the user. Returns `:ok`.
+  """
+  def send_email_2fa_code(%User{} = user) do
+    code = generate_numeric_code(6)
+    hash = :crypto.hash(:sha256, code)
+
+    Repo.delete_all(from t in UserToken, where: t.user_id == ^user.id and t.context == "email_2fa")
+    Repo.insert!(%UserToken{token: hash, context: "email_2fa", sent_to: user.email, user_id: user.id})
+
+    UserNotifier.deliver_email_2fa_code(user, code)
+    :ok
+  end
+
+  @doc """
+  Verifies an email 2FA code. On success the code is consumed (single-use).
+  Returns `:ok` or `{:error, :invalid_code}`.
+  """
+  def verify_email_2fa_code(%User{} = user, code) when is_binary(code) do
+    hash = :crypto.hash(:sha256, code)
+    cutoff = DateTime.add(DateTime.utc_now(), -@email_2fa_validity_minutes * 60, :second)
+
+    query =
+      from t in UserToken,
+        where:
+          t.user_id == ^user.id and t.context == "email_2fa" and
+            t.token == ^hash and t.inserted_at > ^cutoff
+
+    case Repo.one(query) do
+      nil -> {:error, :invalid_code}
+      token -> Repo.delete!(token) && :ok
+    end
+  end
+
+  defp generate_numeric_code(digits) do
+    max = Integer.pow(10, digits)
+
+    :crypto.strong_rand_bytes(8)
+    |> :binary.decode_unsigned()
+    |> rem(max)
+    |> Integer.to_string()
+    |> String.pad_leading(digits, "0")
+  end
+
   @doc """
   Anonymizes a user's personal data for LGPD right to deletion.
 

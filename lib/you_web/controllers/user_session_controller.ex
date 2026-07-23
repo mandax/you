@@ -138,26 +138,23 @@ defmodule YouWeb.UserSessionController do
         result: :success
       })
 
-      if user.totp_enabled do
-        conn
-        |> put_session(:totp_user_id, user.id)
-        |> redirect(to: ~p"/users/log-in/totp")
-      else
-        if callback_url = safe_callback_url(conn) do
-          record_consent_for_app(conn, user)
-          scopes = get_session(conn, :scopes) || ["email"]
-          state = get_session(conn, :state)
-          {:ok, code} = Accounts.generate_auth_code(user, scopes, get_session(conn, :code_challenge))
+      cond do
+        user.totp_enabled ->
+          conn
+          |> put_session(:totp_user_id, user.id)
+          |> redirect(to: ~p"/users/log-in/totp")
+
+        user.email_2fa_enabled ->
+          Accounts.send_email_2fa_code(user)
 
           conn
-          |> put_flash(:info, "Welcome back!")
-          |> UserAuth.create_user_session(user, user_params)
-          |> redirect_with_code(callback_url, code, state)
-        else
+          |> put_session(:email_2fa_user_id, user.id)
+          |> redirect(to: ~p"/users/log-in/email-2fa")
+
+        true ->
           conn
           |> put_flash(:info, "Welcome back!")
-          |> UserAuth.log_in_user(user, user_params)
-        end
+          |> YouWeb.OAuthFlow.complete_login(user, user_params)
       end
     else
       :telemetry.execute([:you, :audit, :login, :attempt], %{}, %{
@@ -302,6 +299,58 @@ defmodule YouWeb.UserSessionController do
       conn
       |> put_flash(:error, "Session expired, please log in again.")
       |> redirect(to: ~p"/users/log-in")
+    end
+  end
+
+  # ── Email 2FA (second factor: a code emailed after password login) ──
+
+  def email_2fa(conn, _params) do
+    if get_session(conn, :email_2fa_user_id) do
+      render(conn, :email_2fa, form: Phoenix.Component.to_form(%{}, as: "email_2fa"))
+    else
+      conn
+      |> put_flash(:error, "Session expired, please log in again.")
+      |> redirect(to: ~p"/users/log-in")
+    end
+  end
+
+  def verify_email_2fa(conn, %{"email_2fa" => %{"code" => code}}) do
+    user_id = get_session(conn, :email_2fa_user_id)
+
+    if user_id do
+      user = Accounts.get_user!(user_id)
+
+      case Accounts.verify_email_2fa_code(user, code) do
+        :ok ->
+          conn
+          |> put_session(:email_2fa_user_id, nil)
+          |> put_flash(:info, "Welcome back!")
+          |> YouWeb.OAuthFlow.complete_login(user)
+
+        {:error, :invalid_code} ->
+          render(conn, :email_2fa,
+            form: Phoenix.Component.to_form(%{}, as: "email_2fa"),
+            error: "Invalid or expired code. Please try again."
+          )
+      end
+    else
+      conn
+      |> put_flash(:error, "Session expired, please log in again.")
+      |> redirect(to: ~p"/users/log-in")
+    end
+  end
+
+  def resend_email_2fa(conn, _params) do
+    case get_session(conn, :email_2fa_user_id) do
+      nil ->
+        redirect(conn, to: ~p"/users/log-in")
+
+      user_id ->
+        user_id |> Accounts.get_user!() |> Accounts.send_email_2fa_code()
+
+        conn
+        |> put_flash(:info, "A new code has been sent to your email.")
+        |> redirect(to: ~p"/users/log-in/email-2fa")
     end
   end
 

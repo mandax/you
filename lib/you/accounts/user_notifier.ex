@@ -48,6 +48,27 @@ defmodule You.Accounts.UserNotifier do
     end
   end
 
+  @doc """
+  Deliver a one-time email 2FA code.
+  """
+  def deliver_email_2fa_code(user, code) do
+    deliver(user.email, "Your verification code", """
+
+    ==============================
+
+    Hi #{user.email},
+
+    Your verification code is:
+
+    #{code}
+
+    It expires in 10 minutes. If you didn't try to sign in, ignore this email
+    and consider changing your password.
+
+    ==============================
+    """)
+  end
+
   defp deliver_magic_link_instructions(user, url) do
     deliver(user.email, "Log in instructions", """
 

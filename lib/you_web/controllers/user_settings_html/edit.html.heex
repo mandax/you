@@ -171,6 +171,39 @@
     <section class="space-y-4">
       <div class="flex items-center justify-between">
         <div>
+          <h2 class="text-lg font-medium">Email verification codes</h2>
+          <p class="text-sm text-muted-foreground">
+            <%= if @current_scope.user.email_2fa_enabled do %>
+              A one-time code is emailed to you at each password sign-in.
+            <% else %>
+              Require a one-time code sent to your email at each password sign-in.
+            <% end %>
+          </p>
+        </div>
+        <%= if @current_scope.user.email_2fa_enabled do %>
+          <.link
+            href={~p"/users/settings/email-2fa"}
+            method="delete"
+            data-confirm="Turn off email verification codes?"
+            class="text-sm text-destructive hover:underline whitespace-nowrap"
+          >
+            Disable
+          </.link>
+        <% else %>
+          <.link
+            href={~p"/users/settings/email-2fa"}
+            method="post"
+            class="text-sm text-foreground hover:underline whitespace-nowrap"
+          >
+            Enable →
+          </.link>
+        <% end %>
+      </div>
+    </section>
+
+    <section class="space-y-4">
+      <div class="flex items-center justify-between">
+        <div>
           <h2 class="text-lg font-medium">Passkeys</h2>
           <p class="text-sm text-muted-foreground">
             Sign in without a password using a fingerprint, face unlock, or security key.

@@ -110,6 +110,8 @@ defmodule YouWeb.Router do
     get "/users/settings/totp", UserSettingsController, :totp_setup
     post "/users/settings/totp", UserSettingsController, :totp_enable
     delete "/users/settings/totp", UserSettingsController, :totp_disable
+    post "/users/settings/email-2fa", UserSettingsController, :email_2fa_enable
+    delete "/users/settings/email-2fa", UserSettingsController, :email_2fa_disable
   end
 
   scope "/", YouWeb do
@@ -125,6 +127,9 @@ defmodule YouWeb.Router do
     put "/users/reset-password/:token", UserResetPasswordController, :update
     get "/users/log-in/totp", UserSessionController, :totp
     post "/users/log-in/totp", UserSessionController, :verify_totp
+    get "/users/log-in/email-2fa", UserSessionController, :email_2fa
+    post "/users/log-in/email-2fa", UserSessionController, :verify_email_2fa
+    post "/users/log-in/email-2fa/resend", UserSessionController, :resend_email_2fa
     post "/users/log-in/authorize", UserSessionController, :authorize_action
     delete "/users/log-out", UserSessionController, :delete
 
