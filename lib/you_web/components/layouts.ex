@@ -138,6 +138,55 @@ defmodule YouWeb.Layouts do
   # Components
   # ──────────────────────────────────────────────
 
+  @doc """
+  Shared account-area side nav, used by every signed-in user page (dashboard,
+  settings, passkeys) so they cross-link and feel like one section.
+  """
+  attr :active, :string, default: nil, doc: "one of: dashboard, settings, passkeys"
+
+  def account_nav(assigns) do
+    ~H"""
+    <div class="text-[11px] font-medium text-muted-foreground uppercase tracking-widest mb-1">
+      Account
+    </div>
+    <.account_link navigate={~p"/users/dashboard"} icon="lucide-grid-2x2" active={@active == "dashboard"}>
+      Your apps
+    </.account_link>
+    <.account_link navigate={~p"/users/settings"} icon="lucide-settings" active={@active == "settings"}>
+      Settings
+    </.account_link>
+    <.account_link
+      navigate={~p"/users/settings/passkeys"}
+      icon="lucide-key-round"
+      active={@active == "passkeys"}
+    >
+      Passkeys
+    </.account_link>
+    """
+  end
+
+  attr :navigate, :string, required: true
+  attr :icon, :string, required: true
+  attr :active, :boolean, default: false
+  slot :inner_block, required: true
+
+  defp account_link(assigns) do
+    ~H"""
+    <.link
+      navigate={@navigate}
+      class={[
+        "flex items-center gap-2.5 rounded-md px-2.5 h-8 text-sm transition-colors",
+        if(@active,
+          do: "bg-muted text-foreground font-medium",
+          else: "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+        )
+      ]}
+    >
+      <span class={[@icon, "size-4 block shrink-0"]} /> {render_slot(@inner_block)}
+    </.link>
+    """
+  end
+
   attr :current_scope, :map, default: nil
 
   defp user_dropdown(assigns) do

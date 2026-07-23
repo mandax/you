@@ -1,14 +1,6 @@
 <Layouts.app flash={@flash} current_scope={@current_scope} active_tab="settings">
   <:side_panel>
-    <div class="text-[11px] font-medium text-muted-foreground uppercase tracking-widest">
-      Settings
-    </div>
-    <a
-      href="#passkeys"
-      class="text-sm text-muted-foreground hover:text-foreground transition-colors"
-    >
-      Passkeys
-    </a>
+    <Layouts.account_nav active="passkeys" />
   </:side_panel>
 
   <div class="space-y-8">

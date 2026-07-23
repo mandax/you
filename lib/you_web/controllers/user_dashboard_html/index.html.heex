@@ -1,4 +1,8 @@
 <Layouts.app flash={@flash} current_scope={@current_scope}>
+  <:side_panel>
+    <Layouts.account_nav active="dashboard" />
+  </:side_panel>
+
   <div class="space-y-6">
     <div>
       <h1 class="text-xl font-medium tracking-tight">Your apps</h1>
