@@ -202,7 +202,7 @@ defmodule YouWeb.UserAuth do
     end
   end
 
-  defp signed_in_path(_conn), do: ~p"/"
+  defp signed_in_path(_conn), do: ~p"/users/dashboard"
 
   @doc """
   Plug for routes that require the user to be authenticated.

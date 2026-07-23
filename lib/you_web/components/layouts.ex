@@ -48,7 +48,7 @@ defmodule YouWeb.Layouts do
             <div class="flex items-center gap-3 ml-2">
               <.theme_toggle id="public-theme" />
               <%= if @current_scope do %>
-                <.button size="sm" navigate={~p"/console"}>Console</.button>
+                <.button size="sm" navigate={~p"/users/dashboard"}>Dashboard</.button>
               <% else %>
                 <.link
                   navigate={~p"/users/log-in"}
@@ -82,13 +82,10 @@ defmodule YouWeb.Layouts do
   attr :flash, :map, default: %{}, doc: "flash messages"
   attr :current_scope, :map, default: nil, doc: "the current user scope"
 
-  attr :active_tab, :string,
-    required: true,
-    doc: "one of: dashboard, users, apps, orgs, audit, settings"
-
+  attr :active_tab, :string, default: nil, doc: "legacy, unused"
   attr :user_count, :integer, default: nil
   attr :app_count, :integer, default: nil
-  slot :side_panel, required: true, doc: "contextual sidebar content for the active tab"
+  slot :side_panel, doc: "optional contextual sidebar content"
   slot :inner_block, required: true
 
   def app(assigns) do
@@ -115,10 +112,12 @@ defmodule YouWeb.Layouts do
         </div>
       </header>
 
-    <!-- Body: side panel + content -->
+    <!-- Body: optional side panel + content -->
       <div class="flex flex-1 min-h-0">
-        <!-- Contextual side panel -->
-        <aside class="w-56 shrink-0 border-r border-border bg-sidebar p-4 flex flex-col gap-3 text-sm">
+        <aside
+          :if={@side_panel != []}
+          class="w-56 shrink-0 border-r border-border bg-sidebar p-4 flex flex-col gap-3 text-sm"
+        >
           {render_slot(@side_panel)}
         </aside>
 
@@ -156,7 +155,15 @@ defmodule YouWeb.Layouts do
       <div :if={@current_scope} class="px-2 py-1.5 text-xs text-muted-foreground border-b border-border truncate">
         {@current_scope.user.email}
       </div>
+      <.menu_item :if={@current_scope} navigate={~p"/users/dashboard"}>Dashboard</.menu_item>
       <.menu_item :if={@current_scope} navigate={~p"/users/settings"}>Settings</.menu_item>
+      <.menu_item
+        :if={@current_scope && @current_scope.user.is_admin}
+        navigate={~p"/console"}
+        class="text-primary"
+      >
+        Console
+      </.menu_item>
       <.menu_item :if={@current_scope} href={~p"/users/log-out"} method="delete" class="text-destructive">
         Log out
       </.menu_item>

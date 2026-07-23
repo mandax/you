@@ -38,7 +38,7 @@ defmodule YouWeb.Components.SiteChrome do
           <.link href="/#faq" class="hover:text-foreground">FAQ</.link>
         </nav>
         <div class="flex items-center gap-2">
-          <.button :if={@current_scope} size="sm" navigate={~p"/console"}>Dashboard</.button>
+          <.button :if={@current_scope} size="sm" navigate={~p"/users/dashboard"}>Dashboard</.button>
           <.button :if={!@current_scope} size="sm" href="/#pricing">Self-host You</.button>
         </div>
       </div>
