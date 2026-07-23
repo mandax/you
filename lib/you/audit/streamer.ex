@@ -43,8 +43,15 @@ defmodule You.Audit.Streamer do
       :no_config
     )
 
+    # Load the webhook setting after init returns, so a DB/settings hiccup at
+    # boot degrades gracefully instead of crashing the streamer.
+    {:ok, %{recent: []}, {:continue, :reload}}
+  end
+
+  @impl true
+  def handle_continue(:reload, state) do
     reload()
-    {:ok, %{recent: []}}
+    {:noreply, state}
   end
 
   @max_recent 100
@@ -54,9 +61,14 @@ defmodule You.Audit.Streamer do
 
   In-memory only — this is a live activity view, not a durable log. Durable
   retention is the job of the outbound webhook (`reload/0`).
+
+  Degrades to `[]` if the streamer process is unavailable — a live activity
+  view must never take down the page that shows it.
   """
   def recent do
     GenServer.call(__MODULE__, :recent)
+  catch
+    :exit, _ -> []
   end
 
   @doc """
@@ -69,8 +81,12 @@ defmodule You.Audit.Streamer do
   """
   def reload do
     url =
-      case You.Settings.get(:audit_webhook_url) do
-        v when is_binary(v) and v != "" -> v
+      try do
+        case You.Settings.get(:audit_webhook_url) do
+          v when is_binary(v) and v != "" -> v
+          _ -> Application.get_env(:you, :audit_webhook_url)
+        end
+      rescue
         _ -> Application.get_env(:you, :audit_webhook_url)
       end
 

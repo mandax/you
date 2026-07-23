@@ -41,6 +41,19 @@ defmodule You.Audit.StreamerTest do
     end
   end
 
+  describe "recent/0" do
+    test "returns [] instead of crashing when the streamer is unavailable" do
+      # Stop the supervised streamer; the supervisor restarts it, but recent/0
+      # must never raise in the interim — a stopped or freshly-restarted
+      # streamer both yield an empty list.
+      ref = Process.monitor(Process.whereis(Streamer))
+      GenServer.stop(Streamer)
+      assert_receive {:DOWN, ^ref, :process, _, _}
+
+      assert Streamer.recent() == []
+    end
+  end
+
   describe "when unconfigured" do
     setup do
       # Ensure the webhook URL is nil for these tests (default)
