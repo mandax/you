@@ -106,4 +106,82 @@ defmodule You.HeadlessAuthTest do
                })
     end
   end
+
+  describe "register (headless sign-up grant)" do
+    test "first-party app + valid params creates an unconfirmed user and returns a bundle" do
+      {app, secret} = first_party_app()
+      email = AccountsFixtures.unique_user_email()
+      password = AccountsFixtures.valid_user_password()
+
+      assert {:ok, bundle} =
+               GenServer.call(You.IAM.Server, {:register, app.slug, secret, %{
+                 email: email,
+                 password: password,
+                 scopes: ["email"]
+               }})
+
+      assert bundle.user_id
+      assert bundle.email == email
+      assert is_binary(bundle.jwt)
+      assert is_binary(bundle.refresh_token)
+
+      # The user must be unconfirmed.
+      user = Repo.get!(You.Accounts.User, bundle.user_id)
+      assert is_nil(user.confirmed_at)
+    end
+
+    test "duplicate email is :email_taken" do
+      {app, secret} = first_party_app()
+      email = AccountsFixtures.unique_user_email()
+
+      # First registration succeeds.
+      assert {:ok, _} =
+               GenServer.call(You.IAM.Server, {:register, app.slug, secret, %{
+                 email: email,
+                 password: AccountsFixtures.valid_user_password()
+               }})
+
+      # Second with same email fails.
+      assert {:error, :email_taken} =
+               GenServer.call(You.IAM.Server, {:register, app.slug, secret, %{
+                 email: email,
+                 password: AccountsFixtures.valid_user_password()
+               }})
+    end
+
+    test "short password is :invalid_registration" do
+      {app, secret} = first_party_app()
+
+      assert {:error, :invalid_registration} =
+               GenServer.call(You.IAM.Server, {:register, app.slug, secret, %{
+                 email: AccountsFixtures.unique_user_email(),
+                 password: "short"
+               }})
+    end
+
+    test "a non-first-party app is refused" do
+      {:ok, app, secret} =
+        You.Admin.create_app(%{
+          slug: "tp-reg-#{System.unique_integer([:positive])}",
+          name: "Third Party",
+          callback_url: "https://tp.example.com/cb"
+        })
+
+      assert {:error, :not_first_party} =
+               GenServer.call(You.IAM.Server, {:register, app.slug, secret, %{
+                 email: AccountsFixtures.unique_user_email(),
+                 password: AccountsFixtures.valid_user_password()
+               }})
+    end
+
+    test "wrong client secret is invalid_client" do
+      {app, _secret} = first_party_app()
+
+      assert {:error, :invalid_client} =
+               GenServer.call(You.IAM.Server, {:register, app.slug, "wrong-secret", %{
+                 email: AccountsFixtures.unique_user_email(),
+                 password: AccountsFixtures.valid_user_password()
+               }})
+    end
+  end
 end

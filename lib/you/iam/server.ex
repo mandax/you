@@ -95,6 +95,25 @@ defmodule You.IAM.Server do
     GenServer.call(__MODULE__, {:password_login, client_id, client_secret, params})
   end
 
+  @doc """
+  Headless registration (sign-up) for a trusted **first-party** app: creates a
+  new user with the given email + password and returns a token bundle, so the
+  consumer app owns the whole sign-up experience ("invisible You").
+
+  The created user is **unconfirmed** (`confirmed_at: nil`) because the email is
+  not yet verified at sign-up.  `params` is a map (atom or string keys) with
+  `email`, `password`, and optional `scopes` (list or space string).
+
+  Returns `{:ok, %{user_id, email, jwt, refresh_token}}` or `{:error, reason}`
+  where reason is `:invalid_client` | `:not_first_party` |
+  `:email_taken` | `:invalid_registration`.  Only apps flagged `first_party`
+  may use this — third-party apps must go through the redirect + consent flow.
+  """
+  def register(client_id, client_secret, params)
+      when is_binary(client_id) and is_binary(client_secret) and is_map(params) do
+    GenServer.call(__MODULE__, {:register, client_id, client_secret, params})
+  end
+
   # Server
 
   def start_link(opts) do
@@ -283,6 +302,61 @@ defmodule You.IAM.Server do
     end
 
     {:reply, result, state}
+  end
+
+  @doc false
+  def handle_call({:register, client_id, client_secret, params}, _from, state) do
+    email = params[:email] || params["email"]
+    password = params[:password] || params["password"]
+    scopes = normalize_scopes(params)
+
+    result =
+      with {:ok, _app} <- verify_first_party_client(client_id, client_secret),
+           {:ok, user} <- create_user(email, password) do
+        refresh = Accounts.create_refresh_token(user, scopes)
+
+        :telemetry.execute([:you, :audit, :login, :attempt], %{}, %{
+          user_id: user.id,
+          email: user.email,
+          method: "headless-register:#{client_id}",
+          result: :success
+        })
+
+        {:ok, token_bundle(user, scopes, refresh)}
+      end
+
+    with {:error, reason} <- result do
+      :telemetry.execute([:you, :audit, :login, :attempt], %{}, %{
+        method: "headless-register:#{client_id}",
+        result: :failure,
+        reason: reason
+      })
+    end
+
+    {:reply, result, state}
+  end
+
+  # Creates a user with the given email and password inside a transaction.
+  # The user is created unconfirmed (confirmed_at nil). Returns
+  # `{:ok, user}` or `{:error, :email_taken | :invalid_registration}`.
+  defp create_user(email, password) do
+    Repo.transact(fn ->
+      with {:ok, user} <- Accounts.register_user(%{email: email}),
+           {:ok, {user, _tokens}} <- Accounts.update_user_password(user, %{password: password}) do
+        {:ok, user}
+      else
+        {:error, changeset} ->
+          reason =
+            if Enum.any?(changeset.errors, fn
+                 {:email, {"has already been taken", _}} -> true
+                 _ -> false
+               end),
+               do: :email_taken,
+               else: :invalid_registration
+
+          {:error, reason}
+      end
+    end)
   end
 
   # Verifies the app slug + secret AND that the app is trusted first-party.

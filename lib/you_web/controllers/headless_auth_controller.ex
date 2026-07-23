@@ -40,6 +40,36 @@ defmodule YouWeb.HeadlessAuthController do
     end
   end
 
+  @doc """
+  POST /api/auth/register
+
+  Same client-auth mechanism as `login/2`. Body: `email`, `password`,
+  optional `scope` (space-separated).  Creates an unconfirmed user and
+  returns a token bundle on success (HTTP 201).
+  """
+  def register(conn, params) do
+    {client_id, client_secret} = client_auth(conn, params)
+
+    case You.IAM.Server.register(client_id, client_secret, params) do
+      {:ok, bundle} ->
+        conn
+        |> put_status(:created)
+        |> json(%{
+          access_token: bundle.jwt,
+          token_type: "Bearer",
+          refresh_token: bundle.refresh_token,
+          user: %{id: bundle.user_id, email: bundle.email}
+        })
+
+      {:error, reason} ->
+        {status, body} = error_response(reason)
+
+        conn
+        |> put_status(status)
+        |> json(body)
+    end
+  end
+
   # Prefer HTTP Basic client auth; fall back to body params. Always returns
   # binaries so the IAM guard clause matches (empty → invalid_client).
   defp client_auth(conn, params) do
@@ -48,6 +78,12 @@ defmodule YouWeb.HeadlessAuthController do
       :error -> {to_string(params["client_id"] || ""), to_string(params["client_secret"] || "")}
     end
   end
+
+  defp error_response(:email_taken),
+    do: {:conflict, %{error: "email_taken"}}
+
+  defp error_response(:invalid_registration),
+    do: {:unprocessable_entity, %{error: "invalid_registration"}}
 
   defp error_response(:mfa_required),
     do: {:unauthorized, %{error: "mfa_required", error_description: "A TOTP code is required."}}

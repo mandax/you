@@ -75,6 +75,7 @@ defmodule YouWeb.Router do
     pipe_through :api
 
     post "/login", HeadlessAuthController, :login
+    post "/register", HeadlessAuthController, :register
   end
 
   ## Authentication routes

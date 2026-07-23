@@ -71,6 +71,22 @@ defmodule You.SDK do
   end
 
   @doc """
+  Headless registration (sign-up) for a trusted first-party app: create a new
+  user with the given email + password (unconfirmed) and get a token bundle back.
+
+  `creds` is a map with `email`, `password`, and optional `scope`/`scopes`.
+  The app authenticates itself with `client_id` + `client_secret` and must be
+  flagged first-party in You.
+
+  Returns `{:ok, %{user_id, email, jwt, refresh_token}}` or `{:error, reason}`
+  (`:invalid_client` | `:not_first_party` | `:email_taken` |
+  `:invalid_registration` | `:unreachable`).
+  """
+  def register(client_id, client_secret, creds, opts \\ []) do
+    call({:register, client_id, client_secret, creds}, opts)
+  end
+
+  @doc """
   Exchanges an authorization code for a JWT.
 
   For PKCE, pass the `:code_verifier` option matching the `code_challenge` sent
