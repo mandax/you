@@ -7,13 +7,14 @@ defmodule You.Admin.App do
     field :name, :string
     field :callback_url, :string
     field :launch_url, :string
+    field :first_party, :boolean, default: false
     field :client_secret_hash, :binary
     timestamps()
   end
 
   def changeset(app, attrs) do
     app
-    |> cast(attrs, [:slug, :name, :callback_url, :launch_url])
+    |> cast(attrs, [:slug, :name, :callback_url, :launch_url, :first_party])
     |> validate_required([:slug, :name, :callback_url])
     |> unique_constraint(:slug)
   end

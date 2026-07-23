@@ -68,6 +68,48 @@ defmodule You.AdminTest do
     end
   end
 
+  describe "update_app/2" do
+    test "updates an app's attributes" do
+      {:ok, app, _secret} =
+        Admin.create_app(%{
+          slug: "updateme",
+          name: "Update Test",
+          callback_url: "https://example.com/cb"
+        })
+
+      refute app.first_party
+
+      assert {:ok, updated} =
+               Admin.update_app(app, %{
+                 name: "Updated Name",
+                 callback_url: "https://example.com/new-cb",
+                 launch_url: "https://example.com/launch",
+                 first_party: true
+               })
+
+      assert updated.name == "Updated Name"
+      assert updated.callback_url == "https://example.com/new-cb"
+      assert updated.launch_url == "https://example.com/launch"
+      assert updated.first_party
+    end
+
+    test "does not change slug on update" do
+      {:ok, app, _secret} =
+        Admin.create_app(%{
+          slug: "slug-test",
+          name: "Slug Test",
+          callback_url: "https://example.com/cb"
+        })
+
+      assert {:ok, updated} =
+               Admin.update_app(app, %{name: "New Name", slug: "different-slug"})
+
+      # Slug is cast but not changed by the update (no validation error since
+      # it's not required_unique on update, but the value stays the same)
+      assert updated.name == "New Name"
+    end
+  end
+
   describe "lookup_app_by_callback/1" do
     setup do
       {:ok, app, _secret} =

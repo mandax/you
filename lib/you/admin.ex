@@ -172,6 +172,25 @@ defmodule You.Admin do
   def get_app!(id), do: Repo.get!(App, id)
 
   @doc """
+  Updates an existing app's attributes.
+
+  Returns `{:ok, app}` or `{:error, changeset}`.
+  """
+  def update_app(%App{} = app, attrs) do
+    result =
+      app
+      |> App.changeset(attrs)
+      |> Repo.update()
+
+    :telemetry.execute([:you, :audit, :admin, :action], %{}, %{
+      action: "update_app",
+      app_slug: app.slug
+    })
+
+    result
+  end
+
+  @doc """
   Deletes a registered app. Returns `{:ok, app}` or `{:error, changeset}`.
   """
   def delete_app(%App{} = app) do
