@@ -31,6 +31,9 @@ defmodule YouWeb.Email2faLoginTest do
     assert redirected_to(conn) == ~p"/users/log-in/email-2fa"
     refute get_session(conn, :user_token)
 
+    # Follow the redirect (must render the code form, not the magic-link route).
+    assert get(conn, ~p"/users/log-in/email-2fa") |> html_response(200) =~ "Check your email"
+
     code = code_from_email()
     conn = post(conn, ~p"/users/log-in/email-2fa", %{"email_2fa" => %{"code" => code}})
 

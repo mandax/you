@@ -68,5 +68,22 @@ defmodule YouWeb.TotpLoginTest do
       location = redirected_to(conn, 302)
       assert String.starts_with?(location, "https://sockeet.example.com/auth/callback?code=")
     end
+
+    test "GET /users/log-in/totp renders the TOTP challenge, not the magic-link route", %{
+      conn: conn,
+      user: user
+    } do
+      conn =
+        post(conn, ~p"/users/log-in", %{
+          "user" => %{"email" => user.email, "password" => AccountsFixtures.valid_user_password()}
+        })
+
+      # Follow the 302 the browser would follow — this GET used to be captured
+      # by /users/log-in/:token and 302 back with "magic link is invalid".
+      conn = get(conn, ~p"/users/log-in/totp")
+      response = html_response(conn, 200)
+      assert response =~ "Two-Factor Authentication"
+      refute response =~ "magic link"
+    end
   end
 end
