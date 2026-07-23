@@ -35,12 +35,7 @@ defmodule YouWeb.Router do
     pipe_through [:browser, :require_authenticated_user, :require_admin]
 
     live_session :admin, on_mount: {YouWeb.UserAuth, :default} do
-      live "/", AdminDashboardLive, :index
-      live "/settings", AdminSettingsLive, :index
-      live "/apps", AdminAppsLive, :index
-      live "/users", AdminUsersLive, :index
-      live "/orgs", AdminOrgsLive, :index
-      live "/audit", AdminAuditLive, :index
+      live "/", ConsoleLive, :index
     end
   end
 

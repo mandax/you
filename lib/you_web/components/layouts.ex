@@ -98,10 +98,7 @@ defmodule YouWeb.Layouts do
       <header class="h-12 shrink-0 border-b border-border bg-background/80 backdrop-blur-md flex items-center">
         <!-- Logo -->
         <div class="w-56 shrink-0 px-5 border-r border-border h-full flex items-center">
-          <.link
-            navigate={~p"/console"}
-            class="flex items-center gap-2 font-medium text-sm tracking-tight"
-          >
+          <.link navigate={~p"/"} class="flex items-center gap-2 font-medium text-sm tracking-tight">
             <div class="size-6 rounded-md bg-primary text-primary-foreground flex items-center justify-center">
               <span class="text-[10px] font-bold">Y</span>
             </div>
@@ -109,39 +106,7 @@ defmodule YouWeb.Layouts do
           </.link>
         </div>
 
-    <!-- Tabs -->
-        <nav class="flex items-center h-full px-4 gap-0.5">
-          <.tab_link active={@active_tab == "dashboard"} navigate={~p"/console"}>
-            Dashboard
-          </.tab_link>
-          <.tab_link active={@active_tab == "users"} navigate={~p"/console/users"}>
-            Users
-            <span
-              :if={@user_count}
-              class="text-[10px] ml-1 px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground"
-            >
-              {@user_count}
-            </span>
-          </.tab_link>
-          <.tab_link active={@active_tab == "apps"} navigate={~p"/console/apps"}>
-            Apps
-            <span
-              :if={@app_count}
-              class="text-[10px] ml-1 px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground"
-            >
-              {@app_count}
-            </span>
-          </.tab_link>
-          <.tab_link active={@active_tab == "orgs"} navigate={~p"/console/orgs"}>
-            Orgs
-          </.tab_link>
-          <.tab_link active={@active_tab == "audit"} navigate={~p"/console/audit"}>
-            Audit Log
-          </.tab_link>
-          <.tab_link active={@active_tab == "settings"} navigate={~p"/console/settings"}>
-            Settings
-          </.tab_link>
-        </nav>
+        <div class="px-4 text-sm font-medium text-muted-foreground">Account</div>
 
     <!-- Right side -->
         <div class="flex items-center gap-2 px-5 ml-auto">
@@ -173,27 +138,6 @@ defmodule YouWeb.Layouts do
   # ──────────────────────────────────────────────
   # Components
   # ──────────────────────────────────────────────
-
-  attr :active, :boolean, default: false
-  attr :navigate, :string, required: true
-  slot :inner_block, required: true
-
-  defp tab_link(assigns) do
-    ~H"""
-    <.link
-      navigate={@navigate}
-      class={[
-        "inline-flex items-center px-3 h-8 rounded-md text-sm font-medium transition-all duration-150",
-        if(@active,
-          do: "bg-muted text-foreground",
-          else: "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-        )
-      ]}
-    >
-      {render_slot(@inner_block)}
-    </.link>
-    """
-  end
 
   attr :current_scope, :map, default: nil
 
