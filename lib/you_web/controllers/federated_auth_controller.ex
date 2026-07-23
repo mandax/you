@@ -2,7 +2,6 @@ defmodule YouWeb.FederatedAuthController do
   use YouWeb, :controller
 
   alias You.Accounts
-  alias YouWeb.UserAuth
 
   @doc """
   GET /auth/:provider
@@ -62,11 +61,15 @@ defmodule YouWeb.FederatedAuthController do
         result: :success
       })
 
+      # Hand the login back to the requesting app (mint a code → consumer
+      # callback) when this login was started from an OAuth flow; otherwise it's
+      # a plain sign-in to You. Previously this always logged into You itself,
+      # stranding consumers mid-flow.
       conn
       |> put_session(:oidc_state, nil)
       |> put_session(:oidc_provider, nil)
       |> put_flash(:info, "Welcome back!")
-      |> UserAuth.log_in_user(user)
+      |> YouWeb.OAuthFlow.complete_login(user)
     else
       {:error, :state_mismatch} ->
         conn

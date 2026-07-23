@@ -305,54 +305,12 @@ defmodule YouWeb.UserSessionController do
     end
   end
 
-  # Redirects back to the consumer's callback with the auth code, echoing the
-  # OAuth `state` for CSRF, and clears the one-shot flow session keys.
-  #
-  # `state` is passed in, not read here: the login paths renew the session
-  # (anti-fixation) before this runs, which would have wiped it. Callers capture
-  # it before mutating the session.
-  defp redirect_with_code(conn, callback_url, code, state) do
-    query =
-      case state do
-        nil -> URI.encode_query(code: code)
-        state -> URI.encode_query(code: code, state: state)
-      end
-
-    conn
-    |> put_session(:callback_url, nil)
-    |> put_session(:scopes, nil)
-    |> put_session(:state, nil)
-    |> redirect(external: "#{callback_url}?#{query}")
-  end
-
-  defp safe_callback_url(conn) do
-    callback_url = get_session(conn, :callback_url)
-
-    if callback_url do
-      case You.Admin.lookup_app_by_callback(callback_url) do
-        {:ok, _app} -> callback_url
-        :error -> nil
-      end
-    end
-  end
-
-  defp record_consent_for_app(conn, user) do
-    callback_url = get_session(conn, :callback_url)
-    scopes = get_session(conn, :scopes) || ["email"]
-
-    if callback_url do
-      case You.Admin.lookup_app_by_callback(callback_url) do
-        {:ok, app} ->
-          Accounts.record_consent(user, app, scopes)
-          :ok
-
-        :error ->
-          :ok
-      end
-    else
-      :ok
-    end
-  end
+  # These OAuth-completion helpers live in YouWeb.OAuthFlow (shared with the
+  # federated/social login path so every method hands a code back to the
+  # consumer identically). Delegated here to keep the call sites unchanged.
+  defdelegate redirect_with_code(conn, callback_url, code, state), to: YouWeb.OAuthFlow
+  defdelegate safe_callback_url(conn), to: YouWeb.OAuthFlow
+  defdelegate record_consent_for_app(conn, user), to: YouWeb.OAuthFlow
 
   def delete(conn, _params) do
     conn
