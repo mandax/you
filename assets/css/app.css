@@ -32,7 +32,7 @@
    --------------------------------------------------------------------------- */
 
 :root {
-  --background: 250 30% 99%;
+  --background: 250 12% 98%;
   --foreground: 260 35% 12%;
   --card: 0 0% 100%;
   --card-foreground: 260 35% 12%;
@@ -73,7 +73,7 @@
 }
 
 .dark {
-  --background: 260 30% 6%;
+  --background: 260 12% 7%;
   --foreground: 250 20% 96%;
   --card: 260 26% 9%;
   --card-foreground: 250 20% 96%;
