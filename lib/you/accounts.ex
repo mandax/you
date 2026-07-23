@@ -619,6 +619,40 @@ defmodule You.Accounts do
   end
 
   @doc """
+  Lists the distinct apps a user has an active (non-expired) consent for,
+  most-recently-granted first.
+
+  Returns a list of `%You.Admin.App{}` structs.
+  """
+  def list_consented_apps(%User{id: user_id}) do
+    now = DateTime.utc_now()
+
+    Repo.all(
+      from c in Consent,
+        join: a in You.Admin.App,
+        on: c.app_id == a.id,
+        where: c.user_id == ^user_id and c.expires_at > ^now,
+        order_by: [desc: c.granted_at],
+        select: a
+    )
+  end
+
+  @doc """
+  Revokes all access the user granted to a given app.
+
+  Deletes the user's consent row(s) for the app. Scoped to the user —
+  other users' consents for the same app are untouched.
+
+  Returns `{count, nil}` where count is the number of consents deleted.
+  """
+  def revoke_app_access(%User{id: user_id}, app_id) do
+    Repo.delete_all(
+      from c in Consent,
+        where: c.user_id == ^user_id and c.app_id == ^app_id
+    )
+  end
+
+  @doc """
   Checks if a valid consent exists for the given user and app.
   Returns `{:ok, scopes}` or `{:error, :no_consent}`.
   """
