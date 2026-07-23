@@ -68,6 +68,15 @@ defmodule YouWeb.Router do
     post "/oauth/token", OIDCController, :create_token
   end
 
+  ## Headless auth API — first-party apps authenticate users directly (no
+  ## redirect / no You UI). Client-authenticated by client_id + client_secret.
+
+  scope "/api/auth", YouWeb do
+    pipe_through :api
+
+    post "/login", HeadlessAuthController, :login
+  end
+
   ## Authentication routes
 
   scope "/", YouWeb do

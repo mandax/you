@@ -55,6 +55,22 @@ defmodule You.SDK do
   end
 
   @doc """
+  Headless password login for a trusted first-party app: authenticate the end
+  user directly (no browser redirect / no You UI) and get a token bundle back.
+
+  `creds` is a map with `email`, `password`, optional `scope`/`scopes`, and
+  optional `totp_code`. The app authenticates itself with `client_id` +
+  `client_secret` and must be flagged first-party in You.
+
+  Returns `{:ok, %{user_id, email, jwt, refresh_token}}` or `{:error, reason}`
+  (`:invalid_client` | `:not_first_party` | `:invalid_credentials` |
+  `:mfa_required` | `:invalid_mfa` | `:unreachable`).
+  """
+  def password_login(client_id, client_secret, creds, opts \\ []) do
+    call({:password_login, client_id, client_secret, creds}, opts)
+  end
+
+  @doc """
   Exchanges an authorization code for a JWT.
 
   For PKCE, pass the `:code_verifier` option matching the `code_challenge` sent
