@@ -48,14 +48,47 @@ defmodule YouWeb.UserSessionController do
       render(conn, :new,
         form: form,
         callback_url: get_session(conn, :callback_url),
-        providers: oidc_providers()
+        providers: oidc_providers(),
+        app_name: app_name_for(conn)
       )
+    end
+  end
+
+  # The name of the registered app this login is for (when in an OAuth flow),
+  # so the login page can say "sign in to continue to <app>" instead of looking
+  # like You's own account login. nil for a plain login.
+  defp app_name_for(conn) do
+    with url when is_binary(url) <- get_session(conn, :callback_url),
+         {:ok, app} <- You.Admin.lookup_app_by_callback(url) do
+      app.name
+    else
+      _ -> nil
     end
   end
 
   # Configured upstream OIDC providers, as a sorted list of ids ("google", …).
   defp oidc_providers do
     Application.get_env(:you, :oidc_providers, %{}) |> Map.keys() |> Enum.sort()
+  end
+
+  # The OAuth params stashed in the session (callback_url, scope, state, PKCE
+  # challenge), as a query map for embedding in the magic-link URL. Omits blanks.
+  # None of these are secrets — the code_verifier never leaves the consumer.
+  defp oauth_link_params(conn) do
+    scope =
+      case get_session(conn, :scopes) do
+        list when is_list(list) -> Enum.join(list, " ")
+        _ -> nil
+      end
+
+    %{
+      "callback_url" => get_session(conn, :callback_url),
+      "state" => get_session(conn, :state),
+      "code_challenge" => get_session(conn, :code_challenge),
+      "scope" => scope
+    }
+    |> Enum.reject(fn {_k, v} -> is_nil(v) or v == "" end)
+    |> Map.new()
   end
 
   # magic link login
@@ -149,9 +182,14 @@ defmodule YouWeb.UserSessionController do
   # magic link request
   def create(conn, %{"user" => %{"email" => email}}) do
     if user = Accounts.get_user_by_email(email) do
+      # Carry the OAuth params in the magic-link URL, not just the session:
+      # the link is usually opened in a different context (email client, other
+      # device) where the session that stashed callback_url/state/PKCE is gone.
+      link_params = oauth_link_params(conn)
+
       Accounts.deliver_login_instructions(
         user,
-        &url(~p"/users/log-in/#{&1}")
+        &url(~p"/users/log-in/#{&1}?#{link_params}")
       )
     end
 
@@ -182,6 +220,7 @@ defmodule YouWeb.UserSessionController do
       end
 
     conn = put_session(conn, :state, params["state"])
+    conn = put_session(conn, :code_challenge, params["code_challenge"])
 
     user = token && Accounts.get_user_by_magic_link_token(token)
 

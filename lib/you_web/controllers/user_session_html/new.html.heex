@@ -1,16 +1,26 @@
 <Layouts.public flash={@flash} current_scope={@current_scope}>
   <div class="mx-auto max-w-sm pt-24 pb-32 space-y-8">
     <div class="text-center mb-10">
-      <div class="size-10 rounded-xl bg-primary text-primary-foreground flex items-center justify-center mx-auto mb-4">
-        <span class="text-sm font-bold">Y</span>
-      </div>
-      <h1 class="text-xl font-medium tracking-tight">
-        <%= if @current_scope do %>
-          Confirm your identity
-        <% else %>
-          Log in to You
-        <% end %>
-      </h1>
+      <%= if assigns[:app_name] do %>
+        <div class="size-10 rounded-xl border border-border flex items-center justify-center mx-auto mb-4">
+          <span class="lucide-lock size-5 text-muted-foreground block" />
+        </div>
+        <h1 class="text-xl font-medium tracking-tight">
+          Sign in to continue to <span class="text-primary">{@app_name}</span>
+        </h1>
+        <p class="text-xs text-muted-foreground mt-1.5">secured by You</p>
+      <% else %>
+        <div class="size-10 rounded-xl bg-primary text-primary-foreground flex items-center justify-center mx-auto mb-4">
+          <span class="text-sm font-bold">Y</span>
+        </div>
+        <h1 class="text-xl font-medium tracking-tight">
+          <%= if @current_scope do %>
+            Confirm your identity
+          <% else %>
+            Log in to You
+          <% end %>
+        </h1>
+      <% end %>
       <p :if={!@current_scope} class="text-sm text-muted-foreground mt-1">
         Don't have an account?
         <.link
