@@ -60,6 +60,10 @@ const Hooks = {
 // ── WebAuthn (Passkey) —────────────────────────────
 
 import {registerPasskey, authenticatePasskey} from "./webauthn"
+import {youAlert, installConfirmInterceptor} from "./confirm"
+
+// Replace native data-confirm prompts with the shadcn confirm modal, app-wide.
+installConfirmInterceptor()
 
 // Auto-attach the "Sign in with a passkey" button on the login page
 document.addEventListener("DOMContentLoaded", () => {
@@ -76,7 +80,7 @@ document.addEventListener("DOMContentLoaded", () => {
       )
     } catch (err) {
       console.error("Passkey sign-in failed:", err)
-      alert(err.message || "Passkey sign-in failed. Please try again.")
+      youAlert(err.message || "Passkey sign-in failed. Please try again.", {title: "Passkey sign-in"})
     } finally {
       btn.disabled = false
     }
@@ -103,7 +107,7 @@ document.addEventListener("DOMContentLoaded", () => {
       window.location.reload()
     } catch (err) {
       console.error("Passkey registration failed:", err)
-      alert(err.message || "Passkey registration failed. Please try again.")
+      youAlert(err.message || "Passkey registration failed. Please try again.", {title: "Add passkey"})
     } finally {
       btn.disabled = false
       btn.textContent = "Add passkey"
