@@ -59,7 +59,10 @@ defmodule YouWeb.Components.Base.Dialog do
         aria-describedby={@description != [] && "#{@id}-description"}
         class={
           cx([
-            "z-50 w-full max-w-lg rounded-lg border border-border bg-popover p-6 text-popover-foreground shadow-lg",
+            # m-auto restores native modal centering: Tailwind Preflight resets
+            # `* { margin: 0 }`, which otherwise defeats the UA `dialog { margin:
+            # auto }` and pins the popup to the top-left corner.
+            "m-auto z-50 w-full max-w-lg rounded-lg border border-border bg-popover p-6 text-popover-foreground shadow-lg",
             "backdrop:bg-black/60 backdrop:backdrop-blur-sm",
             "open:animate-rise-in",
             @class
