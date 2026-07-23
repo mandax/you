@@ -62,6 +62,7 @@ defmodule You.MixProject do
       {:absinthe_plug, "~> 1.5"},
       {:bcrypt_elixir, "~> 3.0"},
       {:nimble_totp, "~> 1.0"},
+      {:eqrcode, "~> 0.2"},
       {:swoosh, "~> 1.16"},
       {:req, "~> 0.5"},
       {:telemetry_metrics, "~> 1.0"},

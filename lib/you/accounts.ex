@@ -503,6 +503,20 @@ defmodule You.Accounts do
   end
 
   @doc """
+  Disables TOTP for a user: clears the secret and enabled flag and removes all
+  of the user's recovery codes. Returns `{:ok, user}`.
+  """
+  def disable_totp(%User{} = user) do
+    Repo.transact(fn ->
+      Repo.delete_all(from r in RecoveryCode, where: r.user_id == ^user.id)
+
+      user
+      |> Ecto.Changeset.change(totp_enabled: false, totp_secret: nil)
+      |> Repo.update()
+    end)
+  end
+
+  @doc """
   Anonymizes a user's personal data for LGPD right to deletion.
 
   The user row stays (referential integrity) but is functionally dead.

@@ -60,7 +60,7 @@ const Hooks = {
 // ── WebAuthn (Passkey) —────────────────────────────
 
 import {registerPasskey, authenticatePasskey} from "./webauthn"
-import {youAlert, installConfirmInterceptor} from "./confirm"
+import {youAlert, youPrompt, installConfirmInterceptor} from "./confirm"
 
 // Replace native data-confirm prompts with the shadcn confirm modal, app-wide.
 installConfirmInterceptor()
@@ -93,15 +93,20 @@ document.addEventListener("DOMContentLoaded", () => {
   if (!btn) return
   const csrfToken = document.querySelector("meta[name='csrf-token']")?.getAttribute("content")
   btn.addEventListener("click", async () => {
+    const label = await youPrompt("Name this passkey", {
+      okLabel: "Add passkey",
+      placeholder: "e.g. MacBook Touch ID (optional)",
+    })
+    if (label === null) return // cancelled
+
     btn.disabled = true
     btn.textContent = "Registering…"
     try {
-      const label = prompt("Name this passkey (optional):") || undefined
       const result = await registerPasskey(
         btn.dataset.startUrl || "/users/settings/passkeys/register/start",
         "/users/settings/passkeys/register/finish",
         csrfToken,
-        label,
+        label || undefined,
       )
       console.log("Passkey registered:", result)
       window.location.reload()

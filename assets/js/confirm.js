@@ -2,7 +2,8 @@
 // and alert popups — including the `data-confirm` dialogs that LiveView and
 // phoenix_html links trigger, via a single capture-phase interceptor.
 
-let dialogEl, titleEl, bodyEl, cancelBtn, okBtn, resolver
+let dialogEl, titleEl, bodyEl, inputEl, cancelBtn, okBtn, resolver
+let promptMode = false
 
 const OK_BASE =
   "inline-flex h-9 items-center justify-center rounded-md px-4 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -16,6 +17,8 @@ function ensureDialog() {
   dialogEl.innerHTML = `
     <h2 data-part="title" class="text-base font-semibold leading-snug tracking-tight"></h2>
     <p data-part="body" class="mt-2 text-sm text-muted-foreground"></p>
+    <input data-part="input" type="text" hidden
+      class="mt-4 h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring" />
     <div class="mt-6 flex items-center justify-end gap-2">
       <button data-part="cancel" type="button"
         class="inline-flex h-9 items-center justify-center rounded-md border border-input bg-background px-4 text-sm font-medium hover:bg-accent hover:text-accent-foreground"></button>
@@ -25,19 +28,30 @@ function ensureDialog() {
 
   titleEl = dialogEl.querySelector('[data-part="title"]')
   bodyEl = dialogEl.querySelector('[data-part="body"]')
+  inputEl = dialogEl.querySelector('[data-part="input"]')
   cancelBtn = dialogEl.querySelector('[data-part="cancel"]')
   okBtn = dialogEl.querySelector('[data-part="ok"]')
 
-  cancelBtn.addEventListener("click", () => close(false))
-  okBtn.addEventListener("click", () => close(true))
+  cancelBtn.addEventListener("click", () => close(cancelResult()))
+  okBtn.addEventListener("click", () => close(okResult()))
+  inputEl.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); close(okResult()) }
+  })
   // Escape / backdrop close = cancel
   dialogEl.addEventListener("cancel", (e) => {
     e.preventDefault()
-    close(false)
+    close(cancelResult())
   })
   dialogEl.addEventListener("click", (e) => {
-    if (e.target === dialogEl) close(false)
+    if (e.target === dialogEl) close(cancelResult())
   })
+}
+
+function okResult() {
+  return promptMode ? inputEl.value.trim() : true
+}
+function cancelResult() {
+  return promptMode ? null : false
 }
 
 function close(result) {
@@ -49,11 +63,18 @@ function close(result) {
   }
 }
 
-function open({title, body, okLabel, cancelLabel, danger}) {
+function open({title, body, okLabel, cancelLabel, danger, prompt, placeholder}) {
   ensureDialog()
+  promptMode = !!prompt
   titleEl.textContent = title
   bodyEl.textContent = body || ""
   bodyEl.style.display = body ? "" : "none"
+
+  inputEl.hidden = !promptMode
+  if (promptMode) {
+    inputEl.value = ""
+    inputEl.placeholder = placeholder || ""
+  }
 
   okBtn.textContent = okLabel
   okBtn.className =
@@ -68,7 +89,7 @@ function open({title, body, okLabel, cancelLabel, danger}) {
   return new Promise((res) => {
     resolver = res
     dialogEl.showModal()
-    okBtn.focus()
+    ;(promptMode ? inputEl : okBtn).focus()
   })
 }
 
@@ -78,6 +99,11 @@ export function youConfirm(message, {okLabel = "Confirm", danger = true} = {}) {
 
 export function youAlert(message, {title = "Heads up"} = {}) {
   return open({title, body: message, okLabel: "OK", cancelLabel: null, danger: false})
+}
+
+// Resolves to the entered string on OK (may be ""), or null if cancelled.
+export function youPrompt(message, {okLabel = "Save", placeholder = ""} = {}) {
+  return open({title: message, body: null, okLabel, cancelLabel: "Cancel", prompt: true, placeholder})
 }
 
 // Replace the native data-confirm dialog everywhere. We intercept the click in
