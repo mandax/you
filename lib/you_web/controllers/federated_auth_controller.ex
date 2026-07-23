@@ -52,7 +52,8 @@ defmodule YouWeb.FederatedAuthController do
            Accounts.find_or_create_user_by_federated_identity(
              provider,
              userinfo["sub"],
-             userinfo["email"]
+             userinfo["email"],
+             email_verified?(userinfo)
            ) do
       :telemetry.execute([:you, :audit, :login, :attempt], %{}, %{
         user_id: user.id,
@@ -77,6 +78,23 @@ defmodule YouWeb.FederatedAuthController do
         |> put_flash(:error, "Authentication failed. Please try again.")
         |> redirect(to: ~p"/users/log-in")
 
+      {:error, :email_not_verified} ->
+        # The IdP didn't assert the email is verified, so we refuse to link it to
+        # an existing account (takeover protection). The user must sign in with
+        # their existing method and link the provider from account settings.
+        :telemetry.execute([:you, :audit, :login, :attempt], %{}, %{
+          method: "oidc:#{provider}",
+          result: :failure,
+          reason: :email_not_verified
+        })
+
+        conn
+        |> put_flash(
+          :error,
+          "That #{provider} account's email isn't verified. Sign in with your existing method, then link #{provider} from settings."
+        )
+        |> redirect(to: ~p"/users/log-in")
+
       {:error, reason} ->
         :telemetry.execute([:you, :audit, :login, :attempt], %{}, %{
           method: "oidc:#{provider}",
@@ -96,6 +114,15 @@ defmodule YouWeb.FederatedAuthController do
   end
 
   # -- Helpers
+
+  # IdPs report the email_verified claim as a boolean or a string.
+  defp email_verified?(userinfo) do
+    case userinfo["email_verified"] do
+      true -> true
+      "true" -> true
+      _ -> false
+    end
+  end
 
   defp fetch_provider_config(provider) do
     providers = Application.get_env(:you, :oidc_providers, %{})

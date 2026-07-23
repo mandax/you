@@ -646,52 +646,75 @@ defmodule You.Accounts do
   - If a `FederatedIdentity` already exists for the given provider + subject,
     returns the linked user (idempotent re-login).
   - If a user with the given email already exists, links the federated identity
-    to that user (account linking).
-  - Otherwise, creates a confirmed user with no password and creates the
-    federated identity record.
+    to that user **only when the IdP asserts the email is verified**. Linking to
+    a pre-existing (typically password) account by email alone is an
+    account-takeover vector — an attacker who controls an unverified IdP account
+    matching a victim's email could otherwise hijack it. Unverified → returns
+    `{:error, :email_not_verified}` (the user must link explicitly while logged in).
+  - Otherwise, creates a user (confirmed only when the email is verified).
 
-  Returns `{:ok, user}` or `{:error, changeset}`.
+  Pass `email_verified` from the IdP's `email_verified` claim.
+
+  Returns `{:ok, user}`, `{:error, :email_not_verified}`, or `{:error, reason}`.
   """
-  def find_or_create_user_by_federated_identity(provider, subject, email)
+  def find_or_create_user_by_federated_identity(provider, subject, email, email_verified \\ false)
       when is_binary(provider) and is_binary(subject) and is_binary(email) do
     case get_federated_identity(provider, subject) do
       %FederatedIdentity{} = fed ->
         {:ok, get_user!(fed.user_id)}
 
       nil ->
-        case do_find_or_create(provider, subject, email) do
-          {:ok, user} -> {:ok, user}
-          {:error, _reason} -> {:error, :transaction_aborted}
+        case get_user_by_email(email) do
+          %User{} = existing ->
+            if email_verified do
+              link_federated_identity(existing, provider, subject, email)
+            else
+              {:error, :email_not_verified}
+            end
+
+          nil ->
+            create_user_with_federated_identity(provider, subject, email, email_verified)
         end
     end
   end
 
-  defp do_find_or_create(provider, subject, email) do
+  defp link_federated_identity(%User{} = user, provider, subject, email) do
+    case insert_federated_identity(user, provider, subject, email) do
+      {:ok, _} -> {:ok, user}
+      {:error, _} -> {:error, :link_failed}
+    end
+  end
+
+  defp create_user_with_federated_identity(provider, subject, email, email_verified) do
     Repo.transact(fn ->
-      user =
-        case get_user_by_email(email) do
-          %User{} = existing -> existing
-          nil -> insert_confirmed_user!(email)
-        end
-
-      %FederatedIdentity{}
-      |> FederatedIdentity.changeset(%{
-        user_id: user.id,
-        provider: provider,
-        subject: subject,
-        email: email
-      })
-      |> Repo.insert!()
-
+      user = insert_federated_user!(email, email_verified)
+      {:ok, _} = insert_federated_identity(user, provider, subject, email)
       {:ok, user}
     end)
   end
 
-  defp insert_confirmed_user!(email) do
-    %User{}
-    |> User.email_changeset(%{email: email})
-    |> Ecto.Changeset.put_change(:confirmed_at, DateTime.utc_now(:second))
-    |> Repo.insert!()
+  defp insert_federated_identity(%User{id: user_id}, provider, subject, email) do
+    %FederatedIdentity{}
+    |> FederatedIdentity.changeset(%{
+      user_id: user_id,
+      provider: provider,
+      subject: subject,
+      email: email
+    })
+    |> Repo.insert()
+  end
+
+  # A brand-new account has no existing credentials to hijack, so creation is
+  # allowed even for an unverified email — but it stays unconfirmed until proven.
+  defp insert_federated_user!(email, email_verified) do
+    changeset = User.email_changeset(%User{}, %{email: email})
+
+    changeset =
+      if email_verified,
+        do: Ecto.Changeset.put_change(changeset, :confirmed_at, DateTime.utc_now(:second)),
+        else: changeset
+
+    Repo.insert!(changeset)
   end
 
   @doc """
