@@ -77,6 +77,43 @@ defmodule You.IAM.Server do
     GenServer.call(__MODULE__, {:client_credentials, client_id, client_secret})
   end
 
+  @doc """
+  Headless password login for a trusted **first-party** app: authenticates the
+  end user directly and returns a token bundle — no browser redirect, no You
+  login page, so the consumer app owns the whole experience ("invisible You").
+
+  `params` is a map (atom or string keys) with `email`, `password`, optional
+  `scopes` (list or space string), and optional `totp_code` for MFA.
+
+  Returns `{:ok, %{user_id, email, jwt, refresh_token}}` or `{:error, reason}`
+  where reason is `:invalid_client` | `:not_first_party` | `:invalid_credentials`
+  | `:mfa_required` | `:invalid_mfa`. Only apps flagged `first_party` may use
+  this — third-party apps must go through the redirect + consent flow.
+  """
+  def password_login(client_id, client_secret, params)
+      when is_binary(client_id) and is_binary(client_secret) and is_map(params) do
+    GenServer.call(__MODULE__, {:password_login, client_id, client_secret, params})
+  end
+
+  @doc """
+  Headless registration (sign-up) for a trusted **first-party** app: creates a
+  new user with the given email + password and returns a token bundle, so the
+  consumer app owns the whole sign-up experience ("invisible You").
+
+  The created user is **unconfirmed** (`confirmed_at: nil`) because the email is
+  not yet verified at sign-up.  `params` is a map (atom or string keys) with
+  `email`, `password`, and optional `scopes` (list or space string).
+
+  Returns `{:ok, %{user_id, email, jwt, refresh_token}}` or `{:error, reason}`
+  where reason is `:invalid_client` | `:not_first_party` |
+  `:email_taken` | `:invalid_registration`.  Only apps flagged `first_party`
+  may use this — third-party apps must go through the redirect + consent flow.
+  """
+  def register(client_id, client_secret, params)
+      when is_binary(client_id) and is_binary(client_secret) and is_map(params) do
+    GenServer.call(__MODULE__, {:register, client_id, client_secret, params})
+  end
+
   # Server
 
   def start_link(opts) do
@@ -234,6 +271,145 @@ defmodule You.IAM.Server do
       end
 
     {:reply, result, state}
+  end
+
+  @doc false
+  def handle_call({:password_login, client_id, client_secret, params}, _from, state) do
+    scopes = normalize_scopes(params)
+
+    result =
+      with {:ok, _app} <- verify_first_party_client(client_id, client_secret),
+           {:ok, user} <- authenticate_credentials(params),
+           :ok <- verify_login_mfa(user, params) do
+        refresh = Accounts.create_refresh_token(user, scopes)
+
+        :telemetry.execute([:you, :audit, :login, :attempt], %{}, %{
+          user_id: user.id,
+          email: user.email,
+          method: "headless:#{client_id}",
+          result: :success
+        })
+
+        {:ok, token_bundle(user, scopes, refresh)}
+      end
+
+    with {:error, reason} <- result do
+      :telemetry.execute([:you, :audit, :login, :attempt], %{}, %{
+        method: "headless:#{client_id}",
+        result: :failure,
+        reason: reason
+      })
+    end
+
+    {:reply, result, state}
+  end
+
+  @doc false
+  def handle_call({:register, client_id, client_secret, params}, _from, state) do
+    email = params[:email] || params["email"]
+    password = params[:password] || params["password"]
+    scopes = normalize_scopes(params)
+
+    result =
+      with {:ok, _app} <- verify_first_party_client(client_id, client_secret),
+           {:ok, user} <- create_user(email, password) do
+        refresh = Accounts.create_refresh_token(user, scopes)
+
+        :telemetry.execute([:you, :audit, :login, :attempt], %{}, %{
+          user_id: user.id,
+          email: user.email,
+          method: "headless-register:#{client_id}",
+          result: :success
+        })
+
+        {:ok, token_bundle(user, scopes, refresh)}
+      end
+
+    with {:error, reason} <- result do
+      :telemetry.execute([:you, :audit, :login, :attempt], %{}, %{
+        method: "headless-register:#{client_id}",
+        result: :failure,
+        reason: reason
+      })
+    end
+
+    {:reply, result, state}
+  end
+
+  # Creates a user with the given email and password inside a transaction.
+  # The user is created unconfirmed (confirmed_at nil). Returns
+  # `{:ok, user}` or `{:error, :email_taken | :invalid_registration}`.
+  defp create_user(email, password) do
+    Repo.transact(fn ->
+      with {:ok, user} <- Accounts.register_user(%{email: email}),
+           {:ok, {user, _tokens}} <- Accounts.update_user_password(user, %{password: password}) do
+        {:ok, user}
+      else
+        {:error, changeset} ->
+          reason =
+            if Enum.any?(changeset.errors, fn
+                 {:email, {"has already been taken", _}} -> true
+                 _ -> false
+               end),
+               do: :email_taken,
+               else: :invalid_registration
+
+          {:error, reason}
+      end
+    end)
+  end
+
+  # Verifies the app slug + secret AND that the app is trusted first-party.
+  defp verify_first_party_client(client_id, client_secret) do
+    case verify_client_secret(client_id, client_secret) do
+      {:ok, %App{first_party: true} = app} -> {:ok, app}
+      {:ok, %App{}} -> {:error, :not_first_party}
+      error -> error
+    end
+  end
+
+  # Constant-time app secret check.
+  defp verify_client_secret(client_id, client_secret) do
+    case Repo.get_by(App, slug: client_id) do
+      %App{client_secret_hash: hash} = app when is_binary(hash) ->
+        if is_binary(client_secret) and
+             :crypto.hash_equals(hash, :crypto.hash(:sha256, client_secret)),
+           do: {:ok, app},
+           else: {:error, :invalid_client}
+
+      _ ->
+        {:error, :invalid_client}
+    end
+  end
+
+  defp authenticate_credentials(params) do
+    email = params[:email] || params["email"]
+    password = params[:password] || params["password"]
+
+    case Accounts.get_user_by_email_and_password(email, password) do
+      nil -> {:error, :invalid_credentials}
+      user -> {:ok, user}
+    end
+  end
+
+  defp verify_login_mfa(%{totp_enabled: true} = user, params) do
+    case params[:totp_code] || params["totp_code"] do
+      code when is_binary(code) and code != "" ->
+        if Accounts.verify_totp(user, code), do: :ok, else: {:error, :invalid_mfa}
+
+      _ ->
+        {:error, :mfa_required}
+    end
+  end
+
+  defp verify_login_mfa(_user, _params), do: :ok
+
+  defp normalize_scopes(params) do
+    case params[:scopes] || params["scopes"] || params[:scope] || params["scope"] do
+      list when is_list(list) -> list
+      str when is_binary(str) -> String.split(str, " ", trim: true)
+      _ -> ["email"]
+    end
   end
 
   # Signs a scoped JWT and returns the token bundle handed back to consumers.

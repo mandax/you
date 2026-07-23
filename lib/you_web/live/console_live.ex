@@ -50,6 +50,7 @@ defmodule YouWeb.ConsoleLive do
        roles: @roles,
        new_secret: nil,
        secret_app: nil,
+       editing_app: nil,
        selected_org: nil,
        members: [],
        base_url: YouWeb.Endpoint.url(),
@@ -85,7 +86,7 @@ defmodule YouWeb.ConsoleLive do
 
   # ── apps ──────────────────────────────────────────────────────
   def handle_event("create_app", params, socket) do
-    case Admin.create_app(Map.take(params, ["name", "slug", "callback_url"])) do
+    case Admin.create_app(Map.take(params, ["name", "slug", "callback_url", "launch_url", "first_party"])) do
       {:ok, app, secret} ->
         {:noreply, socket |> load_data() |> assign(new_secret: secret, secret_app: app)}
 
@@ -104,6 +105,26 @@ defmodule YouWeb.ConsoleLive do
   def handle_event("delete_app", %{"id" => id}, socket) do
     id |> Admin.get_app!() |> Admin.delete_app()
     {:noreply, socket |> load_data() |> put_flash(:info, "App deleted.")}
+  end
+
+  def handle_event("edit_app", %{"id" => id}, socket) do
+    {:noreply, assign(socket, editing_app: Admin.get_app!(id))}
+  end
+
+  def handle_event("update_app", params, socket) do
+    app = socket.assigns.editing_app
+
+    case Admin.update_app(app, Map.take(params, ["name", "callback_url", "launch_url", "first_party"])) do
+      {:ok, _app} ->
+        {:noreply, socket |> load_data() |> assign(editing_app: nil) |> put_flash(:info, "App updated.")}
+
+      {:error, changeset} ->
+        {:noreply, put_flash(socket, :error, "Could not update app: #{errors(changeset)}")}
+    end
+  end
+
+  def handle_event("cancel_edit_app", _params, socket) do
+    {:noreply, assign(socket, editing_app: nil)}
   end
 
   def handle_event("dismiss_secret", _params, socket),
@@ -264,7 +285,7 @@ defmodule YouWeb.ConsoleLive do
             <% "users" -> %>
               <.users_view users={@users} current_scope={@current_scope} />
             <% "apps" -> %>
-              <.apps_view apps={@apps} new_secret={@new_secret} secret_app={@secret_app} />
+              <.apps_view apps={@apps} new_secret={@new_secret} secret_app={@secret_app} editing_app={@editing_app} />
             <% "orgs" -> %>
               <.orgs_view orgs={@orgs} selected={@selected_org} members={@members} roles={@roles} />
             <% "audit" -> %>
@@ -380,6 +401,7 @@ defmodule YouWeb.ConsoleLive do
   attr :apps, :list, required: true
   attr :new_secret, :string, default: nil
   attr :secret_app, :map, default: nil
+  attr :editing_app, :map, default: nil
 
   defp apps_view(assigns) do
     ~H"""
@@ -396,6 +418,8 @@ defmodule YouWeb.ConsoleLive do
             <.input type="text" name="name" label="Name" value="" required />
             <.input type="text" name="slug" label="Slug (client_id)" value="" required />
             <.input type="url" name="callback_url" label="Callback URL" value="" required />
+            <.input type="url" name="launch_url" label="Launch URL (optional)" value="" />
+            <.input type="checkbox" name="first_party" label="First-party app" value="true" checked={false} />
             <div class="flex justify-end">
               <.button type="submit">Create</.button>
             </div>
@@ -403,7 +427,7 @@ defmodule YouWeb.ConsoleLive do
         </.dialog>
       </div>
 
-      <.data_table cols={~w(Name Client-ID Callback Secret) ++ [""]} empty={@apps == []}>
+      <.data_table cols={~w(Name Client-ID Callback 1st-party Secret) ++ [""]} empty={@apps == []}>
         <tr
           :for={app <- @apps}
           class="border-b border-border/60 transition-colors last:border-0 hover:bg-muted/40"
@@ -412,9 +436,21 @@ defmodule YouWeb.ConsoleLive do
           <td class="px-3 py-2 font-mono text-xs text-foreground/90">{app.slug}</td>
           <td class="px-3 py-2 font-mono text-xs text-muted-foreground">{app.callback_url}</td>
           <td class="px-3 py-2">
+            <.badge :if={app.first_party} variant="info">1st-party</.badge>
+            <span :if={!app.first_party} class="font-mono text-xs text-muted-foreground">&mdash;</span>
+          </td>
+          <td class="px-3 py-2">
             <.status_badge status={if app.client_secret_hash, do: "running", else: "idle"} />
           </td>
           <td class="px-3 py-2 text-right whitespace-nowrap">
+            <button
+              type="button"
+              phx-click="edit_app"
+              phx-value-id={app.id}
+              class="rounded px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >
+              Edit
+            </button>
             <button
               type="button"
               phx-click="rotate_secret"
@@ -435,6 +471,21 @@ defmodule YouWeb.ConsoleLive do
           </td>
         </tr>
       </.data_table>
+
+      <.dialog id="edit-app" open={@editing_app != nil} on_close="cancel_edit_app">
+        <:title>Edit app</:title>
+        <:description>Update the app's name, URLs, and first-party flag.</:description>
+        <form :if={@editing_app} phx-submit="update_app" class="space-y-4">
+          <.input type="text" name="name" label="Name" value={@editing_app.name} required />
+          <.input type="url" name="callback_url" label="Callback URL" value={@editing_app.callback_url} required />
+          <.input type="url" name="launch_url" label="Launch URL (optional)" value={@editing_app.launch_url} />
+          <.input type="checkbox" name="first_party" label="First-party app" value="true" checked={@editing_app.first_party} />
+          <div class="flex justify-end gap-2">
+            <.button type="button" variant="outline" phx-click="cancel_edit_app">Cancel</.button>
+            <.button type="submit">Save</.button>
+          </div>
+        </form>
+      </.dialog>
 
       <.dialog id="app-secret" open={@new_secret != nil} on_close="dismiss_secret">
         <:title>Client secret</:title>

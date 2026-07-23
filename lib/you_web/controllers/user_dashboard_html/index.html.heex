@@ -8,26 +8,33 @@
     </div>
 
     <p :if={@apps == []} class="text-sm text-muted-foreground">
-      No apps are available yet.
+      You haven't connected any apps yet.
     </p>
 
     <div :if={@apps != []} class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      <a
-        :for={app <- @apps}
-        href={launch_target(app)}
-        class="group flex items-center gap-3 rounded-lg border border-border bg-card p-4 transition-colors hover:border-primary/50 hover:bg-muted/40"
-      >
-        <span class="grid size-10 shrink-0 place-items-center rounded-lg bg-primary/10 text-sm font-semibold text-primary">
-          {initial(app.name)}
-        </span>
-        <span class="min-w-0 flex-1">
-          <span class="block truncate text-sm font-medium">{app.name}</span>
-          <span class="block truncate text-xs text-muted-foreground">
-            {URI.parse(launch_target(app)).host}
+      <div :for={app <- @apps} class="group relative rounded-lg border border-border bg-card p-4 transition-colors hover:border-primary/50 hover:bg-muted/40">
+        <a href={launch_target(app)} class="flex items-center gap-3">
+          <span class="grid size-10 shrink-0 place-items-center rounded-lg bg-primary/10 text-sm font-semibold text-primary">
+            {initial(app.name)}
           </span>
-        </span>
-        <span class="lucide-arrow-up-right size-4 shrink-0 text-muted-foreground transition-colors group-hover:text-primary" />
-      </a>
+          <span class="min-w-0 flex-1">
+            <span class="block truncate text-sm font-medium">{app.name}</span>
+            <span class="block truncate text-xs text-muted-foreground">
+              {URI.parse(launch_target(app)).host}
+            </span>
+          </span>
+          <span class="lucide-arrow-up-right size-4 shrink-0 text-muted-foreground transition-colors group-hover:text-primary" />
+        </a>
+        <.link
+          href={~p"/users/dashboard/apps/#{app.id}"}
+          method="delete"
+          data-confirm={"Remove access to #{app.name}? You can re-authorise this app at any time."}
+          class="absolute right-3 top-3 rounded-md p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
+          aria-label={"Remove access to #{app.name}"}
+        >
+          <span class="lucide-x size-4 block" />
+        </.link>
+      </div>
     </div>
   </div>
 </Layouts.app>

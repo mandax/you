@@ -37,6 +37,56 @@ defmodule YouWeb.ConsoleLiveTest do
       render_click(lv, "delete_app", %{"id" => app.id})
       assert Admin.list_apps() == []
     end
+
+    test "create app with first_party true", %{conn: conn} do
+      {:ok, lv, _} = live(conn, "/console?view=apps")
+
+      lv
+      |> form("#new-app form", %{
+        "name" => "Firsty",
+        "slug" => "firsty",
+        "callback_url" => "https://firsty.example.com/cb",
+        "first_party" => "true"
+      })
+      |> render_submit()
+
+      assert [app] = Admin.list_apps()
+      assert app.first_party
+    end
+
+    test "edit app changes name and toggles first_party", %{conn: conn} do
+      {:ok, app, _secret} =
+        Admin.create_app(%{
+          slug: "edit-me",
+          name: "Edit Me",
+          callback_url: "https://edit.example.com/cb"
+        })
+
+      refute app.first_party
+
+      {:ok, lv, _} = live(conn, "/console?view=apps")
+
+      # Open the edit dialog
+      render_click(lv, "edit_app", %{"id" => app.id})
+
+      # Submit the edit form
+      html =
+        lv
+        |> form("#edit-app form", %{
+          "name" => "Renamed App",
+          "callback_url" => "https://edit.example.com/cb",
+          "launch_url" => "https://edit.example.com/launch",
+          "first_party" => "true"
+        })
+        |> render_submit()
+
+      assert html =~ "App updated"
+
+      updated = Admin.get_app!(app.id)
+      assert updated.name == "Renamed App"
+      assert updated.launch_url == "https://edit.example.com/launch"
+      assert updated.first_party
+    end
   end
 
   describe "orgs" do
