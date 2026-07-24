@@ -173,7 +173,8 @@
         <p class="mt-2 text-sm text-muted-foreground">
           Your app calls You's <code class="text-azure-brand">exchange_code</code>
           straight over Erlang distribution once the user redirects back with an auth code — no
-          extra network hop, no shared webhook secret to rotate.
+          extra network hop, no shared webhook secret to rotate. For trusted nodes you
+          control — distribution is full trust by design. Everyone else uses standard OIDC.
         </p>
       </div>
       <div class="rounded-xl border border-border bg-background p-7">

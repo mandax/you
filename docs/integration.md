@@ -185,7 +185,15 @@ For most requests, local verification plus short token lifetimes
 
 ---
 
-## 2. Erlang distribution (in-cluster BEAM apps)
+## 2. Erlang distribution (expert option — trusted BEAM nodes only)
+
+> **Read this before choosing this path.** Erlang distribution is **full
+> trust by design**: every connected node can execute arbitrary code on every
+> other connected node. There is no authorization layer, no sandbox, no
+> per-app credential — the shared cookie is the only gate, and holding it
+> means owning You's host and database. This is inherent to OTP, not a
+> limitation You can patch. If you are not comfortable reasoning about that
+> threat model, use the OIDC path above — it is the default for a reason.
 
 Elixir/Erlang apps running in the same cluster can call You directly over
 Erlang distribution via `You.SDK` — no HTTP, no JSON:
@@ -206,17 +214,19 @@ You.SDK.revoke_token(jwt)
 ```
 
 Calls return `{:error, :unreachable}` when You is down or the node can't be
-reached.
+reached, and `{:error, :server_error}` when the call fails inside You.
 
-**Security caveat — read this before connecting nodes.** Erlang distribution
-is **full trust**: any node that presents the shared cookie can run arbitrary
-code on every other connected node. The cookie is not an authorization
-mechanism — it is the only gate. Therefore:
+The rules are non-negotiable:
 
-- Only connect nodes you fully control. Never connect a third party's node.
-- Never expose EPMD (port 4369) or the distribution ports to the public
-  internet — firewall them so only your consumer nodes can reach them.
-- Keep the cookie secret; treat it like a root credential.
+- **Only connect nodes you fully control.** Never connect a third party's
+  node — you would be handing them root on your IAM.
+- **Never expose EPMD (port 4369) or the distribution ports** to anything
+  but your consumer nodes. Never to the public internet.
+- **Traffic is not encrypted by default.** Credentials and tokens cross the
+  wire in the clear — only use this over a network you already trust
+  (private LAN, WireGuard/Tailscale), or configure TLS distribution.
+- **Keep the cookie secret**; treat it like a root credential shared by
+  every consumer.
 
 Operational details (ports, cookie rotation, firewalling) are in
 [ops/erlang-distribution.md](ops/erlang-distribution.md).

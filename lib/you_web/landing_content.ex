@@ -165,7 +165,7 @@ defmodule YouWeb.LandingContent do
       %{
         q: "How do apps connect?",
         a:
-          "Two steps. Your app redirects the user to You's /users/log-in with a callback_url and scope; after login You redirects back with a single-use code. Your app then calls exchange_code over Erlang distribution — no HTTP hop — to trade that code for a JWT."
+          "Two steps. Your app redirects the user to You's /users/log-in with a callback_url and scope; after login You redirects back with a single-use code. Your app then trades that code for a JWT over standard HTTP (OIDC, any language) — or, for Elixir apps you trust in your own cluster, over Erlang distribution with no HTTP hop."
       },
       %{
         q: "How is it secured?",
