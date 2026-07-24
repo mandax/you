@@ -172,7 +172,7 @@ docker build -t you:latest .
 
 ### Arm64 / Apple Silicon
 
-The Dockerfile uses `hexpm/elixir:1.19.5-erlang-29.0.1-alpine-3.21` which supports
+The Dockerfile uses `hexpm/elixir:1.19.5-erlang-28.5.0.1-alpine-3.21.7` which supports
 both `linux/amd64` and `linux/arm64`. Build natively:
 
 ```bash

@@ -102,29 +102,49 @@ defmodule MyApp.YouTokens do
   @cache_ttl :timer.hours(1)
 
   def verify(token) do
-    with {:ok, jwk} <- jwks(),
-         {true, jwt, _jws} <- JOSE.JWT.verify(jwk, token),
-         {:ok, claims} <- check_expiry(JOSE.JWT.to_map(jwt)) do
+    with {:ok, keys} <- jwks(),
+         {:ok, claims} <- verify_with(keys, token),
+         {:ok, claims} <- check_expiry(claims) do
       {:ok, claims}
-    else
-      {false, _, _} -> {:error, :invalid_signature}
-      {:error, _} = err -> err
     end
+  end
+
+  # The JWKS can hold several keys during rotation — pick by the token's
+  # `kid` header (fall back to trying all keys) and pin the algorithm.
+  defp verify_with(keys, token) do
+    kid = kid_of(token)
+
+    keys
+    |> Enum.filter(fn {k, _jwk} -> is_nil(kid) or k == kid end)
+    |> Enum.find_value({:error, :invalid_signature}, fn {_k, jwk} ->
+      case JOSE.JWT.verify_strict(jwk, ["EdDSA"], token) do
+        {true, jwt, _jws} -> {:ok, JOSE.JWT.to_map(jwt)}
+        _ -> nil
+      end
+    end)
+  end
+
+  defp kid_of(token) do
+    [header | _] = String.split(token, ".")
+
+    header
+    |> Base.url_decode64!(padding: false)
+    |> Jason.decode!()
+    |> Map.get("kid")
   end
 
   # Fetch and cache the JWKS. Refresh it periodically (key rotation) or
   # on :invalid_signature if you want to tolerate rotation immediately.
   defp jwks do
     case :persistent_term.get({__MODULE__, :jwks}, nil) do
-      {fetched_at, jwk} when fetched_at > System.monotonic_time(:millisecond) - @cache_ttl ->
-        {:ok, jwk}
+      {fetched_at, keys} when fetched_at > System.monotonic_time(:millisecond) - @cache_ttl ->
+        {:ok, keys}
 
       _ ->
-        with %{status: 200, body: %{"keys" => [key | _]}} <-
-               Req.get!(@jwks_url) do
-          jwk = JOSE.JWK.from_map(key)
-          :persistent_term.put({__MODULE__, :jwks}, {System.monotonic_time(:millisecond), jwk})
-          {:ok, jwk}
+        with %{status: 200, body: %{"keys" => keys}} <- Req.get!(@jwks_url) do
+          keys = Map.new(keys, fn k -> {k["kid"], JOSE.JWK.from_map(k)} end)
+          :persistent_term.put({__MODULE__, :jwks}, {System.monotonic_time(:millisecond), keys})
+          {:ok, keys}
         end
     end
   end
