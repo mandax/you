@@ -20,7 +20,7 @@ defmodule You.SDK do
 
   ## Configuration
 
-      config :you_sdk, node: :"you@you.internal"
+      config :you_sdk, node: :"you@you.example.com"
 
   Calling with an explicit `node:` option overrides the configured default.
   If no node is configured and none is passed, calls go to the local node

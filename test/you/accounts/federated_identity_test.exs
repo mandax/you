@@ -158,7 +158,9 @@ defmodule You.Accounts.FederatedIdentityTest do
 
   describe "delete_user_federated_identity/2" do
     test "unlinks only when owned by the user" do
-      {:ok, owner} = Accounts.find_or_create_user_by_federated_identity("google", "own", "o@e.com")
+      {:ok, owner} =
+        Accounts.find_or_create_user_by_federated_identity("google", "own", "o@e.com")
+
       other = You.AccountsFixtures.user_fixture()
       [identity] = Accounts.list_federated_identities_for_user(owner)
 

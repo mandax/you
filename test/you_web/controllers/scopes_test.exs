@@ -5,7 +5,7 @@ defmodule YouWeb.ScopesTest do
     test "stores scope in session when present", %{conn: conn} do
       conn =
         get(conn, ~p"/users/log-in",
-          callback_url: "https://sockeet.example.com/auth/callback",
+          callback_url: "https://myapp.example.com/auth/callback",
           scope: "email profile"
         )
 
@@ -14,7 +14,7 @@ defmodule YouWeb.ScopesTest do
 
     test "sets scopes to nil when not specified", %{conn: conn} do
       conn =
-        get(conn, ~p"/users/log-in", callback_url: "https://sockeet.example.com/auth/callback")
+        get(conn, ~p"/users/log-in", callback_url: "https://myapp.example.com/auth/callback")
 
       assert get_session(conn, :scopes) == nil
     end

@@ -39,15 +39,6 @@ defmodule You.Organizations do
   end
 
   @doc """
-  Gets an organization by slug.
-
-  Returns `%Organization{}` or `nil`.
-  """
-  def get_organization_by_slug(slug) when is_binary(slug) do
-    Repo.get_by(Organization, slug: slug)
-  end
-
-  @doc """
   Lists all organizations.
   """
   def list_organizations do
@@ -67,28 +58,6 @@ defmodule You.Organizations do
       select: {o, count(m.id)}
     )
     |> Repo.all()
-  end
-
-  @doc """
-  Creates an organization and adds the given user as "owner" in one transaction.
-
-  Returns `{:ok, %{organization: org, membership: membership}}` or `{:error, :organization, changeset, _}` or `{:error, :membership, changeset, _}`.
-
-  ## Examples
-
-      iex> create_organization_with_owner(%{name: "Acme Corp", slug: "acme-corp"}, user)
-      {:ok, %{organization: %Organization{}, membership: %Membership{role: "owner"}}}
-
-  """
-  def create_organization_with_owner(attrs, %User{} = user) do
-    Repo.transact(fn ->
-      with {:ok, org} <- create_organization(attrs),
-           {:ok, membership} <- add_member(org, user, "owner") do
-        {:ok, %{organization: org, membership: membership}}
-      else
-        {:error, changeset} -> Repo.rollback({:error, changeset})
-      end
-    end)
   end
 
   @doc """
@@ -140,31 +109,6 @@ defmodule You.Organizations do
     )
     |> Repo.all()
     |> Enum.map(fn m -> {m.user, m.role} end)
-  end
-
-  @doc """
-  Lists all organizations a user belongs to, with their role in each.
-
-  Returns a list of `{organization, role}` tuples.
-  """
-  def list_user_organizations(%User{} = user) do
-    from(m in Membership,
-      where: m.user_id == ^user.id,
-      join: o in assoc(m, :organization),
-      preload: [organization: o]
-    )
-    |> Repo.all()
-    |> Enum.map(fn m -> {m.organization, m.role} end)
-  end
-
-  @doc """
-  Returns the role a user has in an organization, or `nil` if not a member.
-  """
-  def member_role(%Organization{} = org, %User{} = user) do
-    case Repo.get_by(Membership, organization_id: org.id, user_id: user.id) do
-      nil -> nil
-      %Membership{role: role} -> role
-    end
   end
 
   @doc """

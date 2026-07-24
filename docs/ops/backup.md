@@ -18,11 +18,13 @@ backups with zero downtime. No Elixir dependencies — runs from cron or manuall
                                                      │ rclone copy
                                                      ▼
                                             ┌─────────────────┐
-                                            │  Proton Drive    │
-                                            │  proton:backups/ │
-                                            │  you/            │
+                                            │  rclone remote   │
+                                            │  <remote>:       │
+                                            │  backups/you/    │
                                             └─────────────────┘
 ```
+
+The remote is any rclone remote (`RCLONE_REMOTE`) — S3, SFTP, Proton Drive, etc.
 
 ## Configuration
 
@@ -34,12 +36,12 @@ All settings are **environment variables** — no config file needed.
 | `AUDIT_LOG_DIR` | `/var/log/you` | Directory containing audit log files |
 | `BACKUP_DIR` | `$HOME/backups/you` | Where local backup archives are stored |
 | `RETENTION_DAYS` | `7` | How many days of backups to keep locally |
-| `RCLONE_REMOTE` | `proton` | rclone remote name (must be configured) |
+| `RCLONE_REMOTE` | — | rclone remote name (any rclone remote works; must be configured) |
 | `RCLONE_PATH` | `backups/you` | Path on the remote for uploads |
 
 ## Setup
 
-### 1. Install rclone and configure Proton Drive
+### 1. Install rclone and configure a remote
 
 ```bash
 # Install rclone (macOS)
@@ -48,13 +50,13 @@ brew install rclone
 # Install rclone (Linux)
 sudo apt install rclone
 
-# Configure the Proton Drive remote
+# Configure a remote (any rclone remote works — S3, SFTP, Proton Drive, etc.)
 rclone config
-# Follow prompts: name "proton", type "Proton Drive"
-# See: https://rclone.org/protondrive/
+# Follow the prompts for your storage provider
+# See: https://rclone.org/docs/
 
-# Verify
-rclone listremotes | grep proton
+# Verify (replace <remote> with your remote's name)
+rclone listremotes | grep <remote>
 ```
 
 ### 2. Test the backup script
@@ -83,8 +85,8 @@ tail -5 /var/log/you/backup.log
 # List local backups
 ls -lt ~/backups/you/you-*.tar.gz
 
-# List Proton Drive backups
-rclone ls proton:backups/you/
+# List remote backups
+rclone ls <remote>:backups/you/
 ```
 
 ## Manual Invocation
@@ -113,8 +115,8 @@ DATABASE_PATH=/custom/path/db.sqlite \
 ## Retention
 
 - Local: 7 daily backups by default (configurable via `RETENTION_DAYS`)
-- Proton Drive: no automatic pruning — relies on rclone's retention config or manual cleanup
-- To prune remote: `rclone delete proton:backups/you/you-OLD.tar.gz`
+- Remote: no automatic pruning — relies on rclone's retention config or manual cleanup
+- To prune remote: `rclone delete <remote>:backups/you/you-OLD.tar.gz`
 
 ## Restore
 

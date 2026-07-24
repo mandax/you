@@ -1,13 +1,13 @@
 # You — Identity and Access Management
 
-Cross-app identity, authentication, authorization, and user settings platform. Every service (Sockeet, future apps) delegates user management to You.
+Cross-app identity, authentication, authorization, and user settings platform. Every service delegates user management to You.
 
 ## Architecture
 
 ```
 You ──── auth, users, roles, 2FA, billing (future)
    │
-   ├── Sockeet ─── validates You JWTs via Erlang distribution
+   ├── myapp ─── validates You JWTs via Erlang distribution
    └── (future app) ─── same pattern
 ```
 
@@ -45,15 +45,13 @@ Visit [`localhost:4000`](http://localhost:4000).
 mix test
 ```
 
-84 tests, 0 failures.
-
 ## Auth flow
 
 The user authenticates through You's own login UI. Apps redirect to You and
 receive a single-use authorization code via callback URL:
 
 ```
-1. User visits Sockeet → redirected to You/login?callback_url=...
+1. User visits an app → redirected to You/login?callback_url=...
 2. You serves LiveView: email/password + 2FA + magic link
 3. On success, You creates a single-use auth code (5 min, hashed)
 4. You redirects: 302 callback_url?code=abc123
@@ -89,7 +87,7 @@ You.SDK.revoke_token(jwt, node: :"you@host")
 Configure the You node in the consumer app:
 
 ```elixir
-config :you_sdk, node: :"you@you.internal"
+config :you_sdk, node: :"you@you.example.com"
 ```
 
 Returns `{:error, :unreachable}` when You is down.
@@ -124,3 +122,7 @@ mix phx.server
 mix format --check-formatted
 mix compile --warnings-as-errors
 ```
+
+## License
+
+[MIT](LICENSE)

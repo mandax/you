@@ -28,7 +28,6 @@ defmodule YouWeb.Components.Base.DropdownMenu do
       <.dropdown_menu id="user-menu">
         <:trigger>Account</:trigger>
         <.menu_item phx-click="profile">Profile</.menu_item>
-        <.menu_separator />
         <.menu_item phx-click="logout">Log out</.menu_item>
       </.dropdown_menu>
   """
@@ -197,27 +196,6 @@ defmodule YouWeb.Components.Base.DropdownMenu do
     >
       {render_slot(@inner_block)}
     </button>
-    """
-  end
-
-  attr :class, :any, default: nil
-  attr :rest, :global
-
-  def menu_separator(assigns) do
-    ~H"""
-    <div role="separator" class={cx(["-mx-1 my-1 h-px bg-border", @class])} {@rest} />
-    """
-  end
-
-  attr :class, :any, default: nil
-  attr :rest, :global
-  slot :inner_block, required: true
-
-  def menu_label(assigns) do
-    ~H"""
-    <div class={cx(["px-2 py-1.5 text-sm font-semibold", @class])} {@rest}>
-      {render_slot(@inner_block)}
-    </div>
     """
   end
 end

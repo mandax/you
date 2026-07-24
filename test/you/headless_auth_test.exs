@@ -114,11 +114,15 @@ defmodule You.HeadlessAuthTest do
       password = AccountsFixtures.valid_user_password()
 
       assert {:ok, bundle} =
-               GenServer.call(You.IAM.Server, {:register, app.slug, secret, %{
-                 email: email,
-                 password: password,
-                 scopes: ["email"]
-               }})
+               GenServer.call(
+                 You.IAM.Server,
+                 {:register, app.slug, secret,
+                  %{
+                    email: email,
+                    password: password,
+                    scopes: ["email"]
+                  }}
+               )
 
       assert bundle.user_id
       assert bundle.email == email
@@ -136,27 +140,39 @@ defmodule You.HeadlessAuthTest do
 
       # First registration succeeds.
       assert {:ok, _} =
-               GenServer.call(You.IAM.Server, {:register, app.slug, secret, %{
-                 email: email,
-                 password: AccountsFixtures.valid_user_password()
-               }})
+               GenServer.call(
+                 You.IAM.Server,
+                 {:register, app.slug, secret,
+                  %{
+                    email: email,
+                    password: AccountsFixtures.valid_user_password()
+                  }}
+               )
 
       # Second with same email fails.
       assert {:error, :email_taken} =
-               GenServer.call(You.IAM.Server, {:register, app.slug, secret, %{
-                 email: email,
-                 password: AccountsFixtures.valid_user_password()
-               }})
+               GenServer.call(
+                 You.IAM.Server,
+                 {:register, app.slug, secret,
+                  %{
+                    email: email,
+                    password: AccountsFixtures.valid_user_password()
+                  }}
+               )
     end
 
     test "short password is :invalid_registration" do
       {app, secret} = first_party_app()
 
       assert {:error, :invalid_registration} =
-               GenServer.call(You.IAM.Server, {:register, app.slug, secret, %{
-                 email: AccountsFixtures.unique_user_email(),
-                 password: "short"
-               }})
+               GenServer.call(
+                 You.IAM.Server,
+                 {:register, app.slug, secret,
+                  %{
+                    email: AccountsFixtures.unique_user_email(),
+                    password: "short"
+                  }}
+               )
     end
 
     test "a non-first-party app is refused" do
@@ -168,20 +184,28 @@ defmodule You.HeadlessAuthTest do
         })
 
       assert {:error, :not_first_party} =
-               GenServer.call(You.IAM.Server, {:register, app.slug, secret, %{
-                 email: AccountsFixtures.unique_user_email(),
-                 password: AccountsFixtures.valid_user_password()
-               }})
+               GenServer.call(
+                 You.IAM.Server,
+                 {:register, app.slug, secret,
+                  %{
+                    email: AccountsFixtures.unique_user_email(),
+                    password: AccountsFixtures.valid_user_password()
+                  }}
+               )
     end
 
     test "wrong client secret is invalid_client" do
       {app, _secret} = first_party_app()
 
       assert {:error, :invalid_client} =
-               GenServer.call(You.IAM.Server, {:register, app.slug, "wrong-secret", %{
-                 email: AccountsFixtures.unique_user_email(),
-                 password: AccountsFixtures.valid_user_password()
-               }})
+               GenServer.call(
+                 You.IAM.Server,
+                 {:register, app.slug, "wrong-secret",
+                  %{
+                    email: AccountsFixtures.unique_user_email(),
+                    password: AccountsFixtures.valid_user_password()
+                  }}
+               )
     end
   end
 end

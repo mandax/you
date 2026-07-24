@@ -6,7 +6,7 @@ defmodule You.IAMServerTest do
   describe "verify_token" do
     test "returns user info for valid JWT" do
       user = AccountsFixtures.user_fixture() |> AccountsFixtures.set_password()
-      {:ok, jwt} = You.JWT.sign(%{sub: user.id, email: user.email, app: "sockeet", role: "admin"})
+      {:ok, jwt} = You.JWT.sign(%{sub: user.id, email: user.email, app: "myapp", role: "admin"})
 
       assert {:ok, info} = GenServer.call(You.IAM.Server, {:verify_token, jwt})
       assert info.user_id == user.id
@@ -18,14 +18,14 @@ defmodule You.IAMServerTest do
       user = AccountsFixtures.user_fixture()
 
       {:ok, jwt} =
-        You.JWT.sign(%{sub: user.id, email: user.email, app: "sockeet", role: "admin"}, -3600)
+        You.JWT.sign(%{sub: user.id, email: user.email, app: "myapp", role: "admin"}, -3600)
 
       assert {:error, :expired} = GenServer.call(You.IAM.Server, {:verify_token, jwt})
     end
 
     test "returns error for revoked JWT" do
       user = AccountsFixtures.user_fixture() |> AccountsFixtures.set_password()
-      {:ok, jwt} = You.JWT.sign(%{sub: user.id, email: user.email, app: "sockeet", role: "admin"})
+      {:ok, jwt} = You.JWT.sign(%{sub: user.id, email: user.email, app: "myapp", role: "admin"})
 
       You.JWT.revoke(jwt)
 
@@ -55,7 +55,7 @@ defmodule You.IAMServerTest do
   describe "revoke_token" do
     test "revokes a JWT so subsequent verify returns revoked" do
       user = AccountsFixtures.user_fixture() |> AccountsFixtures.set_password()
-      {:ok, jwt} = You.JWT.sign(%{sub: user.id, email: user.email, app: "sockeet", role: "admin"})
+      {:ok, jwt} = You.JWT.sign(%{sub: user.id, email: user.email, app: "myapp", role: "admin"})
 
       assert :ok = GenServer.call(You.IAM.Server, {:revoke_token, jwt})
       assert {:error, :revoked} = GenServer.call(You.IAM.Server, {:verify_token, jwt})

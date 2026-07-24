@@ -1,6 +1,6 @@
 # You — Identity and Access Management
 
-Cross-app identity, authentication, authorization, and user settings platform. Every service in the homelab delegates user management to You.
+Cross-app identity, authentication, authorization, and user settings platform. Every service delegates user management to You.
 
 ## Language
 
@@ -17,15 +17,15 @@ The browser cookie on you.example.com that proves the user authenticated with Yo
 _Avoid_: Auth token, login cookie, global session
 
 **App JWT**:
-A per-app credential issued to a specific service (Sockeet, future apps). Carries `sub` (user ID), `email`, `app` (which app it's for), `role`, `jti`, `iat`, `exp`. Obtained by exchanging an auth code. Revocable individually via the JTI blocklist.
+A per-app credential issued to a specific service. Carries `sub` (user ID), `email`, `app` (which app it's for), `role`, `jti`, `iat`, `exp`. Obtained by exchanging an auth code. Revocable individually via the JTI blocklist.
 _Avoid_: Session token, bearer token, access token
 
 **Role**:
-A named set of permissions scoped to a specific app. Example: `(sockeet, user-42) → admin`. Roles are always `(app_slug, user_id) → role_name` — never global.
+A named set of permissions scoped to a specific app. Example: `(myapp, user-42) → admin`. Roles are always `(app_slug, user_id) → role_name` — never global.
 _Avoid_: Permission, scope, privilege
 
 **App**:
-A service that integrates with You for authentication (Sockeet, future services). Each app has an API key for server-to-server communication and a configured set of allowed roles.
+A service that integrates with You for authentication. Each app has an API key for server-to-server communication and a configured set of allowed roles.
 _Avoid_: Service, client, integration
 
 **Team** (future):
@@ -37,7 +37,7 @@ A subscription tier that determines per-team quotas: max users, max apps, API ra
 _Avoid_: Tier, subscription, pricing plan
 
 **API Key** (machine-to-machine):
-A Bearer token used by apps to call You's internal endpoints (token validation, user lookup). Not to be confused with per-app API keys (e.g., Sockeet's `sk_` keys for content extraction).
+A Bearer token used by apps to call You's internal endpoints (token validation, user lookup). Not to be confused with an app's own API keys (e.g., `sk_` keys for content extraction).
 _Avoid_: Token, secret, credential
 
 **Two-Factor Authentication (2FA)**:
@@ -83,7 +83,7 @@ You is the center of a hub-and-spoke architecture:
 ```
 You ──── auth, users, roles, billing, settings
    │
-   ├── Sockeet ─── validates You JWTs via Erlang distribution
+   ├── myapp ─── validates You JWTs via Erlang distribution
    └── (future app) ─── same pattern
 
 Apps redirect users to You's login UI. Users authenticate through You.

@@ -12,7 +12,6 @@ defmodule YouWeb.MynauiIcons do
     |> File.ls!()
     |> Enum.filter(&String.ends_with?(&1, ".svg"))
 
-  # Read all SVGs at compile time into a map
   @icon_svgs Enum.reduce(icon_files, %{}, fn file, acc ->
                name = String.trim_trailing(file, ".svg")
                path = Path.join(@icons_dir, file)

@@ -16,7 +16,10 @@
     </p>
 
     <div :if={@apps != []} class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      <div :for={app <- @apps} class="group relative rounded-lg border border-border bg-card p-4 transition-colors hover:border-primary/50 hover:bg-muted/40">
+      <div
+        :for={app <- @apps}
+        class="group relative rounded-lg border border-border bg-card p-4 transition-colors hover:border-primary/50 hover:bg-muted/40"
+      >
         <a href={launch_target(app)} class="flex items-center gap-3">
           <span class="grid size-10 shrink-0 place-items-center rounded-lg bg-primary/10 text-sm font-semibold text-primary">
             {initial(app.name)}

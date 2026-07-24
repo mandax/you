@@ -63,8 +63,7 @@ defmodule YouWeb.FederatedAuthController do
 
       # Hand the login back to the requesting app (mint a code → consumer
       # callback) when this login was started from an OAuth flow; otherwise it's
-      # a plain sign-in to You. Previously this always logged into You itself,
-      # stranding consumers mid-flow.
+      # a plain sign-in to You.
       conn
       |> put_session(:oidc_state, nil)
       |> put_session(:oidc_provider, nil)

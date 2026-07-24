@@ -151,7 +151,9 @@ defmodule You.Audit.Streamer do
         Logger.warning("[Audit.Streamer] webhook returned #{status} for #{payload[:event]}")
 
       {:error, reason} ->
-        Logger.warning("[Audit.Streamer] webhook failed for #{payload[:event]}: #{inspect(reason)}")
+        Logger.warning(
+          "[Audit.Streamer] webhook failed for #{payload[:event]}: #{inspect(reason)}"
+        )
     end
   end
 end

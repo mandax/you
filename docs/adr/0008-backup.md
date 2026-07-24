@@ -1,8 +1,8 @@
-# Backup — SQLite and audit logs to Proton Drive
+# Backup — SQLite and audit logs via rclone
 
-Backup script that creates a consistent snapshot of the SQLite database (zero downtime) and the audit log files, archives them, uploads to Proton Drive via rclone, and prunes old backups.
+Backup script that creates a consistent snapshot of the SQLite database (zero downtime) and the audit log files, archives them, uploads to an rclone remote, and prunes old backups. Proton Drive is shown as one example remote — any rclone remote works.
 
-Pattern follows `~/homelab/bonney/backup.sh`: stop services → tar → restart → upload → prune. Adapted for SQLite's online backup capability.
+Pattern: snapshot → tar → upload → prune. Adapted for SQLite's online backup capability.
 
 ## Decisions
 
@@ -25,7 +25,7 @@ The audit logs are append-only JSONL files. Copying is safe — at worst the las
 
 ### 3. Backup script
 
-A standalone shell script at `bin/backup.sh` — no Elixir dependency, runnable from cron or manually:
+A standalone shell script at `bin/backup.sh` — no Elixir dependency, runnable from cron or manually. The upload step targets an rclone remote named `proton` (Proton Drive) as an example — any rclone remote works:
 
 ```bash
 #!/bin/bash
@@ -68,15 +68,15 @@ else
   exit 1
 fi
 
-# Upload to Proton Drive via rclone
+# Upload to the configured rclone remote
 if rclone listremotes 2>/dev/null | grep -q "^proton:"; then
-  echo "[$DATE] Uploading to Proton Drive..."
+  echo "[$DATE] Uploading to remote..."
   rclone copy "$BACKUP_FILE" proton:backups/you/ && \
     echo "[$DATE] Upload complete." || \
     echo "[$DATE] Upload failed." >&2
 else
-  echo "[$DATE] Proton Drive not configured, skipping upload."
-  echo "[$DATE] Configure with: rclone config (remote name: proton)"
+  echo "[$DATE] Remote not configured, skipping upload."
+  echo "[$DATE] Configure with: rclone config (e.g. remote name: proton)"
 fi
 
 # Prune old backups — keep last N daily backups
@@ -131,5 +131,5 @@ Proposed
 - `bin/backup.sh` — a single-file script, no Elixir dependency, testable in isolation.
 - Zero downtime for database backup via SQLite `.backup`.
 - Audit logs are best-effort (JSONL is resilient to truncated last lines).
-- rclone must be installed and configured with a `proton:` remote.
+- rclone must be installed and configured with a remote (`proton:` shown as an example).
 - Backup logs to `/var/log/you/backup.log` for monitoring.

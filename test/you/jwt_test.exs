@@ -11,7 +11,7 @@ defmodule You.JWTTest do
       claims = %{
         sub: user.id,
         email: user.email,
-        app: "sockeet",
+        app: "myapp",
         role: "admin"
       }
 
@@ -20,7 +20,7 @@ defmodule You.JWTTest do
 
       assert verified["sub"] == user.id
       assert verified["email"] == user.email
-      assert verified["app"] == "sockeet"
+      assert verified["app"] == "myapp"
       assert verified["role"] == "admin"
       assert verified["jti"] != nil
       assert verified["iat"] != nil
@@ -31,14 +31,14 @@ defmodule You.JWTTest do
       user = AccountsFixtures.user_fixture()
 
       {:ok, signed} =
-        JWT.sign(%{sub: user.id, email: user.email, app: "sockeet", role: "admin"}, -3600)
+        JWT.sign(%{sub: user.id, email: user.email, app: "myapp", role: "admin"}, -3600)
 
       assert {:error, :expired} = JWT.verify(signed)
     end
 
     test "rejects tokens with invalid signature" do
       user = AccountsFixtures.user_fixture()
-      {:ok, token} = JWT.sign(%{sub: user.id, email: user.email, app: "sockeet", role: "admin"})
+      {:ok, token} = JWT.sign(%{sub: user.id, email: user.email, app: "myapp", role: "admin"})
 
       [header, payload, _sig] = String.split(token, ".")
       corrupted = Enum.join([header, payload, Base.url_encode64("garbage", padding: false)], ".")
@@ -50,7 +50,7 @@ defmodule You.JWTTest do
   describe "revoke/1" do
     test "revokes a token so it cannot be verified" do
       user = AccountsFixtures.user_fixture()
-      {:ok, signed} = JWT.sign(%{sub: user.id, email: user.email, app: "sockeet", role: "admin"})
+      {:ok, signed} = JWT.sign(%{sub: user.id, email: user.email, app: "myapp", role: "admin"})
 
       assert {:ok, _claims} = JWT.verify(signed)
       :ok = JWT.revoke(signed)
@@ -62,10 +62,10 @@ defmodule You.JWTTest do
       user_b = AccountsFixtures.user_fixture()
 
       {:ok, token_a} =
-        JWT.sign(%{sub: user_a.id, email: user_a.email, app: "sockeet", role: "admin"})
+        JWT.sign(%{sub: user_a.id, email: user_a.email, app: "myapp", role: "admin"})
 
       {:ok, token_b} =
-        JWT.sign(%{sub: user_b.id, email: user_b.email, app: "sockeet", role: "admin"})
+        JWT.sign(%{sub: user_b.id, email: user_b.email, app: "myapp", role: "admin"})
 
       JWT.revoke(token_a)
 

@@ -135,7 +135,7 @@ defmodule You.Admin do
         nil ->
           {:ok, user} = You.Accounts.register_user(%{email: email})
 
-          # Set password + confirm directly (bypasses changeset min-length for dev convenience)
+          # Bypasses changeset min-length for dev convenience.
           hashed = Bcrypt.hash_pwd_salt(password)
 
           {:ok, user} =

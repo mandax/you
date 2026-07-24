@@ -41,17 +41,6 @@ defmodule You.OrganizationsTest do
     end
   end
 
-  describe "get_organization_by_slug/1" do
-    test "returns the organization by slug" do
-      {:ok, _} = Organizations.create_organization(%{name: "Acme Corp", slug: "acme-corp"})
-      assert %Organization{name: "Acme Corp"} = Organizations.get_organization_by_slug("acme-corp")
-    end
-
-    test "returns nil for an unknown slug" do
-      refute Organizations.get_organization_by_slug("nonexistent")
-    end
-  end
-
   describe "list_organizations/0" do
     test "returns all organizations" do
       Organizations.create_organization(%{name: "Acme Corp", slug: "acme-corp"})
@@ -105,7 +94,7 @@ defmodule You.OrganizationsTest do
     test "removes the user from the organization", %{org: org, user: user} do
       {:ok, _membership} = Organizations.add_member(org, user)
       assert {:ok, _} = Organizations.remove_member(org, user)
-      assert Organizations.member_role(org, user) == nil
+      assert Organizations.list_members(org) == []
     end
 
     test "returns error when user is not a member", %{org: org, user: user} do
@@ -142,55 +131,6 @@ defmodule You.OrganizationsTest do
     end
   end
 
-  describe "list_user_organizations/1" do
-    setup do
-      {:ok, org1} = Organizations.create_organization(%{name: "Acme Corp", slug: "acme-corp"})
-      {:ok, org2} = Organizations.create_organization(%{name: "Beta Inc", slug: "beta-inc"})
-      user = AccountsFixtures.user_fixture()
-      {:ok, _} = Organizations.add_member(org1, user, "admin")
-      {:ok, _} = Organizations.add_member(org2, user, "member")
-      %{org1: org1, org2: org2, user: user}
-    end
-
-    test "returns organizations the user belongs to with their roles", %{
-      org1: _org1,
-      org2: _org2,
-      user: user
-    } do
-      orgs = Organizations.list_user_organizations(user)
-      assert length(orgs) == 2
-
-      slugs_and_roles =
-        Enum.map(orgs, fn {org, role} -> {org.slug, role} end) |> Enum.sort()
-
-      assert slugs_and_roles == [{"acme-corp", "admin"}, {"beta-inc", "member"}]
-    end
-
-    test "returns empty list when user belongs to no orgs" do
-      user = AccountsFixtures.user_fixture()
-      assert Organizations.list_user_organizations(user) == []
-    end
-  end
-
-  describe "member_role/2" do
-    setup do
-      {:ok, org} = Organizations.create_organization(%{name: "Acme Corp", slug: "acme-corp"})
-      user = AccountsFixtures.user_fixture()
-      {:ok, _} = Organizations.add_member(org, user, "admin")
-      %{org: org, user: user}
-    end
-
-    test "returns the role for a member", %{org: org, user: user} do
-      assert Organizations.member_role(org, user) == "admin"
-    end
-
-    test "returns nil for a non-member" do
-      {:ok, org} = Organizations.create_organization(%{name: "Beta Inc", slug: "beta-inc"})
-      user = AccountsFixtures.user_fixture()
-      assert Organizations.member_role(org, user) == nil
-    end
-  end
-
   describe "update_member_role/3" do
     setup do
       {:ok, org} = Organizations.create_organization(%{name: "Acme Corp", slug: "acme-corp"})
@@ -200,8 +140,10 @@ defmodule You.OrganizationsTest do
     end
 
     test "updates the member's role", %{org: org, user: user} do
-      assert {:ok, %Membership{role: "admin"}} = Organizations.update_member_role(org, user, "admin")
-      assert Organizations.member_role(org, user) == "admin"
+      assert {:ok, %Membership{role: "admin"}} =
+               Organizations.update_member_role(org, user, "admin")
+
+      assert [{^user, "admin"}] = Organizations.list_members(org)
     end
 
     test "returns error when user is not a member", %{org: org} do
@@ -212,37 +154,6 @@ defmodule You.OrganizationsTest do
     test "rejects invalid role", %{org: org, user: user} do
       assert {:error, changeset} = Organizations.update_member_role(org, user, "superadmin")
       assert "is invalid" in errors_on(changeset).role
-    end
-  end
-
-  describe "create_organization_with_owner/2" do
-    test "creates an org and adds the user as owner" do
-      user = AccountsFixtures.user_fixture()
-
-      assert {:ok, %{organization: org, membership: membership}} =
-               Organizations.create_organization_with_owner(
-                 %{name: "Acme Corp", slug: "acme-corp"},
-                 user
-               )
-
-      assert org.name == "Acme Corp"
-      assert membership.role == "owner"
-      assert Organizations.member_role(org, user) == "owner"
-    end
-
-    test "rolls back on duplicate slug so no org or membership is persisted" do
-      user = AccountsFixtures.user_fixture()
-      Organizations.create_organization(%{name: "Acme Corp", slug: "acme-corp"})
-
-      assert {:error, _changeset} =
-               Organizations.create_organization_with_owner(
-                 %{name: "Acme Corp 2", slug: "acme-corp"},
-                 user
-               )
-
-      # The org should not have been created, and no membership should exist
-      refute Organizations.get_organization_by_slug("acme-corp-2")
-      assert Organizations.list_user_organizations(user) == []
     end
   end
 end

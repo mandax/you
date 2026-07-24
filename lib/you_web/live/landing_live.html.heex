@@ -184,7 +184,7 @@
           immediately — no client libraries to install, no SDK to keep in sync.
         </p>
         <code class="mt-5 block rounded-lg border border-border bg-card px-3 py-2 font-mono text-xs text-azure-brand">
-          You.Server.exchange_code(auth_code, client_id)
+          You.SDK.exchange_code(auth_code)
         </code>
       </div>
     </div>
@@ -232,10 +232,10 @@
         <.eyebrow>Self-host</.eyebrow>
         <h2 class="text-3xl font-bold tracking-tight">Free to run. Yours to keep.</h2>
         <p class="mt-3 text-muted-foreground">
-          The community image is free and closed-source — a prebuilt container, not a repo to clone.
+          MIT-licensed and open source — clone the repo or pull the prebuilt Docker image.
         </p>
       </div>
-      <div class="mt-10 grid gap-4 md:grid-cols-3">
+      <div class="mx-auto mt-10 max-w-md">
         <div
           :for={tier <- YouWeb.LandingContent.tiers()}
           class={[

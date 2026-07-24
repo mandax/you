@@ -22,7 +22,9 @@ defmodule YouWeb.SCIM.UsersControllerTest do
   end
 
   defp with_bearer(conn), do: Plug.Conn.put_req_header(conn, "authorization", "Bearer #{@token}")
-  defp with_wrong_bearer(conn), do: Plug.Conn.put_req_header(conn, "authorization", "Bearer wrong-token")
+
+  defp with_wrong_bearer(conn),
+    do: Plug.Conn.put_req_header(conn, "authorization", "Bearer wrong-token")
 
   describe "authentication" do
     test "rejects requests without bearer token", %{conn: conn} do

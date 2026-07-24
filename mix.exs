@@ -1,6 +1,8 @@
 defmodule You.MixProject do
   use Mix.Project
 
+  @source_url "https://github.com/mandax/you"
+
   def project do
     [
       app: :you,
@@ -11,7 +13,19 @@ defmodule You.MixProject do
       aliases: aliases(),
       deps: deps(),
       compilers: [:phoenix_live_view] ++ Mix.compilers(),
-      listeners: [Phoenix.CodeReloader]
+      listeners: [Phoenix.CodeReloader],
+      description:
+        "Self-hosted identity and access management for BEAM apps: " <>
+          "login UI, 2FA, magic links, JWTs over Erlang distribution",
+      source_url: @source_url,
+      package: package()
+    ]
+  end
+
+  defp package do
+    [
+      licenses: ["MIT"],
+      links: %{"GitHub" => @source_url}
     ]
   end
 
@@ -88,7 +102,11 @@ defmodule You.MixProject do
       "ecto.reset": ["ecto.drop", "ecto.setup"],
       test: ["ecto.create --quiet", "ecto.migrate --quiet", "test"],
       "assets.setup": ["esbuild.install --if-missing"],
-      "assets.build": ["compile", "cmd npx tailwindcss -i assets/css/app.css -o priv/static/assets/css/app.css", "esbuild you"],
+      "assets.build": [
+        "compile",
+        "cmd npx tailwindcss -i assets/css/app.css -o priv/static/assets/css/app.css",
+        "esbuild you"
+      ],
       "assets.deploy": [
         # `compile` must come first: colocated hooks are only extracted when the
         # components defining them are compiled, and esbuild reads them from there.

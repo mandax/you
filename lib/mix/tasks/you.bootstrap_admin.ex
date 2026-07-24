@@ -38,7 +38,6 @@ defmodule Mix.Tasks.You.BootstrapAdmin do
       exit({:shutdown, 1})
     end
 
-    # Ensure ecto repos are started
     Mix.Task.run("app.start")
 
     case You.Admin.bootstrap_admin(email, password) do

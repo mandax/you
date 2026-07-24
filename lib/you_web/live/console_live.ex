@@ -2,8 +2,8 @@ defmodule YouWeb.ConsoleLive do
   @moduledoc """
   Operator console — the admin surface at `/console`.
 
-  A single LiveView shell (sidebar + topbar + section views) in the same visual
-  language as Sockeet's console: dense, mono-accented cards and tables, a live
+  A single LiveView shell (sidebar + topbar + section views) with a dense,
+  mono-accented design: cards and tables, a live
   connection indicator, and `?view=` navigation. Every section is wired to the
   real domain (`You.Admin`, `You.Organizations`, `You.Settings`,
   `You.Audit.Streamer`) — no fabricated data.
@@ -54,7 +54,8 @@ defmodule YouWeb.ConsoleLive do
        selected_org: nil,
        members: [],
        base_url: YouWeb.Endpoint.url(),
-       oidc_providers: Application.get_env(:you, :oidc_providers, %{}) |> Map.keys() |> Enum.sort(),
+       oidc_providers:
+         Application.get_env(:you, :oidc_providers, %{}) |> Map.keys() |> Enum.sort(),
        saved: false
      )
      |> load_data()
@@ -86,7 +87,9 @@ defmodule YouWeb.ConsoleLive do
 
   # ── apps ──────────────────────────────────────────────────────
   def handle_event("create_app", params, socket) do
-    case Admin.create_app(Map.take(params, ["name", "slug", "callback_url", "launch_url", "first_party"])) do
+    case Admin.create_app(
+           Map.take(params, ["name", "slug", "callback_url", "launch_url", "first_party"])
+         ) do
       {:ok, app, secret} ->
         {:noreply, socket |> load_data() |> assign(new_secret: secret, secret_app: app)}
 
@@ -114,9 +117,13 @@ defmodule YouWeb.ConsoleLive do
   def handle_event("update_app", params, socket) do
     app = socket.assigns.editing_app
 
-    case Admin.update_app(app, Map.take(params, ["name", "callback_url", "launch_url", "first_party"])) do
+    case Admin.update_app(
+           app,
+           Map.take(params, ["name", "callback_url", "launch_url", "first_party"])
+         ) do
       {:ok, _app} ->
-        {:noreply, socket |> load_data() |> assign(editing_app: nil) |> put_flash(:info, "App updated.")}
+        {:noreply,
+         socket |> load_data() |> assign(editing_app: nil) |> put_flash(:info, "App updated.")}
 
       {:error, changeset} ->
         {:noreply, put_flash(socket, :error, "Could not update app: #{errors(changeset)}")}
@@ -133,8 +140,11 @@ defmodule YouWeb.ConsoleLive do
   # ── orgs ──────────────────────────────────────────────────────
   def handle_event("create_org", params, socket) do
     case Organizations.create_organization(Map.take(params, ["name", "slug"])) do
-      {:ok, _org} -> {:noreply, socket |> load_data() |> put_flash(:info, "Organization created.")}
-      {:error, cs} -> {:noreply, put_flash(socket, :error, "Could not create org: #{errors(cs)}")}
+      {:ok, _org} ->
+        {:noreply, socket |> load_data() |> put_flash(:info, "Organization created.")}
+
+      {:error, cs} ->
+        {:noreply, put_flash(socket, :error, "Could not create org: #{errors(cs)}")}
     end
   end
 
@@ -149,8 +159,11 @@ defmodule YouWeb.ConsoleLive do
 
       user ->
         case Organizations.add_member(org, user, role) do
-          {:ok, _} -> {:noreply, socket |> select_org(org.id) |> put_flash(:info, "Member added.")}
-          {:error, cs} -> {:noreply, put_flash(socket, :error, "Could not add: #{errors(cs)}")}
+          {:ok, _} ->
+            {:noreply, socket |> select_org(org.id) |> put_flash(:info, "Member added.")}
+
+          {:error, cs} ->
+            {:noreply, put_flash(socket, :error, "Could not add: #{errors(cs)}")}
         end
     end
   end
@@ -285,7 +298,12 @@ defmodule YouWeb.ConsoleLive do
             <% "users" -> %>
               <.users_view users={@users} current_scope={@current_scope} />
             <% "apps" -> %>
-              <.apps_view apps={@apps} new_secret={@new_secret} secret_app={@secret_app} editing_app={@editing_app} />
+              <.apps_view
+                apps={@apps}
+                new_secret={@new_secret}
+                secret_app={@secret_app}
+                editing_app={@editing_app}
+              />
             <% "orgs" -> %>
               <.orgs_view orgs={@orgs} selected={@selected_org} members={@members} roles={@roles} />
             <% "audit" -> %>
@@ -419,7 +437,13 @@ defmodule YouWeb.ConsoleLive do
             <.input type="text" name="slug" label="Slug (client_id)" value="" required />
             <.input type="url" name="callback_url" label="Callback URL" value="" required />
             <.input type="url" name="launch_url" label="Launch URL (optional)" value="" />
-            <.input type="checkbox" name="first_party" label="First-party app" value="true" checked={false} />
+            <.input
+              type="checkbox"
+              name="first_party"
+              label="First-party app"
+              value="true"
+              checked={false}
+            />
             <div class="flex justify-end">
               <.button type="submit">Create</.button>
             </div>
@@ -437,7 +461,9 @@ defmodule YouWeb.ConsoleLive do
           <td class="px-3 py-2 font-mono text-xs text-muted-foreground">{app.callback_url}</td>
           <td class="px-3 py-2">
             <.badge :if={app.first_party} variant="info">1st-party</.badge>
-            <span :if={!app.first_party} class="font-mono text-xs text-muted-foreground">&mdash;</span>
+            <span :if={!app.first_party} class="font-mono text-xs text-muted-foreground">
+              &mdash;
+            </span>
           </td>
           <td class="px-3 py-2">
             <.status_badge status={if app.client_secret_hash, do: "running", else: "idle"} />
@@ -477,9 +503,26 @@ defmodule YouWeb.ConsoleLive do
         <:description>Update the app's name, URLs, and first-party flag.</:description>
         <form :if={@editing_app} phx-submit="update_app" class="space-y-4">
           <.input type="text" name="name" label="Name" value={@editing_app.name} required />
-          <.input type="url" name="callback_url" label="Callback URL" value={@editing_app.callback_url} required />
-          <.input type="url" name="launch_url" label="Launch URL (optional)" value={@editing_app.launch_url} />
-          <.input type="checkbox" name="first_party" label="First-party app" value="true" checked={@editing_app.first_party} />
+          <.input
+            type="url"
+            name="callback_url"
+            label="Callback URL"
+            value={@editing_app.callback_url}
+            required
+          />
+          <.input
+            type="url"
+            name="launch_url"
+            label="Launch URL (optional)"
+            value={@editing_app.launch_url}
+          />
+          <.input
+            type="checkbox"
+            name="first_party"
+            label="First-party app"
+            value="true"
+            checked={@editing_app.first_party}
+          />
           <div class="flex justify-end gap-2">
             <.button type="button" variant="outline" phx-click="cancel_edit_app">Cancel</.button>
             <.button type="submit">Save</.button>
@@ -666,21 +709,55 @@ defmodule YouWeb.ConsoleLive do
 
       <form phx-submit="save_settings" class="space-y-4">
         <.settings_group title="Session & tokens">
-          <.setting_field name="session_expiry_hours" label="Session expiry (hours)" value={@settings[:session_expiry_hours]} />
-          <.setting_field name="jwt_expiry_hours" label="JWT expiry (hours)" value={@settings[:jwt_expiry_hours]} />
-          <.setting_field name="code_expiry_minutes" label="Auth code expiry (minutes)" value={@settings[:code_expiry_minutes]} />
-          <.setting_field name="magic_link_expiry_minutes" label="Magic link expiry (minutes)" value={@settings[:magic_link_expiry_minutes]} />
+          <.setting_field
+            name="session_expiry_hours"
+            label="Session expiry (hours)"
+            value={@settings[:session_expiry_hours]}
+          />
+          <.setting_field
+            name="jwt_expiry_hours"
+            label="JWT expiry (hours)"
+            value={@settings[:jwt_expiry_hours]}
+          />
+          <.setting_field
+            name="code_expiry_minutes"
+            label="Auth code expiry (minutes)"
+            value={@settings[:code_expiry_minutes]}
+          />
+          <.setting_field
+            name="magic_link_expiry_minutes"
+            label="Magic link expiry (minutes)"
+            value={@settings[:magic_link_expiry_minutes]}
+          />
         </.settings_group>
 
         <.settings_group title="Erlang distribution">
-          <.setting_field name="erlang_node_name" label="Node name" value={@settings[:erlang_node_name]} />
+          <.setting_field
+            name="erlang_node_name"
+            label="Node name"
+            value={@settings[:erlang_node_name]}
+          />
           <.setting_field name="epmd_port" label="EPMD port" value={@settings[:epmd_port]} />
-          <.setting_field name="erlang_cookie" label="Cookie" value={@settings[:erlang_cookie]} type="password" />
+          <.setting_field
+            name="erlang_cookie"
+            label="Cookie"
+            value={@settings[:erlang_cookie]}
+            type="password"
+          />
         </.settings_group>
 
         <.settings_group title="Provisioning & audit">
-          <.setting_field name="scim_bearer_token" label="SCIM bearer token" value={@settings[:scim_bearer_token]} type="password" />
-          <.setting_field name="audit_webhook_url" label="Audit webhook URL" value={@settings[:audit_webhook_url]} />
+          <.setting_field
+            name="scim_bearer_token"
+            label="SCIM bearer token"
+            value={@settings[:scim_bearer_token]}
+            type="password"
+          />
+          <.setting_field
+            name="audit_webhook_url"
+            label="Audit webhook URL"
+            value={@settings[:audit_webhook_url]}
+          />
           <p class="pt-1 font-mono text-[11px] text-muted-foreground">
             SCIM base: {@base_url}/scim/v2 · blank tokens disable the feature
           </p>
@@ -771,7 +848,12 @@ defmodule YouWeb.ConsoleLive do
     ~H"""
     <label class="flex items-center justify-between gap-4 text-sm">
       <span class="text-muted-foreground">{@label}</span>
-      <.base_input type={@type} name={@name} value={@value} class="h-8 max-w-[16rem] font-mono text-xs" />
+      <.base_input
+        type={@type}
+        name={@name}
+        value={@value}
+        class="h-8 max-w-[16rem] font-mono text-xs"
+      />
     </label>
     """
   end

@@ -29,7 +29,10 @@ defmodule YouWeb.Layouts do
           </div>
           <nav class="flex items-center gap-6 text-sm">
             <span class="hidden sm:flex items-center gap-6">
-              <.link navigate="/" class="text-muted-foreground hover:text-foreground transition-colors">
+              <.link
+                navigate="/"
+                class="text-muted-foreground hover:text-foreground transition-colors"
+              >
                 Home
               </.link>
               <.link
@@ -104,14 +107,14 @@ defmodule YouWeb.Layouts do
         </div>
 
         <div class="px-4 text-sm font-medium text-muted-foreground">Account</div>
-
+        
     <!-- Right side -->
         <div class="flex items-center gap-2 px-5 ml-auto">
           <.theme_toggle id="app-theme" />
           <.user_dropdown current_scope={@current_scope} />
         </div>
       </header>
-
+      
     <!-- Body: optional side panel + content -->
       <div class="flex flex-1 min-h-0">
         <aside
@@ -120,7 +123,7 @@ defmodule YouWeb.Layouts do
         >
           {render_slot(@side_panel)}
         </aside>
-
+        
     <!-- Page content -->
         <main class="flex-1 overflow-auto p-6">
           <div class="max-w-4xl animate-fade-in">
@@ -149,10 +152,18 @@ defmodule YouWeb.Layouts do
     <div class="text-[11px] font-medium text-muted-foreground uppercase tracking-widest mb-1">
       Account
     </div>
-    <.account_link navigate={~p"/users/dashboard"} icon="lucide-grid-2x2" active={@active == "dashboard"}>
+    <.account_link
+      navigate={~p"/users/dashboard"}
+      icon="lucide-grid-2x2"
+      active={@active == "dashboard"}
+    >
       Your apps
     </.account_link>
-    <.account_link navigate={~p"/users/settings"} icon="lucide-settings" active={@active == "settings"}>
+    <.account_link
+      navigate={~p"/users/settings"}
+      icon="lucide-settings"
+      active={@active == "settings"}
+    >
       Settings
     </.account_link>
     <.account_link
@@ -201,7 +212,10 @@ defmodule YouWeb.Layouts do
           <% end %>
         </span>
       </:trigger>
-      <div :if={@current_scope} class="px-2 py-1.5 text-xs text-muted-foreground border-b border-border truncate">
+      <div
+        :if={@current_scope}
+        class="px-2 py-1.5 text-xs text-muted-foreground border-b border-border truncate"
+      >
         {@current_scope.user.email}
       </div>
       <.menu_item :if={@current_scope} navigate={~p"/users/dashboard"}>Dashboard</.menu_item>
@@ -213,7 +227,12 @@ defmodule YouWeb.Layouts do
       >
         Console
       </.menu_item>
-      <.menu_item :if={@current_scope} href={~p"/users/log-out"} method="delete" class="text-destructive">
+      <.menu_item
+        :if={@current_scope}
+        href={~p"/users/log-out"}
+        method="delete"
+        class="text-destructive"
+      >
         Log out
       </.menu_item>
     </.dropdown_menu>

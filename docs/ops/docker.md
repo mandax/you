@@ -38,7 +38,7 @@ docker run -d \
 | `PORT` | No | `4000` | HTTP port |
 | `POOL_SIZE` | No | `10` | Ecto connection pool size |
 | `PHX_SERVER` | No | `true` | Set to start the HTTP server |
-| `RELEASE_NODE` | No | `you@you.internal` | Erlang node name (for Erlang distribution) |
+| `RELEASE_NODE` | No | `you@you.example.com` | Erlang node name (for Erlang distribution) |
 | `RELEASE_COOKIE` | No | — | Erlang cookie (required for Erlang distribution) |
 | `DNS_CLUSTER_QUERY` | No | — | DNS cluster query for distributed Erlang |
 
@@ -68,7 +68,7 @@ For non-interactive production use, pass the email and password as arguments.
 
 ## Erlang Distribution
 
-Consumer apps (Sockeet, etc.) communicate with You via Erlang distribution.
+Consumer apps communicate with You via Erlang distribution.
 All nodes must share the same cookie and distribution must be enabled.
 
 ### Required env vars (must match on ALL nodes)
@@ -92,23 +92,23 @@ You manages the cookie through the **admin settings page** (`/admin/settings`):
 4. The `RELEASE_COOKIE` env var is still supported but acts as a bootstrap
    fallback (the DB value overrides it)
 
-**Consumer apps** (Sockeet) must have the same cookie configured on their
+**Consumer apps** must have the same cookie configured on their
 side — they don't read You's database. You must share the cookie value
 out-of-band (same env var, same Kubernetes Secret, etc.).
 
 ```yaml
 # Docker Compose — You's cookie comes from settings (admin panel)
-# Sockeet's cookie must match — configured via env var
+# The consumer app's cookie must match — configured via env var
 services:
   you:
     environment:
       RELEASE_DISTRIBUTION: name
       RELEASE_NODE: you@you
 
-  sockeet:
+  myapp:
     environment:
       RELEASE_DISTRIBUTION: name
-      RELEASE_NODE: sockeet@sockeet
+      RELEASE_NODE: myapp@myapp
       RELEASE_COOKIE: "${ERLANG_COOKIE}"  # must match You's setting
 ```
 

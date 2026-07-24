@@ -44,6 +44,10 @@ backup.log
 dev.db
 you_dev.db
 
+# Environment files
+.env
+.env.*
+
 # Node.js dependencies (used by Tailwind CLI build pipeline)
 /node_modules/
 

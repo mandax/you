@@ -9,9 +9,9 @@ defmodule YouWeb.LandingContent do
   @redirect_sample """
   # your app sends the user to You to authenticate
   redirect_url =
-    "https://you.internal/users/log-in?" <>
+    "https://you.example.com/users/log-in?" <>
       URI.encode_query(%{
-        callback_url: "https://app.internal/auth/callback",
+        callback_url: "https://myapp.example.com/auth/callback",
         scope: "profile email"
       })
 
@@ -21,9 +21,8 @@ defmodule YouWeb.LandingContent do
   @exchange_sample """
   # your app exchanges the one-time code over Erlang
   # distribution — no HTTP hop, no shared secret to rotate
-  {:ok, %{jwt: jwt, user: user}} =
-    :rpc.call(:"you@10.0.0.4", You.Server, :exchange_code,
-      [auth_code, "app.internal"])
+  {:ok, %{jwt: jwt, user_id: user_id}} =
+    You.SDK.exchange_code(auth_code, node: :"you@you.example.com")
 
   # jwt is short-lived, JTI-tracked and revocable\
   """
@@ -35,7 +34,7 @@ defmodule YouWeb.LandingContent do
     ]
   end
 
-  def works_with, do: ~w(Phoenix LiveView Sockeet Erlang\ distribution JOSE)
+  def works_with, do: ~w(Phoenix LiveView SQLite Erlang\ distribution JOSE)
 
   def trust_strip do
     [
@@ -82,7 +81,8 @@ defmodule YouWeb.LandingContent do
     [
       %{
         title: "Hardened login",
-        body: "Bcrypt hashing and rate limiting are on from the first request — nothing to enable."
+        body:
+          "Bcrypt hashing and rate limiting are on from the first request — nothing to enable."
       },
       %{
         title: "2FA built in",
@@ -118,16 +118,14 @@ defmodule YouWeb.LandingContent do
       %{
         icon: "lucide-shield",
         title: "You run on the BEAM and want it in-cluster",
-        body: "Distribution-native RPC, your own node, your users' data never leaving your cluster.",
+        body:
+          "Distribution-native RPC, your own node, your users' data never leaving your cluster.",
         pick: "Use You",
         ours: true
       }
     ]
   end
 
-  @doc """
-  Capability comparison. `:yes`, `:no`, or `:partial` per column.
-  """
   def comparison do
     [
       %{feature: "Self-host your data", you: :yes, auth0: :no, keycloak: :yes},
@@ -148,31 +146,10 @@ defmodule YouWeb.LandingContent do
         cta: "Self-host You",
         popular: true,
         points: [
-          "Free prebuilt Docker image",
-          "Runs on your own cluster",
+          "MIT-licensed source on GitHub",
+          "Prebuilt Docker image",
           "Password + 2FA + audit",
           "Unlimited consumer apps"
-        ]
-      },
-      %{
-        name: "Cloud",
-        price: "Later",
-        tag: "In the works",
-        cta: "Contact us",
-        popular: false,
-        points: ["Managed IAM node", "Usage dashboard", "Email support", "SLA on request"]
-      },
-      %{
-        name: "Enterprise",
-        price: "Contact",
-        tag: "Multi-tenant",
-        cta: "Talk to us",
-        popular: false,
-        points: [
-          "Multi-tenant isolation",
-          "SSO federation",
-          "SLA + priority",
-          "Dedicated support"
         ]
       }
     ]
@@ -183,7 +160,7 @@ defmodule YouWeb.LandingContent do
       %{
         q: "Is You open source?",
         a:
-          "No. You is a free, prebuilt community Docker image you self-host — the source isn't public. You run it on your own cluster, so your users' data stays inside your infrastructure."
+          "Yes — MIT-licensed, source on GitHub. You self-host it on your own cluster, so your users' data stays inside your infrastructure."
       },
       %{
         q: "How do apps connect?",

@@ -94,13 +94,10 @@ defmodule YouWeb do
       # Base UI–inspired primitives.
       import YouWeb.Components.Base.Badge
       import YouWeb.Components.Base.Button
-      import YouWeb.Components.Base.Card
       import YouWeb.Components.Base.CopyButton
       import YouWeb.Components.Base.Dialog
       import YouWeb.Components.Base.DropdownMenu
       import YouWeb.Components.Base.Input
-      import YouWeb.Components.Base.Separator
-      import YouWeb.Components.Base.Tooltip
 
       # Shared presentational pieces (eyebrow, status dot, sparkline, …)
       import YouWeb.Components.Bits

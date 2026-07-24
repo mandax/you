@@ -18,7 +18,13 @@
       {@error}
     </div>
 
-    <.form :let={f} for={@form} as={:email_2fa} id="email_2fa_form" action={~p"/users/log-in/email-2fa"}>
+    <.form
+      :let={f}
+      for={@form}
+      as={:email_2fa}
+      id="email_2fa_form"
+      action={~p"/users/log-in/email-2fa"}
+    >
       <div class="space-y-4">
         <.input
           field={f[:code]}

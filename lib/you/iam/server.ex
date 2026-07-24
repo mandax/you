@@ -1,7 +1,6 @@
 defmodule You.IAM.Server do
   @moduledoc """
-  GenServer that handles Erlang distribution messages from consumer apps
-  (Sockeet, future services).
+  GenServer that handles Erlang distribution messages from consumer apps.
 
   Registered as `You.IAM.Server`. Apps send messages via:
 
@@ -12,7 +11,18 @@ defmodule You.IAM.Server do
     - `{:verify_token, jwt}` → `{:ok, %{user_id, email, role}}` | `{:error, reason}`
     - `{:get_user, user_id}` → `{:ok, %{id, email}}` | `{:error, :not_found}`
     - `{:revoke_token, jwt}` → `:ok`
-    - `{:client_credentials, client_id, client_secret}` → `{:ok, %{jwt: jwt}}` | `{:error, :invalid_client}`
+    - `{:exchange_code, code}` / `{:exchange_code, code, code_verifier}` →
+      `{:ok, %{user_id, email, jwt, refresh_token}}` | `{:error, reason}`
+    - `{:refresh, refresh_token}` →
+      `{:ok, %{user_id, email, jwt, refresh_token}}` | `{:error, :invalid}`
+    - `{:client_credentials, client_id, client_secret}` →
+      `{:ok, %{jwt: jwt}}` | `{:error, :invalid_client}`
+    - `{:password_login, client_id, client_secret, params}` →
+      `{:ok, %{user_id, email, jwt, refresh_token}}` | `{:error, reason}`
+      (first-party apps only)
+    - `{:register, client_id, client_secret, params}` →
+      `{:ok, %{user_id, email, jwt, refresh_token}}` | `{:error, reason}`
+      (first-party apps only)
   """
 
   use GenServer
@@ -21,6 +31,7 @@ defmodule You.IAM.Server do
   alias You.Repo
   alias You.Accounts
   alias You.Admin.App
+  alias You.IAM.Claims
 
   # Client
 
@@ -415,25 +426,7 @@ defmodule You.IAM.Server do
   # Signs a scoped JWT and returns the token bundle handed back to consumers.
   defp token_bundle(user, scopes, refresh_token) do
     jwt_expiry = You.Settings.get(:jwt_expiry_hours) * 3600
-    {:ok, jwt} = JWT.sign(build_scoped_claims(user, scopes), jwt_expiry)
+    {:ok, jwt} = JWT.sign(Claims.build_scoped_claims(user, scopes), jwt_expiry)
     %{user_id: user.id, email: user.email, jwt: jwt, refresh_token: refresh_token}
   end
-
-  defp build_scoped_claims(user, scopes) do
-    base = %{sub: user.id, app: "you"}
-
-    scopes
-    |> Enum.reduce(base, fn
-      "email", acc -> Map.put(acc, :email, user.email)
-      "profile", acc -> acc |> Map.put(:email, user.email) |> Map.put(:name, user.email)
-      "roles", acc -> acc |> Map.put(:email, user.email) |> Map.put(:role, user_role(user))
-      _, acc -> acc
-    end)
-  end
-
-  # Real role from the account's admin flag, so consumer apps (Sockeet) can gate
-  # on it. A fuller role model (multiple named roles) is roadmap; this closes the
-  # "role is always 'user'" gap that blocked admin authorization downstream.
-  defp user_role(%{is_admin: true}), do: "admin"
-  defp user_role(_), do: "user"
 end

@@ -24,13 +24,13 @@ defmodule You.AdminTest do
     test "registers a new app and returns the client secret once" do
       assert {:ok, app, client_secret} =
                Admin.create_app(%{
-                 slug: "sockeet",
-                 name: "Sockeet",
-                 callback_url: "https://sockeet.example.com/auth/callback"
+                 slug: "myapp",
+                 name: "Myapp",
+                 callback_url: "https://myapp.example.com/auth/callback"
                })
 
-      assert app.slug == "sockeet"
-      assert app.name == "Sockeet"
+      assert app.slug == "myapp"
+      assert app.name == "Myapp"
       assert is_binary(client_secret)
       assert byte_size(client_secret) > 0
       # Secret is not stored in the DB — only its hash
@@ -39,15 +39,15 @@ defmodule You.AdminTest do
 
     test "validates unique slug" do
       Admin.create_app(%{
-        slug: "sockeet",
-        name: "Sockeet",
-        callback_url: "https://sockeet.example.com/auth/callback"
+        slug: "myapp",
+        name: "Myapp",
+        callback_url: "https://myapp.example.com/auth/callback"
       })
 
       assert {:error, _} =
                Admin.create_app(%{
-                 slug: "sockeet",
-                 name: "Sockeet Dupe",
+                 slug: "myapp",
+                 name: "Myapp Dupe",
                  callback_url: "https://other.com/callback"
                })
     end
@@ -114,9 +114,9 @@ defmodule You.AdminTest do
     setup do
       {:ok, app, _secret} =
         Admin.create_app(%{
-          slug: "sockeet",
-          name: "Sockeet",
-          callback_url: "https://sockeet.example.com/auth/callback"
+          slug: "myapp",
+          name: "Myapp",
+          callback_url: "https://myapp.example.com/auth/callback"
         })
 
       %{app: app}
@@ -124,7 +124,7 @@ defmodule You.AdminTest do
 
     test "matches the exact registered callback", %{app: app} do
       assert {:ok, found} =
-               Admin.lookup_app_by_callback("https://sockeet.example.com/auth/callback")
+               Admin.lookup_app_by_callback("https://myapp.example.com/auth/callback")
 
       assert found.id == app.id
     end
@@ -132,12 +132,10 @@ defmodule You.AdminTest do
     test "rejects a prefix-only match (open-redirect guard)" do
       # Would have matched under the old String.starts_with?/2 logic.
       assert :error =
-               Admin.lookup_app_by_callback(
-                 "https://sockeet.example.com/auth/callback.evil.com/x"
-               )
+               Admin.lookup_app_by_callback("https://myapp.example.com/auth/callback.evil.com/x")
 
       assert :error =
-               Admin.lookup_app_by_callback("https://sockeet.example.com/auth/callback/sub")
+               Admin.lookup_app_by_callback("https://myapp.example.com/auth/callback/sub")
     end
   end
 

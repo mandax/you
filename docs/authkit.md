@@ -74,7 +74,7 @@ You.SDK.exchange_code(code, code_verifier: verifier)
 Configure the node in your app's config:
 
 ```elixir
-config :you_sdk, node: :"you@you.internal"
+config :you_sdk, node: :"you@you.example.com"
 ```
 
 #### Via HTTP

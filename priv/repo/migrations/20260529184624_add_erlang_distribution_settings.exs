@@ -3,7 +3,7 @@ defmodule You.Repo.Migrations.AddErlangDistributionSettings do
 
   def up do
     execute(
-      "INSERT OR IGNORE INTO settings (key, value, inserted_at, updated_at) VALUES ('erlang_node_name', 'you@you.internal', datetime('now'), datetime('now'))"
+      "INSERT OR IGNORE INTO settings (key, value, inserted_at, updated_at) VALUES ('erlang_node_name', 'you@you.example.com', datetime('now'), datetime('now'))"
     )
 
     execute(

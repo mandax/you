@@ -7,6 +7,11 @@ defmodule You.Settings do
   - `jwt_expiry_hours` — 1
   - `code_expiry_minutes` — 5
   - `magic_link_expiry_minutes` — 15
+  - `erlang_cookie` — ""
+  - `erlang_node_name` — "you@you.example.com"
+  - `epmd_port` — 4369
+  - `scim_bearer_token` — ""
+  - `audit_webhook_url` — ""
   """
 
   alias You.Settings.Setting
@@ -18,7 +23,7 @@ defmodule You.Settings do
     code_expiry_minutes: 5,
     magic_link_expiry_minutes: 15,
     erlang_cookie: "",
-    erlang_node_name: "you@you.internal",
+    erlang_node_name: "you@you.example.com",
     epmd_port: 4369,
     scim_bearer_token: "",
     audit_webhook_url: ""

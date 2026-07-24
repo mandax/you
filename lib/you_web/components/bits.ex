@@ -80,19 +80,6 @@ defmodule YouWeb.Components.Bits do
   end
 
   @doc """
-  Keyboard key hint.
-  """
-  slot :inner_block, required: true
-
-  def kbd(assigns) do
-    ~H"""
-    <kbd class="inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded border border-border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
-      {render_slot(@inner_block)}
-    </kbd>
-    """
-  end
-
-  @doc """
   Section eyebrow — the small cyan rule-and-caption above a heading.
   """
   attr :class, :any, default: nil

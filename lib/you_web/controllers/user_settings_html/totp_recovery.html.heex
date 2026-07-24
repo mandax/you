@@ -12,9 +12,7 @@
       </p>
     </div>
 
-    <div
-      class="rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm text-foreground flex items-start gap-3"
-    >
+    <div class="rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm text-foreground flex items-start gap-3">
       <.icon name="danger-circle" class="size-5 shrink-0 text-destructive mt-0.5" />
       <div>
         <strong>These codes will not be shown again.</strong>
@@ -32,7 +30,10 @@
       </div>
     </div>
 
-    <.link navigate={~p"/users/settings"} class="inline-flex items-center text-sm text-foreground hover:underline">
+    <.link
+      navigate={~p"/users/settings"}
+      class="inline-flex items-center text-sm text-foreground hover:underline"
+    >
       Done — back to settings
     </.link>
   </div>

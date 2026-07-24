@@ -13,7 +13,6 @@ defmodule You.JWT do
   alias You.Repo
   alias You.Accounts.UserToken
 
-  # 24 hours
   @default_exp 86_400
 
   @doc """
@@ -36,7 +35,7 @@ defmodule You.JWT do
 
   ## Examples
 
-      {:ok, token} = JWT.sign(%{sub: user.id, email: user.email, app: "sockeet", role: "admin"})
+      {:ok, token} = JWT.sign(%{sub: user.id, email: user.email, app: "consumer-app", role: "admin"})
 
   """
   def sign(claims) do

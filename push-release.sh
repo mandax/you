@@ -1,13 +1,14 @@
 #!/bin/bash
 # You Release Image Push Script
-# Usage: ./push-release.sh [tag]
+# Usage: REGISTRY=registry.example.com:5000 REGISTRY_USER=myuser ./push-release.sh [tag]
 # Set MULTIARCH=true for multi-arch builds (requires buildx)
+# Authenticate to the registry beforehand with `docker login`.
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REGISTRY="bonney:3000"
-REGISTRY_USER="mandax"
+REGISTRY="${REGISTRY:?set REGISTRY (e.g. registry.example.com:5000)}"
+REGISTRY_USER="${REGISTRY_USER:?set REGISTRY_USER (your registry username/namespace)}"
 IMAGE_NAME="you"
 TAG="${1:-latest}"
 MULTIARCH="${MULTIARCH:-false}"
@@ -56,7 +57,7 @@ build_and_push() {
     fi
 }
 
-# Simple build (default, works everywhere including Gitea runner)
+# Simple build (default, works everywhere including CI runners)
 build_and_push_simple() {
     local full_tag="$1"
     log_info "Building release image (single arch)..."

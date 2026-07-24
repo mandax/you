@@ -9,9 +9,9 @@ defmodule YouWeb.UserDashboardControllerTest do
   setup %{user: user} do
     {:ok, app, _secret} =
       Admin.create_app(%{
-        slug: "sockeet",
-        name: "Sockeet",
-        callback_url: "https://sockeet.example.com/auth/callback"
+        slug: "myapp",
+        name: "Myapp",
+        callback_url: "https://myapp.example.com/auth/callback"
       })
 
     {:ok, other_app, _secret} =

@@ -155,15 +155,15 @@ defmodule YouWeb.UserSessionControllerTest do
 
       {:ok, _app, _secret} =
         You.Admin.create_app(%{
-          slug: "sockeet",
-          name: "Sockeet",
-          callback_url: "https://sockeet.example.com/auth/callback"
+          slug: "myapp",
+          name: "Myapp",
+          callback_url: "https://myapp.example.com/auth/callback"
         })
 
       conn =
         conn
         |> init_test_session(
-          callback_url: "https://sockeet.example.com/auth/callback",
+          callback_url: "https://myapp.example.com/auth/callback",
           scopes: ["email"],
           state: "opaque-xyz"
         )
@@ -172,7 +172,7 @@ defmodule YouWeb.UserSessionControllerTest do
         })
 
       location = redirected_to(conn)
-      assert location =~ "https://sockeet.example.com/auth/callback?"
+      assert location =~ "https://myapp.example.com/auth/callback?"
       assert location =~ "code="
       assert location =~ "state=opaque-xyz"
     end

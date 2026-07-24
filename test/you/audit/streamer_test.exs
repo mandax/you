@@ -32,7 +32,12 @@ defmodule You.Audit.StreamerTest do
 
     test "handles empty measurements and metadata" do
       payload =
-        Streamer.build_payload([:you, :audit, :login, :attempt], %{}, %{}, ~U[2026-01-01 00:00:00Z])
+        Streamer.build_payload(
+          [:you, :audit, :login, :attempt],
+          %{},
+          %{},
+          ~U[2026-01-01 00:00:00Z]
+        )
 
       assert payload.event == "login:attempt"
       assert payload.measurements == %{}

@@ -6,9 +6,9 @@ defmodule YouWeb.AppLoginTest do
   describe "GET /login with callback_url" do
     test "stores callback_url in session", %{conn: conn} do
       conn =
-        get(conn, ~p"/users/log-in", callback_url: "https://sockeet.example.com/auth/callback")
+        get(conn, ~p"/users/log-in", callback_url: "https://myapp.example.com/auth/callback")
 
-      assert get_session(conn, :callback_url) == "https://sockeet.example.com/auth/callback"
+      assert get_session(conn, :callback_url) == "https://myapp.example.com/auth/callback"
     end
   end
 
@@ -23,9 +23,9 @@ defmodule YouWeb.AppLoginTest do
 
       # Register the app for the callback URL
       You.Admin.create_app(%{
-        slug: "sockeet",
-        name: "Sockeet",
-        callback_url: "https://sockeet.example.com/auth/callback"
+        slug: "myapp",
+        name: "Myapp",
+        callback_url: "https://myapp.example.com/auth/callback"
       })
 
       %{user: user}
@@ -37,9 +37,9 @@ defmodule YouWeb.AppLoginTest do
     } do
       # Store callback_url in session by hitting the login page first
       conn =
-        get(conn, ~p"/users/log-in", callback_url: "https://sockeet.example.com/auth/callback")
+        get(conn, ~p"/users/log-in", callback_url: "https://myapp.example.com/auth/callback")
 
-      assert get_session(conn, :callback_url) == "https://sockeet.example.com/auth/callback"
+      assert get_session(conn, :callback_url) == "https://myapp.example.com/auth/callback"
 
       conn =
         post(conn, ~p"/users/log-in", %{
@@ -48,7 +48,7 @@ defmodule YouWeb.AppLoginTest do
 
       assert redirected_to(conn, 302)
       location = redirected_to(conn, 302)
-      assert String.starts_with?(location, "https://sockeet.example.com/auth/callback?code=")
+      assert String.starts_with?(location, "https://myapp.example.com/auth/callback?code=")
     end
   end
 end

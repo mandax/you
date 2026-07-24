@@ -1,22 +1,22 @@
 # You — Cross-app Identity and Access Management
 
-Extract user identity, authentication, authorization, and user settings into a standalone IAM project called **You**. Every app (Sockeet, future services) delegates user management to You — no app owns its own user table beyond a lightweight token cache.
+Extract user identity, authentication, authorization, and user settings into a standalone IAM project called **You**. Every app delegates user management to You — no app owns its own user table beyond a lightweight token cache.
 
 ## Context
 
-Sockeet currently has a single `admin_users` table with bcrypt-hashed passwords and a session cookie. This works for v0 where there is one admin operating the platform. But the architecture calls for a three-layer separation:
+The first consumer app currently has a single `admin_users` table with bcrypt-hashed passwords and a session cookie. This works for v0 where there is one admin operating the platform. But the architecture calls for a three-layer separation:
 
 ```
 You (separate project)
 ├── Users, auth (password, 2FA, magic link), roles, billing
 ├── Issues JWTs consumable by all apps
 │
-├── APPS (Sockeet, future services)
+├── APPS (consumer services)
 │   ├── Each owns its own domain data
 │   ├── Has its own GraphQL API
 │   └── Validates You-issued JWTs to authenticate requests
 │
-└── User-Facing Apps (sockeet-client, deployed separately)
+└── User-Facing Apps (e.g., myapp-client, deployed separately)
     ├── Consumes app GraphQL APIs
     └── Talks to You for login/logout flows
 ```
@@ -25,7 +25,7 @@ You (separate project)
 
 ### 1. You is a standalone Elixir/Phoenix application
 
-You is a separate OTP application in its own repository (`~/dev/you` alongside `~/dev/sockeet`). It has its own Ecto repo, its own database, and its own deployment. Apps never touch You's database directly — they call You's API or, for token validation, communicate via Erlang distribution.
+You is a separate OTP application in its own repository, alongside the consumer apps' repositories. It has its own Ecto repo, its own database, and its own deployment. Apps never touch You's database directly — they call You's API or, for token validation, communicate via Erlang distribution.
 
 ### 2. You is built on `mix phx.gen.auth` as the starting point
 
@@ -83,9 +83,9 @@ The implementation follows this sequence:
 3. ✅ **Magic link** — reuse `UserToken` pattern for email-based passwordless login
 4. ✅ **2FA** — add `nimble_totp` column to User, pre-auth token flow, recovery codes
 5. **SDK module** — build `You.SDK` wrapping Erlang distribution calls ← CURRENT
-6. **Sockeet integration** — update Sockeet to use `You.SDK` as a dependency
+6. **First consumer app integration** — update the first consumer app to use `You.SDK` as a dependency
 
-Steps 1–5 are self-contained within You. Step 6 is in the Sockeet repo.
+Steps 1–5 are self-contained within You. Step 6 is in the consumer app's repo.
 
 ## Status
 

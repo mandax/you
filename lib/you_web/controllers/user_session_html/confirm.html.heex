@@ -16,7 +16,8 @@
     >
       <input type="hidden" name={@form[:token].name} value={@form[:token].value} />
       <div class="space-y-3">
-        <.button type="submit"
+        <.button
+          type="submit"
           name={@form[:remember_me].name}
           value="true"
           phx-disable-with="Confirming..."
@@ -40,7 +41,8 @@
       <input type="hidden" name={@form[:token].name} value={@form[:token].value} />
       <div class="space-y-3">
         <%= if @current_scope do %>
-          <.button type="submit"
+          <.button
+            type="submit"
             variant="default"
             phx-disable-with="Logging in..."
             class="w-full"
@@ -48,7 +50,8 @@
             Log in
           </.button>
         <% else %>
-          <.button type="submit"
+          <.button
+            type="submit"
             name={@form[:remember_me].name}
             value="true"
             phx-disable-with="Logging in..."

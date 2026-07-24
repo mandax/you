@@ -54,9 +54,8 @@ defmodule YouWeb.UserSessionController do
     end
   end
 
-  # The name of the registered app this login is for (when in an OAuth flow),
-  # so the login page can say "sign in to continue to <app>" instead of looking
-  # like You's own account login. nil for a plain login.
+  # Name of the registered app in an OAuth login flow ("sign in to continue to
+  # <app>"); nil for a plain login.
   defp app_name_for(conn) do
     with url when is_binary(url) <- get_session(conn, :callback_url),
          {:ok, app} <- You.Admin.lookup_app_by_callback(url) do
@@ -71,9 +70,9 @@ defmodule YouWeb.UserSessionController do
     Application.get_env(:you, :oidc_providers, %{}) |> Map.keys() |> Enum.sort()
   end
 
-  # The OAuth params stashed in the session (callback_url, scope, state, PKCE
-  # challenge), as a query map for embedding in the magic-link URL. Omits blanks.
-  # None of these are secrets — the code_verifier never leaves the consumer.
+  # The OAuth params stashed in the session, as a query map for embedding in
+  # the magic-link URL. Omits blanks; none are secrets — the code_verifier
+  # never leaves the consumer.
   defp oauth_link_params(conn) do
     scope =
       case get_session(conn, :scopes) do
@@ -105,7 +104,9 @@ defmodule YouWeb.UserSessionController do
           record_consent_for_app(conn, user)
           scopes = get_session(conn, :scopes) || ["email"]
           state = get_session(conn, :state)
-          {:ok, code} = Accounts.generate_auth_code(user, scopes, get_session(conn, :code_challenge))
+
+          {:ok, code} =
+            Accounts.generate_auth_code(user, scopes, get_session(conn, :code_challenge))
 
           conn
           |> put_flash(:info, info)
@@ -260,7 +261,9 @@ defmodule YouWeb.UserSessionController do
           record_consent_for_app(conn, user)
           scopes = get_session(conn, :scopes) || ["email"]
           state = get_session(conn, :state)
-          {:ok, auth_code} = Accounts.generate_auth_code(user, scopes, get_session(conn, :code_challenge))
+
+          {:ok, auth_code} =
+            Accounts.generate_auth_code(user, scopes, get_session(conn, :code_challenge))
 
           conn
           |> UserAuth.create_user_session(user, %{})
@@ -354,9 +357,7 @@ defmodule YouWeb.UserSessionController do
     end
   end
 
-  # These OAuth-completion helpers live in YouWeb.OAuthFlow (shared with the
-  # federated/social login path so every method hands a code back to the
-  # consumer identically). Delegated here to keep the call sites unchanged.
+  # OAuth-completion helpers shared with the federated/social login path.
   defdelegate redirect_with_code(conn, callback_url, code, state), to: YouWeb.OAuthFlow
   defdelegate safe_callback_url(conn), to: YouWeb.OAuthFlow
   defdelegate record_consent_for_app(conn, user), to: YouWeb.OAuthFlow

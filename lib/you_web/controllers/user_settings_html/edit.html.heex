@@ -17,7 +17,9 @@
             spellcheck="false"
             required
           />
-          <.button type="submit" variant="default" phx-disable-with="Changing...">Change Email</.button>
+          <.button type="submit" variant="default" phx-disable-with="Changing...">
+            Change Email
+          </.button>
         </div>
       </.form>
     </section>
@@ -45,7 +47,9 @@
             spellcheck="false"
             required
           />
-          <.button type="submit" variant="default" phx-disable-with="Changing...">Save Password</.button>
+          <.button type="submit" variant="default" phx-disable-with="Changing...">
+            Save Password
+          </.button>
         </div>
       </.form>
     </section>
@@ -54,7 +58,9 @@
       <div class="flex items-center justify-between">
         <div>
           <h2 class="text-lg font-medium">Active sessions</h2>
-          <p class="text-sm text-muted-foreground">Devices currently signed in to your account.</p>
+          <p class="text-sm text-muted-foreground">
+            Devices currently signed in to your account.
+          </p>
         </div>
         <.link
           :if={length(@sessions) > 1}
@@ -81,7 +87,10 @@
               </span>
             </div>
             <div class="mt-1 font-mono text-xs text-muted-foreground">
-              signed in {Calendar.strftime(s.authenticated_at || s.inserted_at, "%Y-%m-%d %H:%M UTC")}
+              signed in {Calendar.strftime(
+                s.authenticated_at || s.inserted_at,
+                "%Y-%m-%d %H:%M UTC"
+              )}
             </div>
           </div>
           <.link

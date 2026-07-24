@@ -4,7 +4,7 @@
 # =============================================================================
 #
 # Creates a consistent SQLite snapshot (zero downtime) via `.backup`,
-# archives it with audit logs, uploads to Proton Drive via rclone,
+# archives it with audit logs, uploads to an rclone remote,
 # and prunes old backups.
 #
 # Usage:
@@ -23,7 +23,7 @@
 #
 # Dependencies:
 #   - sqlite3  (included with SQLite)
-#   - rclone   (https://rclone.org) with a remote named "proton"
+#   - rclone   (https://rclone.org) with a configured remote (set RCLONE_REMOTE)
 # =============================================================================
 
 set -uo pipefail
@@ -38,7 +38,7 @@ RETENTION_DAYS="${RETENTION_DAYS:-7}"
 DATE=$(date +%Y-%m-%d)
 BACKUP_FILE="$BACKUP_DIR/you-$DATE.tar.gz"
 WORK_DIR=$(mktemp -d "/tmp/you-backup-XXXXXX")
-RCLONE_REMOTE="${RCLONE_REMOTE:-proton}"
+RCLONE_REMOTE="${RCLONE_REMOTE:-}"
 RCLONE_PATH="${RCLONE_PATH:-backups/you}"
 
 # ---- Cleanup handler ----
@@ -92,29 +92,16 @@ else
 fi
 
 # ---- 4. Upload via rclone ----
-if command -v rclone &>/dev/null && rclone listremotes 2>/dev/null | grep -q "^${RCLONE_REMOTE}:"; then
-  # Check if tokens are populated (if not, rclone will fail with 422)
-  TOKEN_STATE=$(rclone config dump 2>/dev/null | python3 -c "
-import json, sys
-d = json.load(sys.stdin)
-p = d.get('${RCLONE_REMOTE}', {})
-ct = p.get('client_refresh_token', '')
-print('ok' if ct else 'missing')
-" 2>/dev/null)
-  if [ "$TOKEN_STATE" = "ok" ]; then
-    echo "[$DATE] Uploading to ${RCLONE_REMOTE}:${RCLONE_PATH}/..."
-    if rclone copy "$BACKUP_FILE" "${RCLONE_REMOTE}:${RCLONE_PATH}/"; then
-      echo "[$DATE]   ✓ Upload complete"
-    else
-      echo "[$DATE]   ✗ Upload failed — backup remains locally at $BACKUP_FILE" >&2
-    fi
+if [ -n "$RCLONE_REMOTE" ] && command -v rclone &>/dev/null && rclone listremotes 2>/dev/null | grep -q "^${RCLONE_REMOTE}:"; then
+  echo "[$DATE] Uploading to ${RCLONE_REMOTE}:${RCLONE_PATH}/..."
+  if rclone copy "$BACKUP_FILE" "${RCLONE_REMOTE}:${RCLONE_PATH}/"; then
+    echo "[$DATE]   ✓ Upload complete"
   else
-    echo "[$DATE]   ⚠ ${RCLONE_REMOTE} token missing — run: rclone config update ${RCLONE_REMOTE}" >&2
-    echo "[$DATE]   ⚠ Backup remains locally at $BACKUP_FILE" >&2
+    echo "[$DATE]   ✗ Upload failed — backup remains locally at $BACKUP_FILE" >&2
   fi
 else
-  echo "[$DATE]   - rclone remote '$RCLONE_REMOTE' not configured, skipping upload"
-  echo "[$DATE]   - Configure: rclone config (then verify: rclone listremotes)"
+  echo "[$DATE]   - rclone remote not configured, skipping upload"
+  echo "[$DATE]   - Set RCLONE_REMOTE to a configured rclone remote to enable uploads"
   echo "[$DATE]   - Backup remains locally at $BACKUP_FILE"
 fi
 

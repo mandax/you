@@ -1,10 +1,10 @@
 # Erlang Distribution Protocol for You↔App Communication
 
-Define the message protocol and server architecture for Erlang distribution between You and its consuming apps (Sockeet, future services).
+Define the message protocol and server architecture for Erlang distribution between You and its consuming apps.
 
 ## Context
 
-You and its consumer apps (Sockeet) run as connected Elixir nodes in the same cluster. Instead of HTTP calls for token validation, user lookup, and revocation, they communicate via Erlang process messages. This avoids HTTP latency, serialization overhead, and an extra failure domain for every authenticated request.
+You and its consumer apps run as connected Elixir nodes in the same cluster. Instead of HTTP calls for token validation, user lookup, and revocation, they communicate via Erlang process messages. This avoids HTTP latency, serialization overhead, and an extra failure domain for every authenticated request.
 
 ## Decisions
 
@@ -33,7 +33,7 @@ The response maps are flat key-value structs — no Ecto schemas cross the node 
 Each consumer app uses `You.IAM.Client` (or an equivalent module) which wraps `GenServer.call/2` with the correct node name, timeout, and error handling. This module lives in the **YOUR** repo and apps add it as a dependency or copy the protocol.
 
 ```elixir
-# In Sockeet's code:
+# In a consumer app's code:
 You.IAM.Client.verify_token(jwt)
 You.IAM.Client.get_user(user_id)
 You.IAM.Client.revoke_token(jti)

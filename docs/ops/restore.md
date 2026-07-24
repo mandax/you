@@ -6,7 +6,7 @@ How to restore You from a backup archive. These steps are **manual** — there i
 
 - A backup archive (`you-YYYY-MM-DD.tar.gz`) from:
   - Local backup directory (`~/backups/you/` by default), or
-  - Proton Drive (`rclone ls proton:backups/you/`)
+  - Your rclone remote (`rclone ls <remote>:backups/you/`) — any rclone remote works
 - `sqlite3` command-line tool
 - `tar` for extracting the archive
 
@@ -22,10 +22,10 @@ ls -lt ~/backups/you/you-*.tar.gz
 BACKUP=~/backups/you/you-2026-05-28.tar.gz
 ```
 
-**From Proton Drive (if local is unavailable):**
+**From your rclone remote (if local is unavailable):**
 
 ```bash
-rclone copy proton:backups/you/you-2026-05-28.tar.gz /tmp/restore/
+rclone copy <remote>:backups/you/you-2026-05-28.tar.gz /tmp/restore/
 BACKUP=/tmp/restore/you-2026-05-28.tar.gz
 ```
 
@@ -96,6 +96,6 @@ journalctl -u you --no-pager -n 20
 | Scenario | Approach |
 |----------|----------|
 | Database corrupted | Restore from last known good backup |
-| Both database and Proton Drive unavailable | Check `~/backups/you/` for local archives |
-| Server completely lost | Re-provision, install You from source, restore latest backup from Proton Drive |
+| Both database and remote backup unavailable | Check `~/backups/you/` for local archives |
+| Server completely lost | Re-provision, install You from source, restore latest backup from your rclone remote |
 | Need a specific user's data | Mount the backup DB: `sqlite3 /tmp/restore_db ".restore /tmp/restore/you/you.db"` then query manually |

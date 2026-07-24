@@ -34,7 +34,14 @@ defmodule YouWeb.SCIM.BearerAuth do
       _ ->
         conn
         |> put_resp_content_type("application/json")
-        |> send_resp(401, Jason.encode!(%{schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"], status: "401", detail: "Unauthorized"}))
+        |> send_resp(
+          401,
+          Jason.encode!(%{
+            schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"],
+            status: "401",
+            detail: "Unauthorized"
+          })
+        )
         |> halt()
     end
   end

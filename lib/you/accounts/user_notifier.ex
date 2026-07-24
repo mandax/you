@@ -4,7 +4,6 @@ defmodule You.Accounts.UserNotifier do
   alias You.Mailer
   alias You.Accounts.User
 
-  # Delivers the email using the application mailer.
   defp deliver(recipient, subject, body) do
     email =
       new()

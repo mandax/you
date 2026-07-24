@@ -22,6 +22,4 @@ defmodule You.Organizations.Membership do
     |> foreign_key_constraint(:organization_id)
     |> foreign_key_constraint(:user_id)
   end
-
-  def valid_roles, do: @valid_roles
 end

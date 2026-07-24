@@ -8,9 +8,9 @@ defmodule YouWeb.TotpLoginTest do
   describe "2FA during login" do
     setup do
       Admin.create_app(%{
-        slug: "sockeet",
-        name: "Sockeet",
-        callback_url: "https://sockeet.example.com/auth/callback"
+        slug: "myapp",
+        name: "Myapp",
+        callback_url: "https://myapp.example.com/auth/callback"
       })
 
       user = AccountsFixtures.user_fixture()
@@ -30,7 +30,7 @@ defmodule YouWeb.TotpLoginTest do
       user: user
     } do
       conn =
-        get(conn, ~p"/users/log-in", callback_url: "https://sockeet.example.com/auth/callback")
+        get(conn, ~p"/users/log-in", callback_url: "https://myapp.example.com/auth/callback")
 
       conn =
         post(conn, ~p"/users/log-in", %{
@@ -47,7 +47,7 @@ defmodule YouWeb.TotpLoginTest do
     } do
       # Step 1: Login with password (sets totp_user_id in session)
       conn =
-        get(conn, ~p"/users/log-in", callback_url: "https://sockeet.example.com/auth/callback")
+        get(conn, ~p"/users/log-in", callback_url: "https://myapp.example.com/auth/callback")
 
       conn =
         post(conn, ~p"/users/log-in", %{
@@ -66,7 +66,7 @@ defmodule YouWeb.TotpLoginTest do
 
       assert redirected_to(conn, 302)
       location = redirected_to(conn, 302)
-      assert String.starts_with?(location, "https://sockeet.example.com/auth/callback?code=")
+      assert String.starts_with?(location, "https://myapp.example.com/auth/callback?code=")
     end
 
     test "GET /users/log-in/totp renders the TOTP challenge, not the magic-link route", %{

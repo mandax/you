@@ -2,6 +2,7 @@ defmodule YouWeb.OIDCController do
   use YouWeb, :controller
 
   alias You.Accounts
+  alias You.IAM.Claims
   alias You.JWT
 
   @doc """
@@ -75,7 +76,7 @@ defmodule YouWeb.OIDCController do
     case Accounts.consume_auth_code(code, params["code_verifier"]) do
       {:ok, user, scopes} ->
         jwt_expiry = You.Settings.get(:jwt_expiry_hours) * 3600
-        {:ok, jwt} = JWT.sign(build_scoped_claims(user, scopes), jwt_expiry)
+        {:ok, jwt} = JWT.sign(Claims.build_scoped_claims(user, scopes), jwt_expiry)
         refresh_token = Accounts.create_refresh_token(user, scopes)
 
         :telemetry.execute([:you, :audit, :token, :exchange], %{}, %{
@@ -118,21 +119,4 @@ defmodule YouWeb.OIDCController do
       error_description: "Missing required parameter: code."
     })
   end
-
-  # Builds the JWT claims map for the granted scopes. Mirrors the private
-  # `build_scoped_claims/2` in You.IAM.Server.
-  defp build_scoped_claims(user, scopes) do
-    base = %{sub: user.id, app: "you"}
-
-    scopes
-    |> Enum.reduce(base, fn
-      "email", acc -> Map.put(acc, :email, user.email)
-      "profile", acc -> acc |> Map.put(:email, user.email) |> Map.put(:name, user.email)
-      "roles", acc -> acc |> Map.put(:email, user.email) |> Map.put(:role, user_role(user))
-      _, acc -> acc
-    end)
-  end
-
-  defp user_role(%{is_admin: true}), do: "admin"
-  defp user_role(_), do: "user"
 end

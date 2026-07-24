@@ -108,14 +108,7 @@ defmodule YouWeb.UserAuth do
     end
   end
 
-  # This function is the one responsible for creating session tokens
-  # and storing them safely in the session and cookies. It may be called
-  # either when logging in, during sudo mode, or to renew a session which
-  # will soon expire.
-  #
-  # When the session is created, rather than extended, the renew_session
-  # function will clear the session to avoid fixation attacks. See the
-  # renew_session function to customize this behaviour.
+  # Creates the session token and stores it in the session and cookies.
   defp create_or_extend_session(conn, user, params) do
     token = Accounts.generate_user_session_token(user)
     remember_me = get_session(conn, :user_remember_me)
@@ -132,22 +125,8 @@ defmodule YouWeb.UserAuth do
     conn
   end
 
-  # This function renews the session ID and erases the whole
-  # session to avoid fixation attacks. If there is any data
-  # in the session you may want to preserve after log in/log out,
-  # you must explicitly fetch the session data before clearing
-  # and then immediately set it after clearing, for example:
-  #
-  #     defp renew_session(conn, _user) do
-  #       delete_csrf_token()
-  #       preferred_locale = get_session(conn, :preferred_locale)
-  #
-  #       conn
-  #       |> configure_session(renew: true)
-  #       |> clear_session()
-  #       |> put_session(:preferred_locale, preferred_locale)
-  #     end
-  #
+  # Renews the session ID and erases the whole session to avoid fixation
+  # attacks.
   defp renew_session(conn, _user) do
     delete_csrf_token()
 

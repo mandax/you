@@ -1,6 +1,6 @@
 # Erlang distribution — node naming, discovery, and configuration
 
-How You exposes its Erlang node for consumer apps (Sockeet, etc.) to connect
+How You exposes its Erlang node for consumer apps to connect
 via Erlang distribution, and how those apps discover You's node name.
 
 ## Context
@@ -77,7 +77,7 @@ overrides it moments later.
   immediately — consumer apps must update their cookie and reconnect.
 - In-flight `GenServer.call` messages from consumer apps fail with
   `{:error, :unreachable}` until the consumer side is updated.
-- The operator should coordinate cookie rotation: update Sockeet first
+- The operator should coordinate cookie rotation: update consumer apps first
   (new cookie), then update You's settings — or accept brief downtime.
 
 **Encryption properties:**
@@ -99,11 +99,11 @@ because the remote VM doesn't accept distribution connections.
 
 ### 5. Consumer apps configure You's node name statically
 
-Consumer apps (Sockeet) configure You's node name via their own config:
+Consumer apps configure You's node name via their own config:
 
 ```elixir
 # In the consumer app's config/runtime.exs
-config :you_sdk, node: String.to_atom(System.get_env("YOU_NODE", "you@you.internal"))
+config :you_sdk, node: String.to_atom(System.get_env("YOU_NODE", "you@you.example.com"))
 ```
 
 No runtime discovery for v1. The operator ensures `YOU_NODE` matches

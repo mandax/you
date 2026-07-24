@@ -527,7 +527,10 @@ defmodule You.Accounts do
 
   @doc "Turns off email-based 2FA and clears any outstanding codes."
   def disable_email_2fa(%User{} = user) do
-    Repo.delete_all(from t in UserToken, where: t.user_id == ^user.id and t.context == "email_2fa")
+    Repo.delete_all(
+      from t in UserToken, where: t.user_id == ^user.id and t.context == "email_2fa"
+    )
+
     user |> Ecto.Changeset.change(email_2fa_enabled: false) |> Repo.update()
   end
 
@@ -539,8 +542,16 @@ defmodule You.Accounts do
     code = generate_numeric_code(6)
     hash = :crypto.hash(:sha256, code)
 
-    Repo.delete_all(from t in UserToken, where: t.user_id == ^user.id and t.context == "email_2fa")
-    Repo.insert!(%UserToken{token: hash, context: "email_2fa", sent_to: user.email, user_id: user.id})
+    Repo.delete_all(
+      from t in UserToken, where: t.user_id == ^user.id and t.context == "email_2fa"
+    )
+
+    Repo.insert!(%UserToken{
+      token: hash,
+      context: "email_2fa",
+      sent_to: user.email,
+      user_id: user.id
+    })
 
     UserNotifier.deliver_email_2fa_code(user, code)
     :ok
@@ -866,9 +877,7 @@ defmodule You.Accounts do
   does not exist or is not owned by this user.
   """
   def delete_user_federated_identity(%User{id: user_id}, id) do
-    Repo.delete_all(
-      from(f in FederatedIdentity, where: f.id == ^id and f.user_id == ^user_id)
-    )
+    Repo.delete_all(from(f in FederatedIdentity, where: f.id == ^id and f.user_id == ^user_id))
   end
 
   ## Passkeys (WebAuthn)

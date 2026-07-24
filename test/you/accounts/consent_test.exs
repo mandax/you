@@ -11,9 +11,9 @@ defmodule You.Accounts.ConsentTest do
 
       {:ok, app, _secret} =
         Admin.create_app(%{
-          slug: "sockeet",
-          name: "Sockeet",
-          callback_url: "https://sockeet.example.com/auth/callback"
+          slug: "myapp",
+          name: "Myapp",
+          callback_url: "https://myapp.example.com/auth/callback"
         })
 
       %{user: user, app: app}
@@ -51,9 +51,9 @@ defmodule You.Accounts.ConsentTest do
 
       {:ok, app_a, _secret} =
         Admin.create_app(%{
-          slug: "sockeet",
-          name: "Sockeet",
-          callback_url: "https://sockeet.example.com/auth/callback"
+          slug: "myapp",
+          name: "Myapp",
+          callback_url: "https://myapp.example.com/auth/callback"
         })
 
       {:ok, app_b, _secret} =
@@ -100,9 +100,9 @@ defmodule You.Accounts.ConsentTest do
 
       {:ok, app, _secret} =
         Admin.create_app(%{
-          slug: "sockeet",
-          name: "Sockeet",
-          callback_url: "https://sockeet.example.com/auth/callback"
+          slug: "myapp",
+          name: "Myapp",
+          callback_url: "https://myapp.example.com/auth/callback"
         })
 
       %{user: user, app: app}
