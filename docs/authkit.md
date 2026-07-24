@@ -1,5 +1,8 @@
 # AuthKit — Integrating with You
 
+> See also [integration.md](integration.md) for the OIDC endpoints, JWKS
+> verification, and the Erlang distribution path.
+
 You is the identity provider. An app integrates in one of two ways: the **redirect
 (OAuth) flow** (works for any app, including third-party) or the **headless
 (invisible) flow** (trusted first-party apps only). Signed-in users can manage

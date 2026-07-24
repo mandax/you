@@ -19,12 +19,13 @@ defmodule YouWeb.LandingContent do
   """
 
   @exchange_sample """
-  # your app exchanges the one-time code over Erlang
-  # distribution — no HTTP hop, no shared secret to rotate
-  {:ok, %{jwt: jwt, user_id: user_id}} =
-    You.SDK.exchange_code(auth_code, node: :"you@you.example.com")
+  # your app exchanges the one-time code over plain HTTPS
+  %{status: 200, body: tokens} =
+    Req.post!("https://you.example.com/oauth/token",
+      form: [code: auth_code, code_verifier: verifier])
 
-  # jwt is short-lived, JTI-tracked and revocable\
+  # verify tokens.access_token locally against You's JWKS —
+  # no call home per request\
   """
 
   def terminal_tabs do
@@ -119,7 +120,7 @@ defmodule YouWeb.LandingContent do
         icon: "lucide-shield",
         title: "You run on the BEAM and want it in-cluster",
         body:
-          "Distribution-native RPC, your own node, your users' data never leaving your cluster.",
+          "Your login page never leaves your infrastructure: standard OIDC for any app, distribution-native RPC for the BEAM apps you trust.",
         pick: "Use You",
         ours: true
       }
@@ -175,7 +176,7 @@ defmodule YouWeb.LandingContent do
       %{
         q: "How is it different from Auth0?",
         a:
-          "Auth0 is hosted, per-MAU-priced, and reaches your app over HTTP. You runs on your own BEAM cluster, connects to Elixir apps over native distribution RPC, and has no seat-based pricing — you own the node and the data."
+          "Auth0 is a solid hosted IdP — but hosted means your users' credentials live on their infrastructure and you pay per user. You gives you the same OIDC standard on your own node, plus a distribution-native shortcut for trusted Elixir apps. It's not better or worse — it's about who holds your users."
       }
     ]
   end
