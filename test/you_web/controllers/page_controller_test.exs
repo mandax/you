@@ -3,7 +3,7 @@ defmodule YouWeb.PageControllerTest do
 
   test "GET /", %{conn: conn} do
     conn = get(conn, ~p"/")
-    assert html_response(conn, 200) =~ "One login for every Elixir service"
-    assert html_response(conn, 200) =~ "Self-hosted identity for the BEAM"
+    assert html_response(conn, 200) =~ "One login for every service you run"
+    assert html_response(conn, 200) =~ "credentials stay on your hardware"
   end
 end
