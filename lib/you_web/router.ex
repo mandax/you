@@ -23,6 +23,34 @@ defmodule YouWeb.Router do
     plug YouWeb.SCIM.BearerAuth
   end
 
+  pipeline :rate_limit_login do
+    plug YouWeb.Plugs.RateLimit, key: :login
+  end
+
+  pipeline :rate_limit_registration do
+    plug YouWeb.Plugs.RateLimit, key: :registration
+  end
+
+  pipeline :rate_limit_password_reset do
+    plug YouWeb.Plugs.RateLimit, key: :password_reset
+  end
+
+  pipeline :rate_limit_totp do
+    plug YouWeb.Plugs.RateLimit, key: :totp
+  end
+
+  pipeline :rate_limit_email_2fa do
+    plug YouWeb.Plugs.RateLimit, key: :email_2fa
+  end
+
+  pipeline :rate_limit_headless_login do
+    plug YouWeb.Plugs.RateLimit, key: :headless_login
+  end
+
+  pipeline :rate_limit_headless_register do
+    plug YouWeb.Plugs.RateLimit, key: :headless_register
+  end
+
   scope "/", YouWeb do
     pipe_through :browser
 
@@ -61,6 +89,9 @@ defmodule YouWeb.Router do
     get "/.well-known/openid-configuration", OIDCController, :discovery
     get "/.well-known/jwks.json", OIDCController, :jwks
     post "/oauth/token", OIDCController, :create_token
+    get "/oauth/userinfo", OIDCController, :userinfo
+    post "/oauth/introspect", OIDCController, :introspect
+    post "/oauth/revoke", OIDCController, :revoke
   end
 
   ## Headless auth API — first-party apps authenticate users directly (no
@@ -69,8 +100,15 @@ defmodule YouWeb.Router do
   scope "/api/auth", YouWeb do
     pipe_through :api
 
-    post "/login", HeadlessAuthController, :login
-    post "/register", HeadlessAuthController, :register
+    scope "/" do
+      pipe_through :rate_limit_headless_login
+      post "/login", HeadlessAuthController, :login
+    end
+
+    scope "/" do
+      pipe_through :rate_limit_headless_register
+      post "/register", HeadlessAuthController, :register
+    end
   end
 
   ## Authentication routes
@@ -79,9 +117,17 @@ defmodule YouWeb.Router do
     pipe_through [:browser, :redirect_if_user_is_authenticated]
 
     get "/users/register", UserRegistrationController, :new
-    post "/users/register", UserRegistrationController, :create
     get "/users/reset-password", UserResetPasswordController, :new
-    post "/users/reset-password", UserResetPasswordController, :create
+
+    scope "/" do
+      pipe_through :rate_limit_registration
+      post "/users/register", UserRegistrationController, :create
+    end
+
+    scope "/" do
+      pipe_through :rate_limit_password_reset
+      post "/users/reset-password", UserResetPasswordController, :create
+    end
   end
 
   scope "/", YouWeb do
@@ -120,16 +166,28 @@ defmodule YouWeb.Router do
     # (magic-link) route — Phoenix matches in definition order, so otherwise
     # e.g. /users/log-in/totp is captured as token="totp".
     get "/users/log-in/totp", UserSessionController, :totp
-    post "/users/log-in/totp", UserSessionController, :verify_totp
     get "/users/log-in/email-2fa", UserSessionController, :email_2fa
-    post "/users/log-in/email-2fa", UserSessionController, :verify_email_2fa
     post "/users/log-in/email-2fa/resend", UserSessionController, :resend_email_2fa
     post "/users/log-in/authorize", UserSessionController, :authorize_action
     get "/users/log-in/:token", UserSessionController, :confirm
-    post "/users/log-in", UserSessionController, :create
     get "/users/reset-password/:token", UserResetPasswordController, :edit
     put "/users/reset-password/:token", UserResetPasswordController, :update
     delete "/users/log-out", UserSessionController, :delete
+
+    scope "/" do
+      pipe_through :rate_limit_totp
+      post "/users/log-in/totp", UserSessionController, :verify_totp
+    end
+
+    scope "/" do
+      pipe_through :rate_limit_email_2fa
+      post "/users/log-in/email-2fa", UserSessionController, :verify_email_2fa
+    end
+
+    scope "/" do
+      pipe_through :rate_limit_login
+      post "/users/log-in", UserSessionController, :create
+    end
 
     post "/users/log-in/passkey/start", WebAuthnController, :start_authentication
     post "/users/log-in/passkey/finish", WebAuthnController, :finish_authentication
