@@ -4,8 +4,10 @@ Consumer BEAM apps talk to You over Erlang distribution (see
 [ADR 0009](../adr/0009-erlang-distribution-operational.md)). Distribution is
 convenient and fast, but its security model is simple and unforgiving: **the
 shared cookie is the only gate**. Any node that presents the cookie can run
-arbitrary code on every connected node — including You itself. Treat
-distribution like a private, mutually-trusted network, not an API.
+arbitrary code on every connected node — including You itself. **The trust is
+mutual:** You (or anyone who compromises it) can equally run code on every
+connected consumer node. Treat distribution like a private, mutually-trusted
+network, not an API.
 
 ## Ports
 
@@ -48,6 +50,25 @@ Only consumer nodes should be able to reach You's distribution ports:
   deployment), don't expose these ports anywhere and consider starting the VM
   with `RELEASE_DISTRIBUTION=none`.
 
+## Encrypted transport: use a mesh network (Tailscale / WireGuard)
+
+Distribution traffic is **plaintext by default** — credentials and tokens
+cross the wire in the clear. The pragmatic fix is not to encrypt
+distribution itself but to put the nodes on an encrypted mesh network:
+
+- **Tailscale / WireGuard** give you authenticated, encrypted node-to-node
+  channels with zero OTP configuration. Bind or firewall EPMD and the
+  distribution ports to the tailnet interface only, and distribution traffic
+  never crosses a network in the clear.
+- The alternative is **TLS distribution** (`-proto_dist inet_tls` with
+  per-node certificates), which also authenticates nodes by certificate —
+  at the cost of issuing, distributing, and rotating certs for every node.
+  Even then, a connected node remains fully trusted; TLS only protects the
+  wire. See the OTP `ssl` distribution docs if you go this route.
+
+For most deployments a mesh network is the better trade: same
+confidentiality, no OTP plumbing.
+
 ## When NOT to expose distribution
 
 - **Never to the public internet.** Cookie authentication is not designed to
@@ -57,5 +78,10 @@ Only consumer nodes should be able to reach You's distribution ports:
   third party must use the OIDC/HTTP path instead (see
   [../integration.md](../integration.md)) — there is no partial-trust mode in
   Erlang distribution.
+- **Consumers: never connect to a You instance you don't operate.** The
+  trust is mutual — You's operator (or anyone who compromises that node)
+  can execute code on your app host and sees all credentials that flow
+  through it. Connecting to someone else's IAM over distribution hands them
+  your node; use OIDC for that.
 - Never rely on the cookie as an authorization layer between mutually
   suspicious services; it authenticates the node, not the workload.

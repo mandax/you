@@ -220,6 +220,9 @@ The rules are non-negotiable:
 
 - **Only connect nodes you fully control.** Never connect a third party's
   node — you would be handing them root on your IAM.
+- **Only connect to a You instance you operate.** The trust is mutual: the
+  IAM's operator can execute code on your node and sees the credentials
+  that flow through it. Integrating with someone else's You? Use OIDC.
 - **Never expose EPMD (port 4369) or the distribution ports** to anything
   but your consumer nodes. Never to the public internet.
 - **Traffic is not encrypted by default.** Credentials and tokens cross the
