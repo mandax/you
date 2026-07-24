@@ -25,7 +25,15 @@ defmodule You.SDK do
   Calling with an explicit `node:` option overrides the configured default.
   If no node is configured and none is passed, calls go to the local node
   (for development when You and the app run in the same Elixir instance).
+
+  ## Error semantics
+
+  Every call returns `{:error, :unreachable}` when the IAM server cannot be
+  reached (node down, server not running, call timed out), and
+  `{:error, :server_error}` when the server crashed while handling the call.
   """
+
+  require Logger
 
   @default_timeout 5_000
 
@@ -64,7 +72,7 @@ defmodule You.SDK do
 
   Returns `{:ok, %{user_id, email, jwt, refresh_token}}` or `{:error, reason}`
   (`:invalid_client` | `:not_first_party` | `:invalid_credentials` |
-  `:mfa_required` | `:invalid_mfa` | `:unreachable`).
+  `:mfa_required` | `:invalid_mfa` | `:unreachable` | `:server_error`).
   """
   def password_login(client_id, client_secret, creds, opts \\ []) do
     call({:password_login, client_id, client_secret, creds}, opts)
@@ -80,7 +88,7 @@ defmodule You.SDK do
 
   Returns `{:ok, %{user_id, email, jwt, refresh_token}}` or `{:error, reason}`
   (`:invalid_client` | `:not_first_party` | `:email_taken` |
-  `:invalid_registration` | `:unreachable`).
+  `:invalid_registration` | `:unreachable` | `:server_error`).
   """
   def register(client_id, client_secret, creds, opts \\ []) do
     call({:register, client_id, client_secret, creds}, opts)
@@ -92,7 +100,7 @@ defmodule You.SDK do
   For PKCE, pass the `:code_verifier` option matching the `code_challenge` sent
   at authorize time.
 
-  Returns `{:ok, %{user_id, email, jwt}}` or `{:error, reason | :unreachable}`
+  Returns `{:ok, %{user_id, email, jwt}}` or `{:error, reason | :unreachable | :server_error}`
   (`:invalid_grant` on PKCE failure).
   """
   def exchange_code(code, opts \\ []) do
@@ -108,9 +116,18 @@ defmodule You.SDK do
     try do
       GenServer.call(target, msg, timeout)
     catch
-      :exit, {:noproc, _} -> {:error, :unreachable}
-      :exit, {:timeout, _} -> {:error, :unreachable}
-      :exit, _ -> {:error, :unreachable}
+      :exit, {:noproc, _} ->
+        {:error, :unreachable}
+
+      :exit, {:timeout, _} ->
+        {:error, :unreachable}
+
+      :exit, {{:nodedown, _}, _} ->
+        {:error, :unreachable}
+
+      :exit, reason ->
+        Logger.warning("IAM call to #{inspect(target)} exited: #{inspect(reason)}")
+        {:error, :server_error}
     end
   end
 end
