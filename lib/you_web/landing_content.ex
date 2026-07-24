@@ -6,8 +6,8 @@ defmodule YouWeb.LandingContent do
   without wading through markup, and so the LiveView stays about behavior.
   """
 
-  @redirect_sample """
-  # your app sends the user to You to authenticate
+  @connect_sample """
+  # 1. your app sends the user to You to authenticate
   redirect_url =
     "https://you.example.com/users/log-in?" <>
       URI.encode_query(%{
@@ -15,25 +15,19 @@ defmodule YouWeb.LandingContent do
         scope: "profile email"
       })
 
-  redirect(conn, external: redirect_url)\
-  """
+  redirect(conn, external: redirect_url)
 
-  @exchange_sample """
-  # your app exchanges the one-time code over plain HTTPS
+  # 2. after login, You redirects back with a single-use code —
+  #    your app trades it for tokens over plain HTTPS
   %{status: 200, body: tokens} =
     Req.post!("https://you.example.com/oauth/token",
       form: [code: auth_code, code_verifier: verifier])
 
-  # verify tokens.access_token locally against You's JWKS —
-  # no call home per request\
+  # 3. verify tokens.access_token locally against You's JWKS
+  #    no call home per request\
   """
 
-  def terminal_tabs do
-    [
-      %{id: "redirect", label: "Redirect", file: "auth_controller.ex", code: @redirect_sample},
-      %{id: "exchange", label: "Exchange", file: "session_controller.ex", code: @exchange_sample}
-    ]
-  end
+  def connect_sample, do: @connect_sample
 
   def works_with, do: ~w(Phoenix LiveView SQLite Erlang\ distribution JOSE)
 

@@ -33,22 +33,22 @@
             Read the security model
           </.button>
         </div>
-        <p class="mt-3 font-mono text-xs text-muted-foreground">
-          free community image · your cluster, your data · no account to run it
-        </p>
       </div>
     </div>
   </section>
 
-  <%!-- ── terminal: floats over the hero boundary ── --%>
-  <div class="relative z-10 mx-auto -mt-20 max-w-4xl px-5">
-    <div class="animate-rise-in rounded-xl shadow-2xl shadow-primary/10 [animation-delay:80ms]">
-      <.terminal_pane tab={@tab} />
+  <%!-- ── connect sample: highlighted, no window chrome ── --%>
+  <div class="relative z-10 mx-auto -mt-16 max-w-3xl px-5">
+    <div class="animate-rise-in overflow-hidden rounded-xl border border-border bg-card shadow-2xl shadow-primary/10 [animation-delay:80ms]">
+      <div class="border-b border-border px-4 py-2 font-mono text-xs text-muted-foreground">
+        connect.ex
+      </div>
+      <.highlighted_code code={YouWeb.LandingContent.connect_sample()} />
     </div>
   </div>
 
   <div class="mt-10 border-y border-border bg-card/40">
-    <div class="mx-auto flex max-w-6xl flex-wrap items-center justify-center gap-x-6 gap-y-1 px-5 py-3 text-center font-mono text-xs text-muted-foreground">
+    <div class="mx-auto flex max-w-6xl flex-wrap items-center justify-center gap-x-6 gap-y-1 px-5 py-3 text-center font-mono text-sm text-muted-foreground">
       <%= for {item, i} <- Enum.with_index(YouWeb.LandingContent.trust_strip()) do %>
         <span :if={i > 0} class="text-border">·</span>
         <span>{item}</span>
@@ -109,7 +109,7 @@
               <span class="lucide-check mt-0.5 size-4 block shrink-0 text-signal-ok" />
               <div>
                 <div class="text-sm font-medium text-foreground">{block.title}</div>
-                <p class="mt-0.5 text-xs leading-relaxed text-muted-foreground">{block.body}</p>
+                <p class="mt-0.5 text-sm leading-relaxed text-muted-foreground">{block.body}</p>
               </div>
             </li>
           </ul>
@@ -132,7 +132,7 @@
         >
           <span class="lucide-lock size-5 block text-azure-brand" />
           <h3 class="mt-3 text-sm font-semibold">{item.title}</h3>
-          <p class="mt-1.5 text-xs leading-relaxed text-muted-foreground">{item.body}</p>
+          <p class="mt-1.5 text-sm leading-relaxed text-muted-foreground">{item.body}</p>
         </div>
       </div>
     </div>
@@ -165,7 +165,7 @@
           <h3 class="mt-4 font-semibold">{alt.title}</h3>
           <p class="mt-2 text-sm text-muted-foreground">{alt.body}</p>
           <div class={[
-            "mt-4 font-mono text-xs",
+            "mt-4 font-mono text-sm",
             if(alt.ours, do: "text-primary", else: "text-muted-foreground")
           ]}>
             {alt.pick}
@@ -205,7 +205,7 @@
           Register a callback URL and scope in the console and the app can redirect users to You
           immediately — no client libraries to install, no SDK to keep in sync.
         </p>
-        <code class="mt-5 block rounded-lg border border-border bg-card px-3 py-2 font-mono text-xs text-azure-brand">
+        <code class="mt-5 block rounded-lg border border-border bg-card px-3 py-2 font-mono text-sm text-azure-brand">
           You.SDK.exchange_code(auth_code)
         </code>
       </div>
