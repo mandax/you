@@ -36,10 +36,31 @@ production, point it at your SMTP relay:
 | `SMTP_PORT` | SMTP port (typically `587` for STARTTLS, `465` for TLS) |
 | `SMTP_USERNAME` | SMTP auth username |
 | `SMTP_PASSWORD` | SMTP auth password |
-| `MAIL_FROM` | Sender address (e.g. `You IAM <no-reply@example.com>`) |
+| `MAIL_FROM` | Sender address — default `no-reply@<PHX_HOST>` |
 
-Without a working SMTP relay, magic-link and confirmation emails are not
-delivered. Password and passkey logins still work.
+`SMTP_HOST` is required in production (boot aborts without it). `SMTP_USERNAME`
+and `SMTP_PASSWORD` are optional as a pair — omit both for an unauthenticated
+relay. TLS (STARTTLS) is always enforced. Without a working SMTP relay,
+magic-link and confirmation emails are not delivered. Password and passkey
+logins still work.
+
+## JWT signing keys
+
+Access tokens and id_tokens are Ed25519-signed JWTs. Without configuration You
+generates an **ephemeral key per boot** — every token dies on restart, and
+multiple replicas would each sign with a different key. Set a persistent key:
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `JWT_SIGNING_KEY` | Recommended | base64url-encoded 32-byte Ed25519 seed. Generate: `mix run -e ':crypto.strong_rand_bytes(32) \|> Base.url_encode64(padding: false) \|> IO.puts()'` |
+| `JWT_KEY_ID` | No | Key id stamped into token headers and JWKS. Default `you-ed25519-v1` |
+| `JWT_PREVIOUS_KEYS` | No | Comma-separated `kid:seed` pairs kept for verification only, during rotation |
+
+Rotation: generate a new seed, move the old `kid:seed` pair into
+`JWT_PREVIOUS_KEYS`, point `JWT_KEY_ID`/`JWT_SIGNING_KEY` at the new key, and
+drop the old pair once every token it signed has expired
+(`jwt_expiry_hours` setting). Consumers pick up new keys automatically from
+`/.well-known/jwks.json`.
 
 ## HTTPS
 

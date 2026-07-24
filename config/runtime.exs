@@ -77,6 +77,36 @@ if config_env() == :prod do
            tls: :always
          ] ++ smtp_auth
 
+  # Persistent JWT signing keys. Without this, You generates an ephemeral key
+  # per boot and every token dies on restart. Generate a seed with:
+  #   mix run -e ':crypto.strong_rand_bytes(32) |> Base.url_encode64(padding: false) |> IO.puts()'
+  # Rotation: move the old kid:seed pair to JWT_PREVIOUS_KEYS (comma-separated)
+  # and point JWT_KEY_ID/JWT_SIGNING_KEY at the new key; drop the old pair once
+  # every token it signed has expired.
+  if jwt_seed = System.get_env("JWT_SIGNING_KEY") do
+    decode_seed = fn value ->
+      case Base.url_decode64(value, padding: false) do
+        {:ok, <<seed::binary-32>>} -> seed
+        _ -> raise "JWT signing keys must be base64url-encoded 32-byte Ed25519 seeds"
+      end
+    end
+
+    jwt_kid = System.get_env("JWT_KEY_ID") || "you-ed25519-v1"
+
+    jwt_keys =
+      System.get_env("JWT_PREVIOUS_KEYS", "")
+      |> String.split(",", trim: true)
+      |> Map.new(fn pair ->
+        [prev_kid, prev_seed] = String.split(pair, ":", parts: 2)
+        {prev_kid, JOSE.JWK.generate_key({:okp, :Ed25519, decode_seed.(prev_seed)})}
+      end)
+      |> Map.put(jwt_kid, JOSE.JWK.generate_key({:okp, :Ed25519, decode_seed.(jwt_seed)}))
+
+    config :you, You.JWT, current_kid: jwt_kid, keys: jwt_keys
+  else
+    Logger.warning("JWT_SIGNING_KEY not set — using an ephemeral signing key, tokens will not survive restarts")
+  end
+
   config :wax_,
     origin: "https://#{host}",
     rp_id: :auto
