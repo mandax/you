@@ -37,6 +37,20 @@ config :you, YouWeb.Endpoint,
   pubsub_server: You.PubSub,
   live_view: [signing_salt: "pOOjL5Ii"]
 
+# Rate limits for credential-verifying endpoints: {max attempts, window in
+# milliseconds} per remote IP. Read at request time — override per
+# environment or in runtime.exs without recompiling. A map (not a keyword
+# list) so environments can replace the whole set instead of deep-merging.
+config :you, YouWeb.RateLimit, %{
+  login: {5, 60_000},
+  registration: {5, 60_000},
+  password_reset: {3, 60_000},
+  totp: {10, 60_000},
+  email_2fa: {10, 60_000},
+  headless_login: {5, 60_000},
+  headless_register: {5, 60_000}
+}
+
 # Configure the mailer
 #
 # By default it uses the "Local" adapter which stores the emails

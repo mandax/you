@@ -35,3 +35,7 @@ config :wax_, origin: "http://localhost:4002", rp_id: :auto
 
 # No network in tests — the Pwned Passwords check is exercised via its pure parser.
 config :you, check_pwned_passwords: false
+
+# Off by default so the whole suite doesn't share a 127.0.0.1 bucket;
+# the rate-limit tests set their own limits.
+config :you, YouWeb.RateLimit, %{}

@@ -15,6 +15,7 @@ defmodule You.Application do
       You.Accounts.CookieSync,
       You.IAM.Server,
       You.Accounts.JtiCleanup,
+      YouWeb.RateLimit,
       YouWeb.Endpoint
     ]
 
