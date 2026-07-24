@@ -104,7 +104,9 @@ if config_env() == :prod do
 
     config :you, You.JWT, current_kid: jwt_kid, keys: jwt_keys
   else
-    Logger.warning("JWT_SIGNING_KEY not set — using an ephemeral signing key, tokens will not survive restarts")
+    Logger.warning(
+      "JWT_SIGNING_KEY not set — using an ephemeral signing key, tokens will not survive restarts"
+    )
   end
 
   config :wax_,

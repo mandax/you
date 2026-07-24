@@ -28,19 +28,71 @@ defmodule You.SDKTest do
 
     test "returns :unreachable when the call times out" do
       :ok = :sys.suspend(You.IAM.Server)
-      on_exit(fn -> :sys.resume(You.IAM.Server) end)
 
       assert {:error, :unreachable} = You.SDK.get_user(1, timeout: 50)
+
+      # Kill the suspended server so its queued message is dropped with it —
+      # resuming would run the query after this test's sandbox owner is gone
+      # and crash the server ("owner exited") under later tests.
+      Process.exit(Process.whereis(You.IAM.Server), :boom)
+      await_iam_server()
     end
 
-    test "returns :server_error and logs when the server crashes" do
+    test "returns :server_error and logs when the server dies mid-call" do
+      :ok = :sys.suspend(You.IAM.Server)
+      pid = Process.whereis(You.IAM.Server)
+
       log =
         capture_log(fn ->
-          # A non-integer id raises Ecto.Query.CastError inside the server
-          assert {:error, :server_error} = You.SDK.get_user("not-an-id")
+          task = Task.async(fn -> You.SDK.get_user(1) end)
+          await_queued_call(pid)
+
+          # A plain exit reason maps to :server_error (:kill would propagate
+          # as an untrappable exit and kill the caller too).
+          Process.exit(pid, :boom)
+          assert {:error, :server_error} = Task.await(task)
         end)
 
       assert log =~ "IAM call"
+
+      # The supervisor restarts the crashed server asynchronously. Wait for
+      # the fresh process so later tests never race a mid-restart server.
+      await_iam_server()
     end
+  end
+
+  defp await_queued_call(pid, retries \\ 100)
+  defp await_queued_call(_pid, 0), do: flunk("SDK call never reached the suspended server")
+
+  defp await_queued_call(pid, retries) do
+    case Process.info(pid, :message_queue_len) do
+      {:message_queue_len, n} when n > 0 ->
+        :ok
+
+      _ ->
+        Process.sleep(10)
+        await_queued_call(pid, retries - 1)
+    end
+  end
+
+  defp await_iam_server(retries \\ 100)
+  defp await_iam_server(0), do: flunk("You.IAM.Server did not restart in time")
+
+  defp await_iam_server(retries) do
+    with pid when is_pid(pid) <- Process.whereis(You.IAM.Server),
+         true <- Process.alive?(pid),
+         {:ok, _state} <- safe_get_state(pid) do
+      :ok
+    else
+      _ ->
+        Process.sleep(10)
+        await_iam_server(retries - 1)
+    end
+  end
+
+  defp safe_get_state(pid) do
+    {:ok, :sys.get_state(pid, 100)}
+  catch
+    :exit, _ -> :error
   end
 end
