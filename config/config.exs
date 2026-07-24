@@ -48,7 +48,8 @@ config :you, YouWeb.RateLimit, %{
   totp: {10, 60_000},
   email_2fa: {10, 60_000},
   headless_login: {5, 60_000},
-  headless_register: {5, 60_000}
+  headless_register: {5, 60_000},
+  oauth_token: {10, 60_000}
 }
 
 # Configure the mailer

@@ -51,6 +51,10 @@ defmodule YouWeb.Router do
     plug YouWeb.Plugs.RateLimit, key: :headless_register
   end
 
+  pipeline :rate_limit_oauth_token do
+    plug YouWeb.Plugs.RateLimit, key: :oauth_token
+  end
+
   scope "/", YouWeb do
     pipe_through :browser
 
@@ -88,7 +92,12 @@ defmodule YouWeb.Router do
 
     get "/.well-known/openid-configuration", OIDCController, :discovery
     get "/.well-known/jwks.json", OIDCController, :jwks
-    post "/oauth/token", OIDCController, :create_token
+
+    scope "/" do
+      pipe_through :rate_limit_oauth_token
+      post "/oauth/token", OIDCController, :create_token
+    end
+
     get "/oauth/userinfo", OIDCController, :userinfo
     post "/oauth/introspect", OIDCController, :introspect
     post "/oauth/revoke", OIDCController, :revoke
@@ -167,7 +176,6 @@ defmodule YouWeb.Router do
     # e.g. /users/log-in/totp is captured as token="totp".
     get "/users/log-in/totp", UserSessionController, :totp
     get "/users/log-in/email-2fa", UserSessionController, :email_2fa
-    post "/users/log-in/email-2fa/resend", UserSessionController, :resend_email_2fa
     post "/users/log-in/authorize", UserSessionController, :authorize_action
     get "/users/log-in/:token", UserSessionController, :confirm
     get "/users/reset-password/:token", UserResetPasswordController, :edit
@@ -182,6 +190,7 @@ defmodule YouWeb.Router do
     scope "/" do
       pipe_through :rate_limit_email_2fa
       post "/users/log-in/email-2fa", UserSessionController, :verify_email_2fa
+      post "/users/log-in/email-2fa/resend", UserSessionController, :resend_email_2fa
     end
 
     scope "/" do
