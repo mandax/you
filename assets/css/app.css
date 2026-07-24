@@ -25,10 +25,68 @@
 }
 
 /* ---------------------------------------------------------------------------
+   Fonts — vendored woff2 (no CDN, no tracking). Display: Space Grotesk,
+   body: Inter, code: JetBrains Mono.
+   --------------------------------------------------------------------------- */
+
+@font-face {
+  font-family: "Space Grotesk";
+  src: url("/assets/fonts/space-grotesk-latin-500-normal.woff2") format("woff2");
+  font-weight: 500;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Space Grotesk";
+  src: url("/assets/fonts/space-grotesk-latin-700-normal.woff2") format("woff2");
+  font-weight: 700;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Inter";
+  src: url("/assets/fonts/inter-latin-400-normal.woff2") format("woff2");
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Inter";
+  src: url("/assets/fonts/inter-latin-500-normal.woff2") format("woff2");
+  font-weight: 500;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Inter";
+  src: url("/assets/fonts/inter-latin-600-normal.woff2") format("woff2");
+  font-weight: 600;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("/assets/fonts/jetbrains-mono-latin-400-normal.woff2") format("woff2");
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("/assets/fonts/jetbrains-mono-latin-500-normal.woff2") format("woff2");
+  font-weight: 500;
+  font-display: swap;
+}
+
+/* ---------------------------------------------------------------------------
    Design tokens
 
    HSL triplets rather than full colors, so they compose with Tailwind's
    opacity modifiers (e.g. bg-primary/10).
+
+   Chromatic scheme: triadic — azure 210°, magenta 330°, lime 90°
+   (120° apart on the wheel). Neutrals carry the UI; the three brand hues
+   carry identity, accent, and highlights. Status colors stay semantic.
    --------------------------------------------------------------------------- */
 
 :root {
@@ -38,7 +96,7 @@
   --card-foreground: 260 35% 12%;
   --popover: 0 0% 100%;
   --popover-foreground: 260 35% 12%;
-  --primary: 262 83% 58%;
+  --primary: 210 90% 48%;
   --primary-foreground: 0 0% 100%;
   --secondary: 255 24% 95%;
   --secondary-foreground: 260 30% 16%;
@@ -50,11 +108,13 @@
   --destructive-foreground: 0 0% 98%;
   --border: 258 20% 90%;
   --input: 258 20% 90%;
-  --ring: 262 83% 58%;
+  --ring: 210 90% 48%;
   --radius: 0.75rem;
 
-  /* Brand azure — links, diagrams, the identity accent (distinct from --accent hover token) */
+  /* Triadic brand hues */
   --brand-azure: 210 90% 52%;
+  --brand-magenta: 330 85% 55%;
+  --brand-lime: 90 75% 40%;
 
   /* Semantic status — operational meaning only */
   --signal-live: 172 66% 45%;
@@ -66,10 +126,10 @@
   --sidebar-background: 255 26% 97%;
   --sidebar-foreground: 255 18% 38%;
   --sidebar-muted: 255 20% 92%;
-  --sidebar-accent: 262 83% 58%;
+  --sidebar-accent: 210 90% 48%;
   --sidebar-accent-foreground: 0 0% 100%;
   --sidebar-border: 258 18% 88%;
-  --sidebar-ring: 262 83% 58%;
+  --sidebar-ring: 210 90% 48%;
 }
 
 .dark {
@@ -79,8 +139,8 @@
   --card-foreground: 250 20% 96%;
   --popover: 260 28% 8%;
   --popover-foreground: 250 20% 96%;
-  --primary: 262 88% 68%;
-  --primary-foreground: 0 0% 100%;
+  --primary: 210 92% 62%;
+  --primary-foreground: 260 35% 12%;
   --secondary: 260 20% 16%;
   --secondary-foreground: 250 20% 96%;
   --muted: 260 16% 14%;
@@ -91,10 +151,12 @@
   --destructive-foreground: 0 0% 98%;
   --border: 260 18% 17%;
   --input: 260 18% 17%;
-  --ring: 262 88% 68%;
+  --ring: 210 92% 62%;
 
-  /* Brand azure */
+  /* Triadic brand hues */
   --brand-azure: 210 92% 62%;
+  --brand-magenta: 330 88% 68%;
+  --brand-lime: 90 80% 60%;
 
   /* Semantic status */
   --signal-live: 172 66% 52%;
@@ -106,10 +168,10 @@
   --sidebar-background: 260 30% 7%;
   --sidebar-foreground: 255 16% 62%;
   --sidebar-muted: 260 18% 13%;
-  --sidebar-accent: 262 88% 68%;
-  --sidebar-accent-foreground: 0 0% 100%;
+  --sidebar-accent: 210 92% 62%;
+  --sidebar-accent-foreground: 260 35% 12%;
   --sidebar-border: 260 18% 15%;
-  --sidebar-ring: 262 88% 68%;
+  --sidebar-ring: 210 92% 62%;
 }
 
 /* `inline` so the generated utilities reference the raw custom properties
@@ -137,6 +199,8 @@
   --color-ring: hsl(var(--ring));
 
   --color-azure-brand: hsl(var(--brand-azure));
+  --color-magenta-brand: hsl(var(--brand-magenta));
+  --color-lime-brand: hsl(var(--brand-lime));
 
   --color-signal-live: hsl(var(--signal-live));
   --color-signal-ok: hsl(var(--signal-ok));
@@ -156,6 +220,7 @@
   --radius-lg: var(--radius);
 
   --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-display: "Space Grotesk", Inter, ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
   --animate-pulse-live: pulse-live 1.6s ease-in-out infinite;
@@ -221,6 +286,29 @@
     font-family: var(--font-sans);
     font-feature-settings: "cv01", "ss03";
   }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--font-display);
+    letter-spacing: -0.02em;
+  }
+}
+
+/* Gradient text — azure identity → magenta accent (triadic) */
+.gradient-text {
+  background-image: linear-gradient(135deg, hsl(var(--brand-azure)), hsl(var(--brand-magenta)));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Aurora glow — azure/magenta radials behind final CTA */
+.aurora {
+  background:
+    radial-gradient(40rem 30rem at 70% 10%, hsl(var(--brand-azure) / 0.16), transparent 60%),
+    radial-gradient(36rem 28rem at 20% 30%, hsl(var(--brand-magenta) / 0.12), transparent 60%);
 }
 
 /* Scrollbar styling */
@@ -239,27 +327,53 @@
   background-color: hsl(var(--muted-foreground) / 0.4);
 }
 
-/* Gradient text — violet identity → azure accent */
-.gradient-text {
-  background-image: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--brand-azure)));
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
-
-/* Aurora glow — single violet/azure radial behind hero + final CTA */
-.aurora {
-  background:
-    radial-gradient(40rem 30rem at 70% 10%, hsl(var(--primary) / 0.16), transparent 60%),
-    radial-gradient(36rem 28rem at 20% 30%, hsl(var(--brand-azure) / 0.12), transparent 60%);
-}
-
 /* Faint grid texture for terminal/instrument surfaces */
 .grid-texture {
   background-image:
     linear-gradient(to right, hsl(var(--border) / 0.5) 1px, transparent 1px),
     linear-gradient(to bottom, hsl(var(--border) / 0.5) 1px, transparent 1px);
   background-size: 32px 32px;
+}
+
+/* Makeup syntax highlighting — triadic code palette, follows the theme */
+.makeup .c,
+.makeup .c1,
+.makeup .cm {
+  color: hsl(var(--muted-foreground));
+  font-style: italic;
+}
+.makeup .k,
+.makeup .kd,
+.makeup .kn {
+  color: hsl(var(--brand-magenta));
+}
+.makeup .s,
+.makeup .s1,
+.makeup .s2,
+.makeup .si,
+.makeup .se {
+  color: hsl(var(--brand-lime));
+}
+.makeup .nc,
+.makeup .nb {
+  color: hsl(var(--brand-azure));
+}
+.makeup .ss,
+.makeup .m,
+.makeup .mi,
+.makeup .mf {
+  color: hsl(var(--signal-warn));
+}
+.makeup .nf,
+.makeup .n {
+  color: hsl(var(--foreground));
+}
+.makeup .o,
+.makeup .p {
+  color: hsl(var(--foreground) / 0.75);
+}
+.makeup .na {
+  color: hsl(var(--brand-azure) / 0.85);
 }
 
 @media (prefers-reduced-motion: reduce) {
