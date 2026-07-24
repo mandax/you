@@ -48,7 +48,9 @@ defmodule YouWeb.RateLimit do
   defp hit(bucket, window_start, expires_at) do
     case :ets.lookup(@table, bucket) do
       [{^bucket, ^window_start, _count, _expires_at}] ->
-        :ets.update_counter(@table, bucket, {3, 1})
+        # Default tuple makes the counter update atomic even if the sweep
+        # evicts the entry between lookup and update.
+        :ets.update_counter(@table, bucket, {3, 1}, {bucket, window_start, 0, expires_at})
 
       _stale_or_missing ->
         :ets.insert(@table, {bucket, window_start, 1, expires_at})
