@@ -24,6 +24,10 @@ defmodule YouWeb.ConsoleLive do
 
   @roles ~w(owner admin member)
 
+  # Write-only in the console: never rendered into the DOM, blank on save
+  # keeps the current value, cleared via the explicit "clear" button.
+  @secret_settings [:erlang_cookie, :scim_bearer_token]
+
   @settings_fields [
     %{key: :session_expiry_hours, label: "Session expiry (hours)"},
     %{key: :jwt_expiry_hours, label: "JWT expiry (hours)"},
@@ -184,12 +188,27 @@ defmodule YouWeb.ConsoleLive do
   def handle_event("save_settings", params, socket) do
     Enum.each(@settings_fields, fn %{key: key} ->
       raw = params[Atom.to_string(key)]
-      if is_binary(raw), do: Settings.set(key, parse_value(raw))
+
+      if is_binary(raw) and not (key in @secret_settings and raw == "") do
+        Settings.set(key, parse_value(raw))
+      end
     end)
 
     You.Accounts.CookieSync.apply_cookie()
     You.Audit.Streamer.reload()
     {:noreply, socket |> load_settings() |> assign(saved: true)}
+  end
+
+  def handle_event("clear_setting", %{"key" => key}, socket) do
+    key = String.to_existing_atom(key)
+
+    if key in @secret_settings do
+      Settings.set(key, "")
+      You.Accounts.CookieSync.apply_cookie()
+      You.Audit.Streamer.reload()
+    end
+
+    {:noreply, load_settings(socket)}
   end
 
   # ── data loading ──────────────────────────────────────────────
@@ -738,20 +757,18 @@ defmodule YouWeb.ConsoleLive do
             value={@settings[:erlang_node_name]}
           />
           <.setting_field name="epmd_port" label="EPMD port" value={@settings[:epmd_port]} />
-          <.setting_field
+          <.secret_setting_field
             name="erlang_cookie"
             label="Cookie"
             value={@settings[:erlang_cookie]}
-            type="password"
           />
         </.settings_group>
 
         <.settings_group title="Provisioning & audit">
-          <.setting_field
+          <.secret_setting_field
             name="scim_bearer_token"
             label="SCIM bearer token"
             value={@settings[:scim_bearer_token]}
-            type="password"
           />
           <.setting_field
             name="audit_webhook_url"
@@ -759,7 +776,7 @@ defmodule YouWeb.ConsoleLive do
             value={@settings[:audit_webhook_url]}
           />
           <p class="pt-1 font-mono text-[11px] text-muted-foreground">
-            SCIM base: {@base_url}/scim/v2 · blank tokens disable the feature
+            SCIM base: {@base_url}/scim/v2 · secrets are write-only, use clear to disable
           </p>
         </.settings_group>
 
@@ -855,6 +872,41 @@ defmodule YouWeb.ConsoleLive do
         class="h-8 max-w-[16rem] font-mono text-xs"
       />
     </label>
+    """
+  end
+
+  attr :name, :string, required: true
+  attr :label, :string, required: true
+  attr :value, :any, default: nil
+
+  defp secret_setting_field(assigns) do
+    ~H"""
+    <div class="flex items-center justify-between gap-4 text-sm">
+      <span class="text-muted-foreground">{@label}</span>
+      <div class="flex items-center gap-2">
+        <span class="font-mono text-[11px] text-muted-foreground">
+          {if @value in [nil, ""], do: "not set", else: "••••••••"}
+        </span>
+        <.base_input
+          type="password"
+          name={@name}
+          value=""
+          placeholder="new value"
+          autocomplete="off"
+          class="h-8 max-w-[12rem] font-mono text-xs"
+        />
+        <button
+          :if={@value not in [nil, ""]}
+          type="button"
+          phx-click="clear_setting"
+          phx-value-key={@name}
+          data-confirm={"Clear #{@label}? This takes effect immediately."}
+          class="font-mono text-[11px] text-signal-down hover:underline"
+        >
+          clear
+        </button>
+      </div>
+    </div>
     """
   end
 

@@ -138,5 +138,32 @@ defmodule YouWeb.ConsoleLiveTest do
       assert Settings.get(:scim_bearer_token) == "sekret"
       assert Settings.get(:audit_webhook_url) == "https://hooks.example.com/audit"
     end
+
+    test "secrets are write-only: never rendered, blank keeps current, clear removes", %{
+      conn: conn
+    } do
+      Settings.set(:erlang_cookie, "super-secret-cookie")
+      on_exit(fn -> Settings.set(:erlang_cookie, "") end)
+
+      {:ok, lv, _html} = live(conn, "/console?view=settings")
+
+      refute render(lv) =~ "super-secret-cookie"
+
+      render_submit(form(lv, "form[phx-submit=save_settings]"), %{
+        "erlang_cookie" => "",
+        "jwt_expiry_hours" => "24"
+      })
+
+      assert Settings.get(:erlang_cookie) == "super-secret-cookie"
+
+      render_submit(form(lv, "form[phx-submit=save_settings]"), %{
+        "erlang_cookie" => "new-cookie"
+      })
+
+      assert Settings.get(:erlang_cookie) == "new-cookie"
+
+      render_click(lv, "clear_setting", %{"key" => "erlang_cookie"})
+      assert Settings.get(:erlang_cookie) == ""
+    end
   end
 end
