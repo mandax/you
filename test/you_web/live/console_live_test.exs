@@ -123,6 +123,34 @@ defmodule YouWeb.ConsoleLiveTest do
       render_click(lv, "demote", %{"id" => other.id})
       refute Accounts.get_user!(other.id).is_admin
     end
+
+    test "logout revokes sessions and anonymize wipes the account", %{conn: conn} do
+      other = You.AccountsFixtures.user_fixture()
+      token = Accounts.generate_user_session_token(other)
+      {:ok, lv, _} = live(conn, "/console?view=users")
+
+      render_click(lv, "logout_user", %{"id" => other.id})
+      assert Accounts.get_user_by_session_token(token) == nil
+
+      render_click(lv, "anonymize_user", %{"id" => other.id})
+      refute Accounts.get_user!(other.id).email == other.email
+    end
+  end
+
+  describe "audit" do
+    test "filter narrows events by name and details", %{conn: conn} do
+      :telemetry.execute([:you, :audit, :admin, :action], %{}, %{
+        action: "probe",
+        target: "needle-xyz"
+      })
+
+      _ = :sys.get_state(You.Audit.Streamer)
+      {:ok, lv, _} = live(conn, "/console?view=audit")
+      assert render(lv) =~ "needle-xyz"
+
+      assert render_change(lv, "filter_audit", %{"filter" => "needle"}) =~ "needle-xyz"
+      refute render_change(lv, "filter_audit", %{"filter" => "no-such-event"}) =~ "needle-xyz"
+    end
   end
 
   describe "settings" do

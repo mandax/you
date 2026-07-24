@@ -57,6 +57,7 @@ defmodule YouWeb.ConsoleLive do
        editing_app: nil,
        selected_org: nil,
        members: [],
+       audit_filter: "",
        base_url: YouWeb.Endpoint.url(),
        oidc_providers:
          Application.get_env(:you, :oidc_providers, %{}) |> Map.keys() |> Enum.sort(),
@@ -80,13 +81,33 @@ defmodule YouWeb.ConsoleLive do
   # ── users ─────────────────────────────────────────────────────
   @impl true
   def handle_event("promote", %{"id" => id}, socket) do
-    Admin.get_user!(id) |> Admin.promote_admin()
+    user = Admin.get_user!(id)
+    Admin.promote_admin(user)
+    audit_admin(socket, "promote_admin", user.email)
     {:noreply, socket |> load_data() |> put_flash(:info, "User promoted to admin.")}
   end
 
   def handle_event("demote", %{"id" => id}, socket) do
-    Admin.get_user!(id) |> Admin.demote_admin()
+    user = Admin.get_user!(id)
+    Admin.demote_admin(user)
+    audit_admin(socket, "demote_admin", user.email)
     {:noreply, socket |> load_data() |> put_flash(:info, "Admin rights revoked.")}
+  end
+
+  def handle_event("logout_user", %{"id" => id}, socket) do
+    user = Admin.get_user!(id)
+    Accounts.delete_all_user_tokens(user)
+    audit_admin(socket, "logout_user", user.email)
+
+    {:noreply,
+     socket |> load_data() |> put_flash(:info, "All sessions revoked for #{user.email}.")}
+  end
+
+  def handle_event("anonymize_user", %{"id" => id}, socket) do
+    user = Admin.get_user!(id)
+    {:ok, _} = Accounts.anonymize_user(user)
+    audit_admin(socket, "anonymize_user", user.email)
+    {:noreply, socket |> load_data() |> put_flash(:info, "User anonymized.")}
   end
 
   # ── apps ──────────────────────────────────────────────────────
@@ -110,7 +131,9 @@ defmodule YouWeb.ConsoleLive do
   end
 
   def handle_event("delete_app", %{"id" => id}, socket) do
-    id |> Admin.get_app!() |> Admin.delete_app()
+    app = Admin.get_app!(id)
+    Admin.delete_app(app)
+    audit_admin(socket, "delete_app", app.slug)
     {:noreply, socket |> load_data() |> put_flash(:info, "App deleted.")}
   end
 
@@ -185,6 +208,10 @@ defmodule YouWeb.ConsoleLive do
   end
 
   # ── settings ──────────────────────────────────────────────────
+  def handle_event("filter_audit", %{"filter" => filter}, socket) do
+    {:noreply, assign(socket, :audit_filter, filter)}
+  end
+
   def handle_event("save_settings", params, socket) do
     Enum.each(@settings_fields, fn %{key: key} ->
       raw = params[Atom.to_string(key)]
@@ -212,6 +239,14 @@ defmodule YouWeb.ConsoleLive do
   end
 
   # ── data loading ──────────────────────────────────────────────
+  defp audit_admin(socket, action, target) do
+    :telemetry.execute([:you, :audit, :admin, :action], %{}, %{
+      admin_user_id: socket.assigns.current_scope.user.id,
+      action: action,
+      target: target
+    })
+  end
+
   defp load_data(socket) do
     org = socket.assigns[:selected_org]
 
@@ -326,7 +361,7 @@ defmodule YouWeb.ConsoleLive do
             <% "orgs" -> %>
               <.orgs_view orgs={@orgs} selected={@selected_org} members={@members} roles={@roles} />
             <% "audit" -> %>
-              <.audit_view events={@events} />
+              <.audit_view events={@events} audit_filter={@audit_filter} />
             <% "settings" -> %>
               <.settings_view
                 settings={@settings}
@@ -409,24 +444,46 @@ defmodule YouWeb.ConsoleLive do
             {row.identities}
           </td>
           <td class="px-3 py-2 text-right">
-            <button
-              :if={!row.user.is_admin}
-              type="button"
-              phx-click="promote"
-              phx-value-id={row.user.id}
-              class="rounded px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-primary hover:text-primary-foreground"
-            >
-              Make admin
-            </button>
-            <button
-              :if={row.user.is_admin && row.user.id != @current_scope.user.id}
-              type="button"
-              phx-click="demote"
-              phx-value-id={row.user.id}
-              class="rounded px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-destructive hover:text-destructive-foreground"
-            >
-              Revoke
-            </button>
+            <div class="flex items-center justify-end gap-1">
+              <button
+                :if={!row.user.is_admin}
+                type="button"
+                phx-click="promote"
+                phx-value-id={row.user.id}
+                class="rounded px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-primary hover:text-primary-foreground"
+              >
+                Make admin
+              </button>
+              <button
+                :if={row.user.is_admin && row.user.id != @current_scope.user.id}
+                type="button"
+                phx-click="demote"
+                phx-value-id={row.user.id}
+                class="rounded px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-destructive hover:text-destructive-foreground"
+              >
+                Revoke
+              </button>
+              <button
+                :if={row.user.id != @current_scope.user.id}
+                type="button"
+                phx-click="logout_user"
+                phx-value-id={row.user.id}
+                data-confirm={"Revoke all sessions for #{row.user.email}?"}
+                class="rounded px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              >
+                Log out
+              </button>
+              <button
+                :if={row.user.id != @current_scope.user.id}
+                type="button"
+                phx-click="anonymize_user"
+                phx-value-id={row.user.id}
+                data-confirm={"Anonymize #{row.user.email}? Personal data is wiped permanently and the account can no longer log in."}
+                class="rounded px-2 py-1 text-xs text-signal-down transition-colors hover:bg-destructive hover:text-destructive-foreground"
+              >
+                Anonymize
+              </button>
+            </div>
           </td>
         </tr>
       </.data_table>
@@ -688,17 +745,41 @@ defmodule YouWeb.ConsoleLive do
 
   # ── section: audit ────────────────────────────────────────────
   attr :events, :list, required: true
+  attr :audit_filter, :string, required: true
 
   defp audit_view(assigns) do
+    assigns =
+      assign(assigns,
+        filtered:
+          if(assigns.audit_filter == "",
+            do: assigns.events,
+            else: Enum.filter(assigns.events, &audit_matches?(&1, assigns.audit_filter))
+          )
+      )
+
     ~H"""
     <div class="space-y-4">
-      <p class="font-mono text-xs text-muted-foreground">
-        in-memory · newest first · configure a webhook under Settings for durable retention
-      </p>
-      <.data_table cols={~w(Event Details At)} empty={@events == []}>
-        <tr :for={e <- @events} class="border-b border-border/60 last:border-0 hover:bg-muted/40">
+      <div class="flex items-center justify-between gap-4">
+        <p class="font-mono text-xs text-muted-foreground">
+          in-memory · newest first · configure a webhook under Settings for durable retention
+        </p>
+        <form phx-change="filter_audit" class="shrink-0">
+          <input
+            type="text"
+            name="filter"
+            value={@audit_filter}
+            placeholder="filter events"
+            class="h-8 w-48 rounded-md border border-input bg-background px-3 font-mono text-xs placeholder:text-muted-foreground/60"
+          />
+        </form>
+      </div>
+      <.data_table cols={~w(Event Details At)} empty={@filtered == []}>
+        <tr
+          :for={e <- @filtered}
+          class="border-b border-border/60 last:border-0 hover:bg-muted/40"
+        >
           <td class="px-3 py-2 font-mono text-xs text-foreground/90">{e.event}</td>
-          <td class="px-3 py-2 font-mono text-xs break-all text-muted-foreground">
+          <td class="px-3 py-2 break-all font-mono text-xs text-muted-foreground">
             {brief(e.metadata)}
           </td>
           <td class="px-3 py-2 text-right font-mono text-xs tabular-nums text-muted-foreground">
@@ -708,6 +789,11 @@ defmodule YouWeb.ConsoleLive do
       </.data_table>
     </div>
     """
+  end
+
+  defp audit_matches?(event, filter) do
+    haystack = String.downcase("#{event.event} #{brief(event.metadata)}")
+    String.contains?(haystack, String.downcase(filter))
   end
 
   # ── section: settings ─────────────────────────────────────────
