@@ -1,37 +1,53 @@
 defmodule You.JWT do
   @moduledoc """
-  JWT signing and verification using Ed25519 via `jose`.
+  JWT signing and verification using Ed25519 (EdDSA) via `jose`, backed by a
+  key store: one current signing key plus optional previous keys kept for
+  verification only.
 
-  The signing key is cached in application config so all processes on this
-  node share the same key. For production, configure a persistent key:
+  ## Configuration
 
-      config :you, You.JWT, jwk: %JOSE.JWK{...}
+      config :you, You.JWT,
+        current_kid: "you-ed25519-v2",
+        keys: %{
+          "you-ed25519-v2" => %JOSE.JWK{...},
+          "you-ed25519-v1" => %JOSE.JWK{...}
+        }
 
-  If no key is configured, one is generated on first call and cached.
+  With no `:keys` configured, a key is generated on first call and cached in
+  application env under the default kid `"you-ed25519-v1"` — fine for dev, but
+  tokens stop verifying after a restart. Configure persistent keys for
+  production.
+
+  ## Rotation
+
+  1. Generate a new Ed25519 key, add it to `:keys` under a fresh kid, and
+     point `:current_kid` at it. New tokens are signed and stamped with the
+     new kid; tokens signed by the old key still verify because their kid
+     resolves to the old key in the store.
+  2. Keep the old key in `:keys` until every token it signed has expired
+     (see `You.Settings` `:jwt_expiry_hours`), then drop it. JWKS only ever
+     exposes the public parts, so consumers pick up new keys automatically.
+
+  Legacy tokens signed before kids existed carry no `kid` header — those are
+  verified against every key in the store.
   """
 
   alias You.Repo
   alias You.Accounts.UserToken
 
   @default_exp 86_400
+  @default_kid "you-ed25519-v1"
 
   @doc """
-  Returns the configured or auto-generated JWK, cached in application config.
+  Returns the kid of the current signing key.
   """
-  def jwk do
-    case Application.get_env(:you, You.JWT, [])[:jwk] do
-      nil ->
-        jwk = JOSE.JWK.generate_key({:okp, :Ed25519})
-        Application.put_env(:you, You.JWT, jwk: jwk)
-        jwk
-
-      jwk ->
-        jwk
-    end
+  def current_kid do
+    config()[:current_kid] || @default_kid
   end
 
   @doc """
-  Signs claims into a JWT string. Adds `jti`, `iat`, `exp`.
+  Signs claims into a JWT string with the current key. Adds `jti`, `iat`,
+  `exp`, and stamps the header with the current `kid`.
 
   ## Examples
 
@@ -52,13 +68,16 @@ defmodule You.JWT do
         "exp" => DateTime.to_unix(now) + exp_seconds
       })
 
-    jwk = jwk()
+    kid = current_kid()
+    jwk = Map.fetch!(key_store(), kid)
 
-    {:ok, jose_compact(jwk, claims)}
+    {:ok, jose_compact(jwk, kid, claims)}
   end
 
   @doc """
-  Verifies a JWT. Checks signature, expiry, and blocklist.
+  Verifies a JWT. Selects the verification key by the token's `kid` header
+  (falling back to all store keys for legacy tokens without one), then checks
+  signature, expiry, and blocklist.
 
   Returns `{:ok, claims}` or `{:error, reason}`.
   """
@@ -68,6 +87,28 @@ defmodule You.JWT do
          {:ok, payload} <- check_blocklist(payload) do
       {:ok, payload}
     end
+  end
+
+  @doc """
+  Returns the public JWK Set (`%{"keys" => [...]}`) for every key in the
+  store, ready to serve from the JWKS endpoint.
+  """
+  def public_jwks do
+    keys =
+      for {kid, jwk} <- key_store() do
+        {_alg, fields} = jwk |> JOSE.JWK.to_public() |> JOSE.JWK.to_map()
+
+        %{
+          "kty" => fields["kty"],
+          "crv" => fields["crv"],
+          "x" => fields["x"],
+          "alg" => "EdDSA",
+          "kid" => kid,
+          "use" => "sig"
+        }
+      end
+
+    %{"keys" => keys}
   end
 
   @doc """
@@ -104,26 +145,68 @@ defmodule You.JWT do
     end
   end
 
+  # -- Key store
+
+  defp config do
+    Application.get_env(:you, You.JWT, [])
+  end
+
+  defp key_store do
+    case config()[:keys] do
+      keys when is_map(keys) and map_size(keys) > 0 ->
+        keys
+
+      _ ->
+        kid = current_kid()
+        jwk = JOSE.JWK.generate_key({:okp, :Ed25519})
+        Application.put_env(:you, You.JWT, Keyword.put(config(), :keys, %{kid => jwk}))
+        %{kid => jwk}
+    end
+  end
+
   # -- JOSE boundary: wrap Erlang library that can crash into tagged tuples
 
-  defp jose_compact(jwk, claims) do
-    {_alg_map, compact} = JOSE.JWT.sign(jwk, claims) |> JOSE.JWS.compact()
+  defp jose_compact(jwk, kid, claims) do
+    protected = %{"alg" => "EdDSA", "kid" => kid}
+
+    {_alg_map, compact} =
+      JOSE.JWT.sign(jwk, protected, claims) |> JOSE.JWS.compact()
+
     compact
   end
 
   defp jose_verify(signed) do
-    jwk = jwk()
+    store = key_store()
 
-    case JOSE.JWT.verify(jwk, signed) do
-      {true, jwt, _jws} ->
+    kids =
+      case header_kid(signed) do
+        nil -> Map.keys(store)
+        kid -> [kid]
+      end
+
+    Enum.reduce_while(kids, {:error, :invalid_signature}, fn kid, acc ->
+      with {:ok, jwk} <- Map.fetch(store, kid),
+           {true, jwt, _jws} <- JOSE.JWT.verify_strict(jwk, ["EdDSA"], signed) do
         {_protected, payload} = JOSE.JWT.to_map(jwt)
-        {:ok, payload}
-
-      {false, _, _} ->
-        {:error, :invalid_signature}
-    end
+        {:halt, {:ok, payload}}
+      else
+        _ -> {:cont, acc}
+      end
+    end)
   rescue
     _ -> {:error, :invalid_signature}
+  end
+
+  # Reads the kid straight from the compact header without touching JOSE, so
+  # malformed tokens simply yield no kid.
+  defp header_kid(signed) do
+    with [header | _] <- String.split(signed, "."),
+         {:ok, json} <- Base.url_decode64(header, padding: false),
+         {:ok, %{"kid" => kid}} when is_binary(kid) <- Jason.decode(json) do
+      kid
+    else
+      _ -> nil
+    end
   end
 
   # -- Expiry
@@ -142,14 +225,16 @@ defmodule You.JWT do
 
   # -- Blocklist
 
-  defp check_blocklist(payload) do
-    hashed = hash_jti(payload["jti"])
+  defp check_blocklist(%{"jti" => jti} = payload) when is_binary(jti) do
+    hashed = hash_jti(jti)
 
     case Repo.get_by(UserToken, token: hashed, context: "jti_revoked") do
       nil -> {:ok, payload}
       _ -> {:error, :revoked}
     end
   end
+
+  defp check_blocklist(payload), do: {:ok, payload}
 
   defp hash_jti(jti) do
     :crypto.hash(:sha256, jti)
