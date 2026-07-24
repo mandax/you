@@ -30,7 +30,7 @@ defmodule YouWeb.Plugs.RateLimit do
         conn
 
       {limit, window_ms} ->
-        bucket = {key, conn.remote_ip}
+        bucket = {key, client_ip(conn)}
 
         case YouWeb.RateLimit.check(bucket, limit, window_ms) do
           {:allow, _count} ->
@@ -56,6 +56,16 @@ defmodule YouWeb.Plugs.RateLimit do
       conn
       |> put_resp_content_type("text/plain")
       |> send_resp(429, "Too many requests. Please try again later.")
+    end
+  end
+
+  # You is deployed behind a reverse proxy (see docs/ops/deploy.md), so the
+  # real client address arrives in X-Forwarded-For. If the app is exposed
+  # directly, clients can spoof that header to dodge the limit — don't.
+  defp client_ip(conn) do
+    case get_req_header(conn, "x-forwarded-for") do
+      [header | _] -> header |> String.split(",", parts: 2) |> hd() |> String.trim()
+      [] -> conn.remote_ip |> :inet.ntoa() |> to_string()
     end
   end
 end

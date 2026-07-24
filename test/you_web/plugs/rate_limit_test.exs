@@ -61,6 +61,22 @@ defmodule YouWeb.Plugs.RateLimitTest do
     refute limited(%{conn | remote_ip: {203, 0, 113, 5}}).halted
   end
 
+  test "X-Forwarded-For takes precedence over remote_ip", %{conn: conn} do
+    Application.put_env(:you, YouWeb.RateLimit, %{test_endpoint: {1, 60_000}})
+
+    proxied = fn ip ->
+      conn
+      |> put_req_header("x-forwarded-for", ip)
+      |> then(&%{&1 | remote_ip: {10, 0, 0, 1}})
+      |> limited()
+    end
+
+    proxied.("198.51.100.9")
+
+    assert proxied.("198.51.100.9").halted
+    refute proxied.("198.51.100.10").halted
+  end
+
   test "passes through when the key has no configured limit", %{conn: conn} do
     Application.put_env(:you, YouWeb.RateLimit, %{})
 
