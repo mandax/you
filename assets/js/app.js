@@ -74,8 +74,11 @@ window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", e =
 })
 
 // LiveView Hooks
+import GraphCanvas from "./graph_canvas"
+
 const Hooks = {
   ThemeToggle,
+  GraphCanvas,
   CopyToClipboard: {
     mounted() {
       this.el.addEventListener("click", () => {
