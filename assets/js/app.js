@@ -28,6 +28,14 @@ function scanFlashes(root) {
 
 document.addEventListener("DOMContentLoaded", () => scanFlashes(document))
 
+// Start graph canvases on dead-rendered pages (login) — LiveView pages use
+// the GraphCanvas hook instead.
+import {startGraphCanvas} from "./graph_canvas"
+
+document.addEventListener("DOMContentLoaded", () => {
+  document.querySelectorAll("canvas[data-graph]").forEach(startGraphCanvas)
+})
+
 new MutationObserver((mutations) => {
   for (const m of mutations) {
     for (const node of m.addedNodes) {

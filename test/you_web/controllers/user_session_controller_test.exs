@@ -14,7 +14,7 @@ defmodule YouWeb.UserSessionControllerTest do
       response = html_response(conn, 200)
       assert response =~ "Log in"
       assert response =~ ~p"/users/register"
-      assert response =~ "Log in with email"
+      assert response =~ "Email me a magic link"
       # passkey sign-in entry point
       assert response =~ "Sign in with a passkey"
       assert response =~ ~p"/users/log-in/passkey/start"
@@ -40,10 +40,10 @@ defmodule YouWeb.UserSessionControllerTest do
 
       assert html =~ "Confirm your identity"
       refute html =~ "Sign up"
-      assert html =~ "Log in with email"
+      assert html =~ "Email me a magic link"
 
       assert html =~
-               ~s(<input type="email" name="user[email]" id="login_form_magic_email" value="#{user.email}")
+               ~s(<input type="hidden" name="user[email]" value="#{user.email}")
     end
 
     test "renders login page (email + password)", %{conn: conn} do
@@ -51,7 +51,7 @@ defmodule YouWeb.UserSessionControllerTest do
       response = html_response(conn, 200)
       assert response =~ "Log in"
       assert response =~ ~p"/users/register"
-      assert response =~ "Log in with email"
+      assert response =~ "Email me a magic link"
     end
   end
 

@@ -10,100 +10,75 @@ const PULSE_TRAVEL_MS = 1500
 
 const GraphCanvas = {
   mounted() {
-    this.ctx = this.el.getContext("2d")
-    this.reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)")
-    this.pulses = []
-    this.lastPulse = 0
-    this.mouse = null
-
-    this.readColors()
-    this.resize()
-    this.seed()
-
-    this.resizeObserver = new ResizeObserver(() => {
-      this.resize()
-      this.seed()
-      if (this.reducedMotion.matches) this.draw(0)
-    })
-    this.resizeObserver.observe(this.el.parentElement)
-
-    this.themeObserver = new MutationObserver(() => {
-      this.readColors()
-      if (this.reducedMotion.matches) this.draw(0)
-    })
-    this.themeObserver.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ["class"]
-    })
-
-    this.el.parentElement.addEventListener("pointermove", (e) => {
-      const rect = this.el.getBoundingClientRect()
-      this.mouse = {x: e.clientX - rect.left, y: e.clientY - rect.top}
-    })
-    this.el.parentElement.addEventListener("pointerleave", () => (this.mouse = null))
-
-    if (!this.reducedMotion.matches) {
-      this.raf = requestAnimationFrame((t) => this.tick(t))
-    } else {
-      this.draw(0)
-    }
+    this._cleanup = startGraphCanvas(this.el)
   },
 
   destroyed() {
-    cancelAnimationFrame(this.raf)
-    this.resizeObserver.disconnect()
-    this.themeObserver.disconnect()
-  },
+    if (this._cleanup) this._cleanup()
+  }
+}
 
-  readColors() {
+// Framework-free entry point: works both as the engine behind the
+// LiveView hook and standalone on dead-rendered pages (login), where
+// app.js auto-starts any <canvas data-graph>.
+function startGraphCanvas(canvas) {
+  const ctx = canvas.getContext("2d")
+  const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)")
+  const state = {
+    ctx,
+    canvas,
+    reducedMotion,
+    pulses: [],
+    lastPulse: 0,
+    mouse: null,
+    dark: false,
+    colors: {},
+    raf: null
+  }
+
+  const readColors = () => {
     const css = getComputedStyle(document.documentElement)
     const hsl = (name, fallback) => `hsl(${css.getPropertyValue(name).trim() || fallback})`
-    this.colors = {
+    state.colors = {
       edge: hsl("--brand-azure", "210 90% 52%"),
       node: hsl("--brand-azure", "210 90% 52%"),
-      hub: hsl("--primary", "262 83% 58%"),
-      pulse: hsl("--signal-warn", "38 92% 45%")
+      hub: hsl("--brand-magenta", "330 85% 55%"),
+      pulse: hsl("--brand-lime", "90 75% 40%")
     }
-    this.dark = document.documentElement.classList.contains("dark")
-  },
+    state.dark = document.documentElement.classList.contains("dark")
+  }
 
-  resize() {
-    const rect = this.el.parentElement.getBoundingClientRect()
+  const resize = () => {
+    const rect = canvas.parentElement.getBoundingClientRect()
     const dpr = window.devicePixelRatio || 1
-    this.w = rect.width
-    this.h = rect.height
-    this.el.width = Math.round(this.w * dpr)
-    this.el.height = Math.round(this.h * dpr)
-    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-  },
+    state.w = rect.width
+    state.h = rect.height
+    canvas.width = Math.round(state.w * dpr)
+    canvas.height = Math.round(state.h * dpr)
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+  }
 
-  seed() {
-    const count = Math.max(24, Math.min(70, Math.floor((this.w * this.h) / 26000)))
-    this.nodes = Array.from({length: count}, () => ({
-      x: Math.random() * this.w,
-      y: Math.random() * this.h,
+  const seed = () => {
+    const count = Math.max(24, Math.min(70, Math.floor((state.w * state.h) / 26000)))
+    state.nodes = Array.from({length: count}, () => ({
+      x: Math.random() * state.w,
+      y: Math.random() * state.h,
       vx: (Math.random() - 0.5) * 0.18,
       vy: (Math.random() - 0.5) * 0.18,
       phase: Math.random() * Math.PI * 2,
       wobble: 0.3 + Math.random() * 0.7
     }))
-    this.hub = {x: this.w * 0.72, y: this.h * 0.42, flash: 0}
-  },
+    state.hub = {x: state.w * 0.72, y: state.h * 0.42, flash: 0}
+  }
 
-  tick(t) {
-    this.step(t)
-    this.draw(t)
-    this.raf = requestAnimationFrame((nt) => this.tick(nt))
-  },
-
-  step(t) {
-    for (const n of this.nodes) {
+  const step = (t) => {
+    for (const n of state.nodes) {
       n.x += n.vx + Math.sin(t / 2400 + n.phase) * 0.08 * n.wobble
       n.y += n.vy + Math.cos(t / 3000 + n.phase) * 0.08 * n.wobble
 
-      if (this.mouse) {
-        const dx = n.x - this.mouse.x
-        const dy = n.y - this.mouse.y
+      if (state.mouse) {
+        const dx = n.x - state.mouse.x
+        const dy = n.y - state.mouse.y
         const d2 = dx * dx + dy * dy
         if (d2 < 120 * 120 && d2 > 0.01) {
           const d = Math.sqrt(d2)
@@ -113,31 +88,31 @@ const GraphCanvas = {
         }
       }
 
-      if (n.x < -20) n.x = this.w + 20
-      if (n.x > this.w + 20) n.x = -20
-      if (n.y < -20) n.y = this.h + 20
-      if (n.y > this.h + 20) n.y = -20
+      if (n.x < -20) n.x = state.w + 20
+      if (n.x > state.w + 20) n.x = -20
+      if (n.y < -20) n.y = state.h + 20
+      if (n.y > state.h + 20) n.y = -20
     }
 
-    if (t - this.lastPulse > PULSE_EVERY_MS && this.nodes.length > 0) {
-      this.lastPulse = t
-      const from = this.nodes[Math.floor(Math.random() * this.nodes.length)]
-      this.pulses.push({from, start: t})
+    if (t - state.lastPulse > PULSE_EVERY_MS && state.nodes.length > 0) {
+      state.lastPulse = t
+      const from = state.nodes[Math.floor(Math.random() * state.nodes.length)]
+      state.pulses.push({from, start: t})
     }
 
-    this.pulses = this.pulses.filter((p) => t - p.start < PULSE_TRAVEL_MS)
-    this.hub.flash = Math.max(0, this.hub.flash - 0.04)
+    state.pulses = state.pulses.filter((p) => t - p.start < PULSE_TRAVEL_MS)
+    state.hub.flash = Math.max(0, state.hub.flash - 0.04)
 
-    for (const p of this.pulses) {
-      if (t - p.start >= PULSE_TRAVEL_MS - 16) this.hub.flash = 1
+    for (const p of state.pulses) {
+      if (t - p.start >= PULSE_TRAVEL_MS - 16) state.hub.flash = 1
     }
-  },
+  }
 
-  draw(t) {
-    const {ctx, colors, nodes, hub} = this
-    ctx.clearRect(0, 0, this.w, this.h)
+  const draw = (t) => {
+    const {colors, nodes, hub} = state
+    ctx.clearRect(0, 0, state.w, state.h)
 
-    const edgeAlpha = this.dark ? 0.32 : 0.22
+    const edgeAlpha = state.dark ? 0.32 : 0.22
     for (let i = 0; i < nodes.length; i++) {
       for (let j = i + 1; j < nodes.length; j++) {
         const dx = nodes[i].x - nodes[j].x
@@ -155,7 +130,7 @@ const GraphCanvas = {
       }
     }
 
-    ctx.globalAlpha = this.dark ? 0.8 : 0.6
+    ctx.globalAlpha = state.dark ? 0.8 : 0.6
     ctx.fillStyle = colors.node
     for (const n of nodes) {
       ctx.beginPath()
@@ -163,8 +138,7 @@ const GraphCanvas = {
       ctx.fill()
     }
 
-    // edges from every node to the hub, fainter — identity fan-in
-    ctx.globalAlpha = this.dark ? 0.1 : 0.07
+    ctx.globalAlpha = state.dark ? 0.1 : 0.07
     ctx.strokeStyle = colors.hub
     for (const n of nodes) {
       ctx.beginPath()
@@ -173,8 +147,7 @@ const GraphCanvas = {
       ctx.stroke()
     }
 
-    // pulses traveling toward the hub
-    for (const p of this.pulses) {
+    for (const p of state.pulses) {
       const k = Math.min(1, (t - p.start) / PULSE_TRAVEL_MS)
       const ease = k * k * (3 - 2 * k)
       const x = p.from.x + (hub.x - p.from.x) * ease
@@ -186,7 +159,6 @@ const GraphCanvas = {
       ctx.fill()
     }
 
-    // the hub itself, with a soft glow and arrival flash
     ctx.globalAlpha = 1
     ctx.save()
     ctx.shadowColor = colors.hub
@@ -199,6 +171,55 @@ const GraphCanvas = {
 
     ctx.globalAlpha = 1
   }
+
+  const tick = (t) => {
+    step(t)
+    draw(t)
+    state.raf = requestAnimationFrame(tick)
+  }
+
+  readColors()
+  resize()
+  seed()
+
+  const resizeObserver = new ResizeObserver(() => {
+    resize()
+    seed()
+    if (reducedMotion.matches) draw(0)
+  })
+  resizeObserver.observe(canvas.parentElement)
+
+  const themeObserver = new MutationObserver(() => {
+    readColors()
+    if (reducedMotion.matches) draw(0)
+  })
+  themeObserver.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ["class"]
+  })
+
+  const onPointerMove = (e) => {
+    const rect = canvas.getBoundingClientRect()
+    state.mouse = {x: e.clientX - rect.left, y: e.clientY - rect.top}
+  }
+  const onPointerLeave = () => (state.mouse = null)
+  canvas.parentElement.addEventListener("pointermove", onPointerMove)
+  canvas.parentElement.addEventListener("pointerleave", onPointerLeave)
+
+  if (reducedMotion.matches) {
+    draw(0)
+  } else {
+    state.raf = requestAnimationFrame(tick)
+  }
+
+  return () => {
+    cancelAnimationFrame(state.raf)
+    resizeObserver.disconnect()
+    themeObserver.disconnect()
+    canvas.parentElement.removeEventListener("pointermove", onPointerMove)
+    canvas.parentElement.removeEventListener("pointerleave", onPointerLeave)
+  }
 }
 
+export {startGraphCanvas}
 export default GraphCanvas
