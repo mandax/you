@@ -67,9 +67,9 @@ setting, decrypts it, and applies it via `Node.set_cookie/1`. When the
 admin changes the cookie in the settings page, it is encrypted, persisted,
 and applied immediately.
 
-The `rel/env.sh.eex` sets a temporary bootstrap value (`bootstrap_temp`)
-so the VM can start with distribution enabled; the DB value (decrypted)
-overrides it moments later.
+The `rel/env.sh.eex` sets a random per-boot bootstrap cookie when
+`RELEASE_COOKIE` is unset (fail closed — no predictable default); the DB
+value (decrypted) overrides it moments later.
 
 **Implications of dynamic application:**
 
@@ -143,6 +143,7 @@ Proposed — supersedes the Erlang distribution configuration gap in ADR 0002.
 - Changing the cookie in settings applies immediately via `Node.set_cookie/1`.
   Existing Erlang distribution connections break and consumer apps must reconnect
   with the new cookie.
-- The `rel/env.sh.eex` bootstrap value `bootstrap_temp` is a fallback — the DB
-  cookie (decrypted) overrides it during application boot.
+- The `rel/env.sh.eex` random per-boot bootstrap value is a fallback — the DB
+  cookie (decrypted) overrides it during application boot. There is no
+  predictable default cookie.
 - Adding automatic discovery (libcluster) is deferred to a future ADR.

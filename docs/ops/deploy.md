@@ -18,7 +18,7 @@ All runtime configuration is read from environment variables in
 | `POOL_SIZE` | No | `10` | Ecto connection pool size |
 | `PHX_SERVER` | No | — | Set to `true` to start the HTTP server (already set in the Docker image) |
 | `RELEASE_NODE` | No | `you@$HOSTNAME` | Erlang node name (Erlang distribution) |
-| `RELEASE_COOKIE` | No | `bootstrap_temp` | Erlang cookie bootstrap value — the `erlang_cookie` setting in the database overrides it at boot (see [erlang-distribution.md](erlang-distribution.md)) |
+| `RELEASE_COOKIE` | No | random per boot | Erlang cookie bootstrap value — a random value when unset (fail closed), overridden at boot by the `erlang_cookie` setting in the database (see [erlang-distribution.md](erlang-distribution.md)) |
 | `DNS_CLUSTER_QUERY` | No | — | DNS cluster query for distributed Erlang |
 
 Set `PHX_HOST` to the hostname users actually reach You on. It is used to build
