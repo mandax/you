@@ -8,7 +8,7 @@ defmodule You.Accounts.UserNotifier do
     email =
       new()
       |> to(recipient)
-      |> from({"You", "contact@example.com"})
+      |> from({"You", Application.get_env(:you, :mail_from, "contact@example.com")})
       |> subject(subject)
       |> text_body(body)
 

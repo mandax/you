@@ -19,6 +19,9 @@ if config_env() != :prod and phx_host do
     ]
 end
 
+# Sender address for transactional emails (magic links, 2FA codes, resets).
+config :you, :mail_from, System.get_env("MAIL_FROM") || "no-reply@#{phx_host || "example.com"}"
+
 if config_env() == :prod do
   database_path =
     System.get_env("DATABASE_PATH") ||
@@ -49,7 +52,30 @@ if config_env() == :prod do
     ],
     secret_key_base: secret_key_base
 
-  config :you, You.Mailer, adapter: Swoosh.Adapters.Local
+  smtp_host =
+    System.get_env("SMTP_HOST") ||
+      raise """
+      environment variable SMTP_HOST is missing.
+      For example: smtp.fastmail.com
+      """
+
+  smtp_auth =
+    case {System.get_env("SMTP_USERNAME"), System.get_env("SMTP_PASSWORD")} do
+      {username, password} when is_binary(username) and is_binary(password) ->
+        [username: username, password: password, auth: :always]
+
+      _ ->
+        []
+    end
+
+  config :you,
+         You.Mailer,
+         [
+           adapter: Swoosh.Adapters.SMTP,
+           relay: smtp_host,
+           port: String.to_integer(System.get_env("SMTP_PORT", "587")),
+           tls: :always
+         ] ++ smtp_auth
 
   config :wax_,
     origin: "https://#{host}",
