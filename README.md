@@ -120,6 +120,8 @@ headlessly at `/api/auth/*` (client_id + client_secret).
 ## Documentation
 
 - [Integrating an app](docs/integration.md) — OIDC and `You.SDK` integration guide
+- [Management REST API](docs/api.md) — `/api/v1` for automating users and apps
+- [Webhooks](docs/webhooks.md) — signed outbound events (Stripe recipe included)
 - [Deployment](docs/ops/deploy.md) — production deployment guide
 
 ## Domain Language
