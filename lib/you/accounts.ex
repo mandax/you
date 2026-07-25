@@ -406,9 +406,12 @@ defmodule You.Accounts do
 
   Pass `code_challenge` (base64url SHA-256 of the client's code_verifier) to
   bind the code to a PKCE verifier that must be presented at exchange time.
+
+  Pass `app_slug` when the code is issued for a known app — it is returned by
+  `consume_auth_code/2` and drives per-app role claims in the issued JWT.
   """
-  def generate_auth_code(%User{} = user, scopes \\ nil, code_challenge \\ nil) do
-    {code, user_token} = UserToken.build_auth_token(user, scopes, code_challenge)
+  def generate_auth_code(%User{} = user, scopes \\ nil, code_challenge \\ nil, app_slug \\ nil) do
+    {code, user_token} = UserToken.build_auth_token(user, scopes, code_challenge, app_slug)
     Repo.insert!(user_token)
     {:ok, code}
   end
@@ -430,12 +433,11 @@ defmodule You.Accounts do
     with {:ok, query} <- UserToken.verify_auth_code_query(code, expiry) do
       case Repo.one(query) do
         {user, token} ->
-          scopes = parse_meta_scopes(token.meta)
-          challenge = parse_meta_challenge(token.meta)
+          meta = parse_meta(token.meta)
           Repo.delete!(token)
 
-          if pkce_ok?(challenge, code_verifier) do
-            {:ok, user, scopes}
+          if pkce_ok?(meta["code_challenge"], code_verifier) do
+            {:ok, user, meta["scopes"] || ["email"], meta["app"]}
           else
             {:error, :invalid_grant}
           end
@@ -448,6 +450,15 @@ defmodule You.Accounts do
     end
   end
 
+  defp parse_meta(nil), do: %{}
+
+  defp parse_meta(meta) when is_binary(meta) do
+    case Jason.decode(meta) do
+      {:ok, decoded} when is_map(decoded) -> decoded
+      _ -> %{}
+    end
+  end
+
   # No challenge was bound → PKCE not required (backward compatible).
   defp pkce_ok?(nil, _verifier), do: true
   defp pkce_ok?(_challenge, verifier) when not is_binary(verifier), do: false
@@ -457,9 +468,9 @@ defmodule You.Accounts do
     Plug.Crypto.secure_compare(computed, challenge)
   end
 
-  @doc "Issues a refresh token for the user carrying the granted scopes."
-  def create_refresh_token(%User{} = user, scopes) do
-    {token, user_token} = UserToken.build_refresh_token(user, scopes)
+  @doc "Issues a refresh token for the user carrying the granted scopes and app."
+  def create_refresh_token(%User{} = user, scopes, app_slug \\ nil) do
+    {token, user_token} = UserToken.build_refresh_token(user, scopes, app_slug)
     Repo.insert!(user_token)
     token
   end
@@ -467,34 +478,18 @@ defmodule You.Accounts do
   @doc """
   Rotates a refresh token: validates it, deletes it (single-use), and issues a
   fresh one for the same user and scopes. Returns
-  `{:ok, user, scopes, new_token}` or `{:error, :invalid}`.
+  `{:ok, user, scopes, new_token, app_slug}` or `{:error, :invalid}`.
   """
   def rotate_refresh_token(token) when is_binary(token) do
     with {:ok, query} <- UserToken.verify_refresh_token_query(token),
          {user, old_token} <- Repo.one(query) do
-      scopes = parse_meta_scopes(old_token.meta)
+      meta = parse_meta(old_token.meta)
+      scopes = meta["scopes"] || ["email"]
+      app_slug = meta["app"]
       Repo.delete!(old_token)
-      {:ok, user, scopes, create_refresh_token(user, scopes)}
+      {:ok, user, scopes, create_refresh_token(user, scopes, app_slug), app_slug}
     else
       _ -> {:error, :invalid}
-    end
-  end
-
-  defp parse_meta_scopes(nil), do: ["email"]
-
-  defp parse_meta_scopes(meta) when is_binary(meta) do
-    case Jason.decode(meta) do
-      {:ok, %{"scopes" => scopes}} when is_list(scopes) -> scopes
-      _ -> ["email"]
-    end
-  end
-
-  defp parse_meta_challenge(nil), do: nil
-
-  defp parse_meta_challenge(meta) when is_binary(meta) do
-    case Jason.decode(meta) do
-      {:ok, %{"code_challenge" => challenge}} when is_binary(challenge) -> challenge
-      _ -> nil
     end
   end
 

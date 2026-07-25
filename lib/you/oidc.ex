@@ -22,12 +22,20 @@ defmodule You.OIDC do
   `client_id` becomes the id_token audience; pass `nil` when the client did
   not identify itself and the id_token is issued without `aud`. Pass
   `refresh_token` to reuse one just issued by refresh-token rotation instead
-  of creating another.
+  of creating another. `app_slug` binds per-app role claims to the app the
+  auth code was issued for, falling back to `client_id`.
   """
-  def issue_token_response(%User{} = user, scopes, client_id \\ nil, refresh_token \\ nil) do
+  def issue_token_response(
+        %User{} = user,
+        scopes,
+        client_id \\ nil,
+        refresh_token \\ nil,
+        app_slug \\ nil
+      ) do
+    app_slug = app_slug || client_id
     jwt_expiry = You.Settings.get(:jwt_expiry_hours) * 3600
-    {:ok, access_token} = JWT.sign(Claims.build_scoped_claims(user, scopes), jwt_expiry)
-    {:ok, id_token} = id_token(user, scopes, client_id)
+    {:ok, access_token} = JWT.sign(Claims.build_scoped_claims(user, scopes, app_slug), jwt_expiry)
+    {:ok, id_token} = id_token(user, scopes, app_slug)
     refresh_token = refresh_token || Accounts.create_refresh_token(user, scopes)
 
     %{

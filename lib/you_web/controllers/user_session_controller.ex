@@ -110,7 +110,12 @@ defmodule YouWeb.UserSessionController do
           state = get_session(conn, :state)
 
           {:ok, code} =
-            Accounts.generate_auth_code(user, scopes, get_session(conn, :code_challenge))
+            Accounts.generate_auth_code(
+              user,
+              scopes,
+              get_session(conn, :code_challenge),
+              YouWeb.OAuthFlow.app_slug_for_callback(conn)
+            )
 
           conn
           |> put_flash(:info, info)
@@ -267,7 +272,12 @@ defmodule YouWeb.UserSessionController do
           state = get_session(conn, :state)
 
           {:ok, auth_code} =
-            Accounts.generate_auth_code(user, scopes, get_session(conn, :code_challenge))
+            Accounts.generate_auth_code(
+              user,
+              scopes,
+              get_session(conn, :code_challenge),
+              YouWeb.OAuthFlow.app_slug_for_callback(conn)
+            )
 
           conn
           |> UserAuth.create_user_session(user, %{})
@@ -299,7 +309,14 @@ defmodule YouWeb.UserSessionController do
       record_consent_for_app(conn, user)
       scopes = get_session(conn, :scopes) || ["email"]
       state = get_session(conn, :state)
-      {:ok, code} = Accounts.generate_auth_code(user, scopes, get_session(conn, :code_challenge))
+
+      {:ok, code} =
+        Accounts.generate_auth_code(
+          user,
+          scopes,
+          get_session(conn, :code_challenge),
+          YouWeb.OAuthFlow.app_slug_for_callback(conn)
+        )
 
       redirect_with_code(conn, callback_url, code, state)
     else

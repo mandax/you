@@ -78,8 +78,8 @@ defmodule YouWeb.OIDCController do
 
   def create_token(conn, %{"code" => code} = params) do
     case Accounts.consume_auth_code(code, params["code_verifier"]) do
-      {:ok, user, scopes} ->
-        response = OIDC.issue_token_response(user, scopes, params["client_id"])
+      {:ok, user, scopes, app_slug} ->
+        response = OIDC.issue_token_response(user, scopes, params["client_id"], nil, app_slug)
 
         :telemetry.execute([:you, :audit, :token, :exchange], %{}, %{
           user_id: user.id,
@@ -173,8 +173,8 @@ defmodule YouWeb.OIDCController do
 
   defp exchange_refresh_token(conn, refresh_token, client_id) do
     case Accounts.rotate_refresh_token(refresh_token) do
-      {:ok, user, scopes, new_refresh_token} ->
-        response = OIDC.issue_token_response(user, scopes, client_id, new_refresh_token)
+      {:ok, user, scopes, new_refresh_token, app_slug} ->
+        response = OIDC.issue_token_response(user, scopes, client_id, new_refresh_token, app_slug)
 
         :telemetry.execute([:you, :audit, :token, :refresh], %{}, %{
           user_id: user.id,

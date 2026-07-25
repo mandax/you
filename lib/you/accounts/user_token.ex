@@ -177,24 +177,26 @@ defmodule You.Accounts.UserToken do
   end
 
   @doc false
-  def build_auth_token(user, scopes \\ nil, code_challenge \\ nil) do
+  def build_auth_token(user, scopes \\ nil, code_challenge \\ nil, app_slug \\ nil) do
     case build_hashed_token(user, "oauth_code", user.email) do
       {token, user_token} ->
-        {token, %{user_token | meta: encode_meta(scopes, code_challenge)}}
+        {token, %{user_token | meta: encode_meta(scopes, code_challenge, app_slug)}}
 
       other ->
         other
     end
   end
 
-  # Auth-code metadata is a JSON blob carrying the granted scopes and, for
-  # PKCE, the code_challenge to verify against at exchange time.
-  defp encode_meta(nil, nil), do: nil
+  # Auth-code metadata is a JSON blob carrying the granted scopes, the app the
+  # code was issued for (when known), and, for PKCE, the code_challenge to
+  # verify against at exchange time.
+  defp encode_meta(nil, nil, nil), do: nil
 
-  defp encode_meta(scopes, code_challenge) do
+  defp encode_meta(scopes, code_challenge, app_slug) do
     %{}
     |> maybe_put("scopes", scopes)
     |> maybe_put("code_challenge", code_challenge)
+    |> maybe_put("app", app_slug)
     |> Jason.encode!()
   end
 
@@ -207,9 +209,19 @@ defmodule You.Accounts.UserToken do
   Builds a refresh token (hashed at rest) carrying the granted scopes, so a new
   JWT can be minted for the same scopes without re-running the login flow.
   """
-  def build_refresh_token(user, scopes) do
+  def build_refresh_token(user, scopes, app_slug \\ nil) do
     {token, user_token} = build_hashed_token(user, "refresh", user.email)
-    {token, %{user_token | meta: scopes && Jason.encode!(%{"scopes" => scopes})}}
+
+    meta =
+      %{}
+      |> maybe_put("scopes", scopes)
+      |> maybe_put("app", app_slug)
+      |> case do
+        empty when empty == %{} -> nil
+        map -> Jason.encode!(map)
+      end
+
+    {token, %{user_token | meta: meta}}
   end
 
   @doc "Lookup query for a valid (non-expired) refresh token. `{:ok, query}` or `:error`."

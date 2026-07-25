@@ -193,7 +193,7 @@ defmodule You.IAM.Server do
   def handle_call({:exchange_code, code, code_verifier}, _from, state) do
     result =
       case Accounts.consume_auth_code(code, code_verifier) do
-        {:ok, user, scopes} ->
+        {:ok, user, scopes, app_slug} ->
           scopes = scopes || ["email"]
 
           :telemetry.execute(
@@ -202,7 +202,13 @@ defmodule You.IAM.Server do
             %{user_id: user.id, scopes: scopes}
           )
 
-          {:ok, token_bundle(user, scopes, Accounts.create_refresh_token(user, scopes))}
+          {:ok,
+           token_bundle(
+             user,
+             scopes,
+             Accounts.create_refresh_token(user, scopes, app_slug),
+             app_slug
+           )}
 
         {:error, reason} ->
           :telemetry.execute(
@@ -220,12 +226,12 @@ defmodule You.IAM.Server do
   def handle_call({:refresh, refresh_token}, _from, state) do
     result =
       case Accounts.rotate_refresh_token(refresh_token) do
-        {:ok, user, scopes, new_refresh} ->
+        {:ok, user, scopes, new_refresh, app_slug} ->
           scopes = scopes || ["email"]
 
           :telemetry.execute([:you, :audit, :token, :refresh], %{}, %{user_id: user.id})
 
-          {:ok, token_bundle(user, scopes, new_refresh)}
+          {:ok, token_bundle(user, scopes, new_refresh, app_slug)}
 
         {:error, _reason} ->
           :telemetry.execute([:you, :audit, :token, :refresh], %{}, %{result: :failure})
@@ -292,7 +298,7 @@ defmodule You.IAM.Server do
       with {:ok, _app} <- verify_first_party_client(client_id, client_secret),
            {:ok, user} <- authenticate_credentials(params),
            :ok <- verify_login_mfa(user, params) do
-        refresh = Accounts.create_refresh_token(user, scopes)
+        refresh = Accounts.create_refresh_token(user, scopes, client_id)
 
         :telemetry.execute([:you, :audit, :login, :attempt], %{}, %{
           user_id: user.id,
@@ -301,7 +307,7 @@ defmodule You.IAM.Server do
           result: :success
         })
 
-        {:ok, token_bundle(user, scopes, refresh)}
+        {:ok, token_bundle(user, scopes, refresh, client_id)}
       end
 
     with {:error, reason} <- result do
@@ -324,7 +330,7 @@ defmodule You.IAM.Server do
     result =
       with {:ok, _app} <- verify_first_party_client(client_id, client_secret),
            {:ok, user} <- create_user(email, password) do
-        refresh = Accounts.create_refresh_token(user, scopes)
+        refresh = Accounts.create_refresh_token(user, scopes, client_id)
 
         :telemetry.execute([:you, :audit, :login, :attempt], %{}, %{
           user_id: user.id,
@@ -333,7 +339,7 @@ defmodule You.IAM.Server do
           result: :success
         })
 
-        {:ok, token_bundle(user, scopes, refresh)}
+        {:ok, token_bundle(user, scopes, refresh, client_id)}
       end
 
     with {:error, reason} <- result do
@@ -424,9 +430,9 @@ defmodule You.IAM.Server do
   end
 
   # Signs a scoped JWT and returns the token bundle handed back to consumers.
-  defp token_bundle(user, scopes, refresh_token) do
+  defp token_bundle(user, scopes, refresh_token, app_slug) do
     jwt_expiry = You.Settings.get(:jwt_expiry_hours) * 3600
-    {:ok, jwt} = JWT.sign(Claims.build_scoped_claims(user, scopes), jwt_expiry)
+    {:ok, jwt} = JWT.sign(Claims.build_scoped_claims(user, scopes, app_slug), jwt_expiry)
     %{user_id: user.id, email: user.email, jwt: jwt, refresh_token: refresh_token}
   end
 end

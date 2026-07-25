@@ -37,7 +37,14 @@ defmodule YouWeb.OAuthFlow do
         scopes = get_session(conn, :scopes) || ["email"]
         state = get_session(conn, :state)
         code_challenge = get_session(conn, :code_challenge)
-        {:ok, code} = Accounts.generate_auth_code(user, scopes, code_challenge)
+
+        {:ok, code} =
+          Accounts.generate_auth_code(
+            user,
+            scopes,
+            code_challenge,
+            app_slug_for_callback(conn)
+          )
 
         conn
         |> UserAuth.create_user_session(user, params)
@@ -53,6 +60,20 @@ defmodule YouWeb.OAuthFlow do
     with url when is_binary(url) <- get_session(conn, :callback_url),
          {:ok, _app} <- You.Admin.lookup_app_by_callback(url) do
       url
+    else
+      _ -> nil
+    end
+  end
+
+  @doc """
+  The slug of the registered app the session `callback_url` belongs to, or
+  nil for first-party logins. Bound into auth codes so issued JWTs can carry
+  per-app roles.
+  """
+  def app_slug_for_callback(conn) do
+    with url when is_binary(url) <- get_session(conn, :callback_url),
+         {:ok, app} <- You.Admin.lookup_app_by_callback(url) do
+      app.slug
     else
       _ -> nil
     end

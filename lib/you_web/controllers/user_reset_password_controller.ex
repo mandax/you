@@ -99,7 +99,12 @@ defmodule YouWeb.UserResetPasswordController do
 
           if callback_url do
             {:ok, code} =
-              Accounts.generate_auth_code(user, scopes, get_session(conn, :code_challenge))
+              Accounts.generate_auth_code(
+                user,
+                scopes,
+                get_session(conn, :code_challenge),
+                YouWeb.OAuthFlow.app_slug_for_callback(conn)
+              )
 
             conn
             |> put_flash(:info, "Password reset successfully.")

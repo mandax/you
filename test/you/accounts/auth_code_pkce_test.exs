@@ -13,7 +13,7 @@ defmodule You.Accounts.AuthCodePKCETest do
 
   test "without a challenge, no verifier is required", %{user: user} do
     {:ok, code} = Accounts.generate_auth_code(user, ["email"])
-    assert {:ok, got, ["email"]} = Accounts.consume_auth_code(code)
+    assert {:ok, got, ["email"], _app} = Accounts.consume_auth_code(code)
     assert got.id == user.id
   end
 
@@ -21,7 +21,7 @@ defmodule You.Accounts.AuthCodePKCETest do
     verifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
     {:ok, code} = Accounts.generate_auth_code(user, ["email"], challenge_for(verifier))
 
-    assert {:ok, got, ["email"]} = Accounts.consume_auth_code(code, verifier)
+    assert {:ok, got, ["email"], _app} = Accounts.consume_auth_code(code, verifier)
     assert got.id == user.id
   end
 
