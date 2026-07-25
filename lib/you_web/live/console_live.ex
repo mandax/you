@@ -17,7 +17,6 @@ defmodule YouWeb.ConsoleLive do
     %{id: "overview", label: "Overview", icon: "lucide-layout-dashboard"},
     %{id: "users", label: "Users", icon: "lucide-users"},
     %{id: "apps", label: "Apps", icon: "lucide-boxes"},
-    %{id: "orgs", label: "Organizations", icon: "lucide-building-2"},
     %{id: "audit", label: "Audit Log", icon: "lucide-scroll-text"},
     %{id: "webhooks", label: "Webhooks", icon: "lucide-webhook"},
     %{id: "settings", label: "Settings", icon: "lucide-settings"}
