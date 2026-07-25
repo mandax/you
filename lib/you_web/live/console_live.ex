@@ -579,9 +579,9 @@ defmodule YouWeb.ConsoleLive do
               class="h-8 w-44 rounded-md border border-input bg-background px-3 font-mono text-xs placeholder:text-muted-foreground/60"
             />
           </form>
-          <.filter_dropdown id="filter-status" label={filter_label(@filters["status"], "any status")}>
+          <.filter_dropdown id="filter-status" label={filter_label(@filters["status"], "all status")}>
             <.menu_item phx-click="filter_users" phx-value-filter_key="status" phx-value-value="">
-              any status
+              all status
             </.menu_item>
             <.menu_item
               phx-click="filter_users"
@@ -598,31 +598,9 @@ defmodule YouWeb.ConsoleLive do
               unconfirmed
             </.menu_item>
           </.filter_dropdown>
-          <.filter_dropdown
-            id="filter-you-role"
-            label={filter_label(@filters["you_role"], "You: any")}
-          >
-            <.menu_item phx-click="filter_users" phx-value-filter_key="you_role" phx-value-value="">
-              You: any
-            </.menu_item>
-            <.menu_item
-              phx-click="filter_users"
-              phx-value-filter_key="you_role"
-              phx-value-value="admin"
-            >
-              You: admin
-            </.menu_item>
-            <.menu_item
-              phx-click="filter_users"
-              phx-value-filter_key="you_role"
-              phx-value-value="user"
-            >
-              You: user
-            </.menu_item>
-          </.filter_dropdown>
           <.filter_dropdown id="filter-app" label={app_label(@filters["app"], @apps)}>
             <.menu_item phx-click="filter_users" phx-value-filter_key="app" phx-value-value="">
-              any app
+              all apps
             </.menu_item>
             <.menu_item
               :for={app <- @apps}
@@ -633,9 +611,9 @@ defmodule YouWeb.ConsoleLive do
               {app.name}
             </.menu_item>
           </.filter_dropdown>
-          <.filter_dropdown id="filter-role" label={filter_label(@filters["role"], "any role")}>
+          <.filter_dropdown id="filter-role" label={filter_label(@filters["role"], "all roles")}>
             <.menu_item phx-click="filter_users" phx-value-filter_key="role" phx-value-value="">
-              any role
+              all roles
             </.menu_item>
             <.menu_item
               :for={role <- all_roles(@apps)}
@@ -794,12 +772,12 @@ defmodule YouWeb.ConsoleLive do
   defp filter_label("", default), do: default
   defp filter_label(value, _default), do: value
 
-  defp app_label(nil, _apps), do: "any app"
-  defp app_label("", _apps), do: "any app"
+  defp app_label(nil, _apps), do: "all apps"
+  defp app_label("", _apps), do: "all apps"
 
   defp app_label(id, apps) do
     case Enum.find(apps, &(to_string(&1.id) == id)) do
-      nil -> "any app"
+      nil -> "all apps"
       app -> app.name
     end
   end
@@ -818,7 +796,6 @@ defmodule YouWeb.ConsoleLive do
     Enum.filter(users, fn row ->
       email_match?(row.user, filters["email"]) and
         status_match?(row.user, filters["status"]) and
-        you_role_match?(row.user, filters["you_role"]) and
         app_roles_match?(row.user, filters, assignments)
     end)
   end
@@ -833,11 +810,6 @@ defmodule YouWeb.ConsoleLive do
   defp status_match?(_user, ""), do: true
   defp status_match?(user, "confirmed"), do: not is_nil(user.confirmed_at)
   defp status_match?(user, "unconfirmed"), do: is_nil(user.confirmed_at)
-
-  defp you_role_match?(_user, nil), do: true
-  defp you_role_match?(_user, ""), do: true
-  defp you_role_match?(user, "admin"), do: user.is_admin
-  defp you_role_match?(user, "user"), do: not user.is_admin
 
   defp app_roles_match?(user, filters, assignments) do
     app_id = present(filters["app"])
