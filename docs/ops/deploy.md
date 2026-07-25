@@ -1,4 +1,4 @@
-# Deploy — Production Deployment Guide
+# Deploy: Production Deployment Guide
 
 How to run You IAM in production: required configuration, mail setup, HTTPS,
 database, first admin, and a minimal runbook. For Docker specifics see
@@ -11,15 +11,15 @@ All runtime configuration is read from environment variables in
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `DATABASE_PATH` | Yes | — | Path to the SQLite database file (e.g. `/data/you/prod.db`) |
-| `SECRET_KEY_BASE` | Yes | — | Phoenix secret key. Generate with `mix phx.gen.secret` or `openssl rand -base64 48` |
+| `DATABASE_PATH` | Yes | (none) | Path to the SQLite database file (e.g. `/data/you/prod.db`) |
+| `SECRET_KEY_BASE` | Yes | (none) | Phoenix secret key. Generate with `mix phx.gen.secret` or `openssl rand -base64 48` |
 | `PHX_HOST` | Yes | `example.com` | Public hostname. Drives generated URLs (magic links, OIDC discovery, WebAuthn origin) |
 | `PORT` | No | `4000` | HTTP port the app listens on |
 | `POOL_SIZE` | No | `10` | Ecto connection pool size |
-| `PHX_SERVER` | No | — | Set to `true` to start the HTTP server (already set in the Docker image) |
+| `PHX_SERVER` | No | (none) | Set to `true` to start the HTTP server (already set in the Docker image) |
 | `RELEASE_NODE` | No | `you@$HOSTNAME` | Erlang node name (Erlang distribution) |
-| `RELEASE_COOKIE` | No | random per boot | Erlang cookie bootstrap value — a random value when unset (fail closed), overridden at boot by the `erlang_cookie` setting in the database (see [erlang-distribution.md](erlang-distribution.md)) |
-| `DNS_CLUSTER_QUERY` | No | — | DNS cluster query for distributed Erlang |
+| `RELEASE_COOKIE` | No | random per boot | Erlang cookie bootstrap value: a random value when unset (fail closed), overridden at boot by the `erlang_cookie` setting in the database (see [erlang-distribution.md](erlang-distribution.md)) |
+| `DNS_CLUSTER_QUERY` | No | (none) | DNS cluster query for distributed Erlang |
 
 Set `PHX_HOST` to the hostname users actually reach You on. It is used to build
 the OIDC issuer URL and the WebAuthn origin (`https://<PHX_HOST>`), so a wrong
@@ -36,10 +36,10 @@ production, point it at your SMTP relay:
 | `SMTP_PORT` | SMTP port (typically `587` for STARTTLS, `465` for TLS) |
 | `SMTP_USERNAME` | SMTP auth username |
 | `SMTP_PASSWORD` | SMTP auth password |
-| `MAIL_FROM` | Sender address — default `no-reply@<PHX_HOST>` |
+| `MAIL_FROM` | Sender address, default `no-reply@<PHX_HOST>` |
 
 `SMTP_HOST` is required in production (boot aborts without it). `SMTP_USERNAME`
-and `SMTP_PASSWORD` are optional as a pair — omit both for an unauthenticated
+and `SMTP_PASSWORD` are optional as a pair: omit both for an unauthenticated
 relay. TLS (STARTTLS) is always enforced. Without a working SMTP relay,
 magic-link and confirmation emails are not delivered. Password and passkey
 logins still work.
@@ -47,7 +47,7 @@ logins still work.
 ## JWT signing keys
 
 Access tokens and id_tokens are Ed25519-signed JWTs. Without configuration You
-generates an **ephemeral key per boot** — every token dies on restart, and
+generates an **ephemeral key per boot**, so every token dies on restart, and
 multiple replicas would each sign with a different key. Set a persistent key:
 
 | Variable | Required | Description |
@@ -69,7 +69,7 @@ that terminates TLS. The app itself listens on plain HTTP (`PORT`, default
 `4000`) and binds to all interfaces in production.
 
 The endpoint is compiled with `force_ssl` using
-`rewrite_on: [:x_forwarded_proto]` — so:
+`rewrite_on: [:x_forwarded_proto]`, so:
 
 - The proxy **must** set `X-Forwarded-Proto: https` on forwarded requests.
 - HTTP requests are redirected to HTTPS and HSTS is set automatically.
@@ -146,7 +146,7 @@ version. `bootstrap_admin/2` also runs migrations.
 
 ### Logs
 
-The release logs to stdout — collect it with your container runtime or process
+The release logs to stdout; collect it with your container runtime or process
 manager. Audit events are additionally written as JSONL under `/var/log/you`;
 mount that directory to persist them, and include it in backups (see
 [backup.md](backup.md)).

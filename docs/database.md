@@ -5,9 +5,9 @@ erDiagram
     users {
         int id PK
         string email "unique, not null, case-insensitive"
-        string hashed_password "nullable — nil for magic-link-only"
+        string hashed_password "nullable: nil for magic-link-only"
         utc_datetime confirmed_at "nullable"
-        string totp_secret "nullable — TOTP setup secret"
+        string totp_secret "nullable: TOTP setup secret"
         boolean totp_enabled "default false"
         utc_datetime inserted_at
         utc_datetime updated_at
@@ -17,8 +17,8 @@ erDiagram
         int id PK
         int user_id FK "not null, on_delete: delete_all"
         binary token "not null, 32 bytes"
-        string context "not null — session|login|change:*|jti_revoked"
-        string sent_to "nullable — email for email-context tokens"
+        string context "not null: session|login|change:*|jti_revoked"
+        string sent_to "nullable: email for email-context tokens"
         utc_datetime authenticated_at "nullable"
         utc_datetime inserted_at
     }
@@ -26,7 +26,7 @@ erDiagram
     recovery_codes {
         int id PK
         int user_id FK "not null, on_delete: delete_all"
-        string code_hash "not null — bcrypt hash"
+        string code_hash "not null: bcrypt hash"
         boolean used "default false"
         utc_datetime inserted_at
     }

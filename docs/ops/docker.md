@@ -1,4 +1,4 @@
-# Docker — Production Deployment
+# Docker: Production Deployment
 
 Build and run You IAM as a Docker container using the multi-stage `Dockerfile`.
 
@@ -9,10 +9,10 @@ docker build -t you:latest .
 ```
 
 The build is **multi-stage**:
-1. **Builder** — compiles the app and creates an Elixir release (includes ERTS)
-2. **Runtime** — minimal Alpine image with only the release + SQLite
+1. **Builder**: compiles the app and creates an Elixir release (includes ERTS)
+2. **Runtime**: minimal Alpine image with only the release + SQLite
 
-Source code is **not present** in the final image — only the compiled release.
+Source code is **not present** in the final image; only the compiled release is.
 
 ## Run
 
@@ -32,15 +32,15 @@ docker run -d \
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `DATABASE_PATH` | Yes | — | Path to the SQLite database file |
-| `SECRET_KEY_BASE` | Yes | — | Phoenix secret key (`openssl rand -base64 48`) |
-| `PHX_HOST` | Yes | — | Public hostname (e.g., `you.example.com`) |
+| `DATABASE_PATH` | Yes | (none) | Path to the SQLite database file |
+| `SECRET_KEY_BASE` | Yes | (none) | Phoenix secret key (`openssl rand -base64 48`) |
+| `PHX_HOST` | Yes | (none) | Public hostname (e.g., `you.example.com`) |
 | `PORT` | No | `4000` | HTTP port |
 | `POOL_SIZE` | No | `10` | Ecto connection pool size |
 | `PHX_SERVER` | No | `true` | Set to start the HTTP server |
 | `RELEASE_NODE` | No | `you@you.example.com` | Erlang node name (for Erlang distribution) |
-| `RELEASE_COOKIE` | No | — | Erlang cookie (required for Erlang distribution) |
-| `DNS_CLUSTER_QUERY` | No | — | DNS cluster query for distributed Erlang |
+| `RELEASE_COOKIE` | No | (none) | Erlang cookie (required for Erlang distribution) |
+| `DNS_CLUSTER_QUERY` | No | (none) | DNS cluster query for distributed Erlang |
 
 ### Volumes
 
@@ -75,9 +75,9 @@ All nodes must share the same cookie and distribution must be enabled.
 
 | Variable | Default | Required | Description |
 |----------|---------|----------|-------------|
-| `RELEASE_DISTRIBUTION` | `name` (via env.sh.eex) | Yes | Must be `name` or `sname` — Erlang distribution is disabled by default |
-| `RELEASE_NODE` | `you@HOSTNAME` (via env.sh.eex) | Yes | Node identifier — consumer apps address You by this name |
-| `RELEASE_COOKIE` | (none) | **Yes** | Shared secret — **must be identical** on You AND all consumer app nodes |
+| `RELEASE_DISTRIBUTION` | `name` (via env.sh.eex) | Yes | Must be `name` or `sname`; Erlang distribution is disabled by default |
+| `RELEASE_NODE` | `you@HOSTNAME` (via env.sh.eex) | Yes | Node identifier; consumer apps address You by this name |
+| `RELEASE_COOKIE` | (none) | **Yes** | Shared secret that **must be identical** on You AND all consumer app nodes |
 
 ### How the cookie works
 
@@ -93,12 +93,12 @@ You manages the cookie through the **admin settings page** (`/admin/settings`):
    fallback (the DB value overrides it)
 
 **Consumer apps** must have the same cookie configured on their
-side — they don't read You's database. You must share the cookie value
+side, since they don't read You's database. You must share the cookie value
 out-of-band (same env var, same Kubernetes Secret, etc.).
 
 ```yaml
-# Docker Compose — You's cookie comes from settings (admin panel)
-# The consumer app's cookie must match — configured via env var
+# Docker Compose: You's cookie comes from settings (admin panel)
+# The consumer app's cookie must match, configured via env var
 services:
   you:
     environment:
@@ -125,7 +125,7 @@ config :you_sdk, node: String.to_atom(System.get_env("YOU_NODE", "you@you"))
 
 | Port | Protocol | Purpose |
 |------|----------|---------|
-| `4369` | TCP | EPMD (Erlang Port Mapper Daemon) — node discovery |
+| `4369` | TCP | EPMD (Erlang Port Mapper Daemon) for node discovery |
 | `4000` | TCP | HTTP (Phoenix web server) |
 
 Erlang distribution also uses **dynamic high ports** (typically 4370+).
@@ -137,7 +137,7 @@ EPMD can negotiate directly.
 
 You's settings table stores `erlang_node_name` and `epmd_port` as a
 **reference copy** only. Changing them in the admin panel does NOT
-reconfigure the running Erlang VM — you must restart the container with
+reconfigure the running Erlang VM; you must restart the container with
 the matching `RELEASE_NODE` env var.
 
 ## Commands
@@ -181,7 +181,7 @@ docker build --platform linux/arm64 -t you:latest .
 
 ## Security Notes
 
-- The final image contains **no source code** — only the compiled BEAM release
-- The release is **self-contained** — includes ERTS, no Erlang/Elixir runtime needed
-- SQLite database is stored on a **persistent volume** — data survives container restarts
+- The final image contains **no source code**, only the compiled BEAM release
+- The release is **self-contained**: it includes ERTS, so no Erlang/Elixir runtime is needed
+- SQLite database is stored on a **persistent volume**, so data survives container restarts
 - Audit logs should be written to a **volume mount** for persistence

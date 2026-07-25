@@ -1,7 +1,7 @@
-# Backup — Configuration Guide
+# Backup: Configuration Guide
 
 You IAM uses a standalone shell script (`bin/backup.sh`) to create consistent
-backups with zero downtime. No Elixir dependencies — runs from cron or manually.
+backups with zero downtime. No Elixir dependencies. It runs from cron or manually.
 
 ## Architecture
 
@@ -24,11 +24,11 @@ backups with zero downtime. No Elixir dependencies — runs from cron or manuall
                                             └─────────────────┘
 ```
 
-The remote is any rclone remote (`RCLONE_REMOTE`) — S3, SFTP, Proton Drive, etc.
+The remote is any rclone remote (`RCLONE_REMOTE`): S3, SFTP, Proton Drive, etc.
 
 ## Configuration
 
-All settings are **environment variables** — no config file needed.
+All settings are **environment variables**. No config file needed.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -36,7 +36,7 @@ All settings are **environment variables** — no config file needed.
 | `AUDIT_LOG_DIR` | `/var/log/you` | Directory containing audit log files |
 | `BACKUP_DIR` | `$HOME/backups/you` | Where local backup archives are stored |
 | `RETENTION_DAYS` | `7` | How many days of backups to keep locally |
-| `RCLONE_REMOTE` | — | rclone remote name (any rclone remote works; must be configured) |
+| `RCLONE_REMOTE` | (none) | rclone remote name (any rclone remote works; must be configured) |
 | `RCLONE_PATH` | `backups/you` | Path on the remote for uploads |
 
 ## Setup
@@ -50,7 +50,7 @@ brew install rclone
 # Install rclone (Linux)
 sudo apt install rclone
 
-# Configure a remote (any rclone remote works — S3, SFTP, Proton Drive, etc.)
+# Configure a remote (any rclone remote works: S3, SFTP, Proton Drive, etc.)
 rclone config
 # Follow the prompts for your storage provider
 # See: https://rclone.org/docs/
@@ -115,7 +115,7 @@ DATABASE_PATH=/custom/path/db.sqlite \
 ## Retention
 
 - Local: 7 daily backups by default (configurable via `RETENTION_DAYS`)
-- Remote: no automatic pruning — relies on rclone's retention config or manual cleanup
+- Remote: no automatic pruning. It relies on rclone's retention config or manual cleanup
 - To prune remote: `rclone delete <remote>:backups/you/you-OLD.tar.gz`
 
 ## Restore

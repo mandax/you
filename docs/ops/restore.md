@@ -1,12 +1,12 @@
-# Restore — You IAM
+# Restore: You IAM
 
-How to restore You from a backup archive. These steps are **manual** — there is no automated restore script.
+How to restore You from a backup archive. These steps are **manual**; there is no automated restore script.
 
 ## Prerequisites
 
 - A backup archive (`you-YYYY-MM-DD.tar.gz`) from:
   - Local backup directory (`~/backups/you/` by default), or
-  - Your rclone remote (`rclone ls <remote>:backups/you/`) — any rclone remote works
+  - Your rclone remote (`rclone ls <remote>:backups/you/`); any rclone remote works
 - `sqlite3` command-line tool
 - `tar` for extracting the archive
 
