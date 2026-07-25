@@ -173,6 +173,35 @@ defmodule YouWeb.ConsoleLiveTest do
     end
   end
 
+  describe "app roles" do
+    test "assign and reset a user's role in an app", %{conn: conn} do
+      {:ok, app, _secret} =
+        Admin.create_app(%{
+          "name" => "Role App",
+          "slug" => "role-app",
+          "callback_url" => "https://role-app.example.com/cb"
+        })
+
+      other = You.AccountsFixtures.user_fixture()
+      {:ok, lv, _} = live(conn, "/console?view=apps")
+
+      render_click(lv, "edit_app_roles", %{"id" => app.id})
+
+      lv
+      |> form("form:has(input[value='#{other.id}'])", %{
+        "app_id" => app.id,
+        "user_id" => other.id,
+        "role" => "admin"
+      })
+      |> render_change()
+
+      assert You.Roles.role_for(app.slug, other.id) == "admin"
+
+      render_click(lv, "remove_app_role", %{"app_id" => app.id, "user_id" => other.id})
+      assert You.Roles.role_for(app.slug, other.id) == "user"
+    end
+  end
+
   describe "audit" do
     test "filter narrows events by name and details", %{conn: conn} do
       :telemetry.execute([:you, :audit, :admin, :action], %{}, %{

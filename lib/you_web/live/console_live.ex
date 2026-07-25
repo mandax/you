@@ -10,7 +10,7 @@ defmodule YouWeb.ConsoleLive do
   """
   use YouWeb, :live_view
 
-  alias You.{Admin, Organizations, Accounts, Settings, Webhooks}
+  alias You.{Admin, Organizations, Accounts, Settings, Webhooks, Roles}
   alias You.Audit.Streamer
 
   @nav [
@@ -61,6 +61,8 @@ defmodule YouWeb.ConsoleLive do
        audit_filter: "",
        webhook_secret: nil,
        webhook_endpoint: nil,
+       roles_app: nil,
+       roles_members: [],
        base_url: YouWeb.Endpoint.url(),
        oidc_providers:
          Application.get_env(:you, :oidc_providers, %{}) |> Map.keys() |> Enum.sort(),
@@ -177,6 +179,37 @@ defmodule YouWeb.ConsoleLive do
 
   def handle_event("cancel_edit_app", _params, socket) do
     {:noreply, assign(socket, editing_app: nil)}
+  end
+
+  def handle_event("edit_app_roles", %{"id" => id}, socket) do
+    app = Admin.get_app!(id)
+
+    {:noreply, assign(socket, roles_app: app, roles_members: Roles.list_for_app(app))}
+  end
+
+  def handle_event("cancel_edit_roles", _params, socket) do
+    {:noreply, assign(socket, roles_app: nil, roles_members: [])}
+  end
+
+  def handle_event("save_app_role", params, socket) do
+    app = Admin.get_app!(params["app_id"])
+    user = Admin.get_user!(params["user_id"])
+
+    case Roles.set_role(app, user, params["role"]) do
+      {:ok, _} ->
+        {:noreply, assign(socket, roles_members: Roles.list_for_app(app))}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "Role is not allowed for this app.")}
+    end
+  end
+
+  def handle_event("remove_app_role", params, socket) do
+    app = Admin.get_app!(params["app_id"])
+    user = Admin.get_user!(params["user_id"])
+    Roles.remove_role(app, user)
+
+    {:noreply, assign(socket, roles_members: Roles.list_for_app(app))}
   end
 
   def handle_event("dismiss_secret", _params, socket),
@@ -427,6 +460,8 @@ defmodule YouWeb.ConsoleLive do
                 new_secret={@new_secret}
                 secret_app={@secret_app}
                 editing_app={@editing_app}
+                roles_app={@roles_app}
+                roles_members={@roles_members}
               />
             <% "orgs" -> %>
               <.orgs_view orgs={@orgs} selected={@selected_org} members={@members} roles={@roles} />
@@ -573,6 +608,8 @@ defmodule YouWeb.ConsoleLive do
   attr :new_secret, :string, default: nil
   attr :secret_app, :map, default: nil
   attr :editing_app, :map, default: nil
+  attr :roles_app, :map, default: nil
+  attr :roles_members, :list, default: []
 
   defp apps_view(assigns) do
     ~H"""
@@ -630,6 +667,14 @@ defmodule YouWeb.ConsoleLive do
             <.status_badge status={if app.client_secret_hash, do: "running", else: "idle"} />
           </td>
           <td class="px-3 py-2 text-right whitespace-nowrap">
+            <button
+              type="button"
+              phx-click="edit_app_roles"
+              phx-value-id={app.id}
+              class="rounded px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >
+              Roles
+            </button>
             <button
               type="button"
               phx-click="edit_app"
@@ -702,6 +747,52 @@ defmodule YouWeb.ConsoleLive do
             <.button type="submit">Save</.button>
           </div>
         </form>
+      </.dialog>
+
+      <.dialog id="app-roles" open={@roles_app != nil} on_close="cancel_edit_roles">
+        <:title>Roles for {@roles_app && @roles_app.name}</:title>
+        <:description>
+          Per-app role each user gets in tokens issued for this app. Unassigned users are "user".
+        </:description>
+        <div :if={@roles_app} class="max-h-80 space-y-1 overflow-y-auto">
+          <div
+            :for={{user, role} <- @roles_members}
+            class="flex items-center justify-between gap-3 border-b border-border/50 py-1.5 last:border-0"
+          >
+            <span class="truncate font-mono text-xs text-foreground/90">{user.email}</span>
+            <div class="flex shrink-0 items-center gap-2">
+              <form phx-change="save_app_role">
+                <input type="hidden" name="app_id" value={@roles_app.id} />
+                <input type="hidden" name="user_id" value={user.id} />
+                <select
+                  name="role"
+                  class="h-7 rounded-md border border-input bg-background px-2 font-mono text-xs"
+                >
+                  <option
+                    :for={option <- @roles_app.allowed_roles || ["user", "admin"]}
+                    value={option}
+                    selected={role == option}
+                  >
+                    {option}
+                  </option>
+                </select>
+              </form>
+              <button
+                :if={role != "user"}
+                type="button"
+                phx-click="remove_app_role"
+                phx-value-app_id={@roles_app.id}
+                phx-value-user_id={user.id}
+                class="rounded px-1.5 py-1 text-xs text-muted-foreground transition-colors hover:text-destructive"
+              >
+                reset
+              </button>
+            </div>
+          </div>
+        </div>
+        <:footer>
+          <.button variant="outline" phx-click="cancel_edit_roles">Done</.button>
+        </:footer>
       </.dialog>
 
       <.dialog id="app-secret" open={@new_secret != nil} on_close="dismiss_secret">
