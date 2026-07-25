@@ -950,7 +950,10 @@ defmodule YouWeb.ConsoleLive do
     <div class="space-y-4">
       <div class="flex items-center justify-between gap-4">
         <p class="font-mono text-xs text-muted-foreground">
-          in-memory · newest first · configure a webhook under Settings for durable retention
+          in-memory, capped at 100 events
+          <.link patch={~p"/console?view=webhooks"} class="text-primary hover:underline">
+            add a webhook for durable retention
+          </.link>
         </p>
         <form phx-change="filter_audit" class="shrink-0">
           <input
