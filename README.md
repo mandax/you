@@ -136,6 +136,10 @@ mix format --check-formatted
 mix compile --warnings-as-errors
 ```
 
+## Contributors
+
+[![Contributors](https://contrib.rocks/image?repo=mandax/you)](https://github.com/mandax/you/graphs/contributors)
+
 ## License
 
-[MIT](LICENSE) © [Anderson F. Pinto](https://github.com/mandax)
+[MIT](LICENSE)
