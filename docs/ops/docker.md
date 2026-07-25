@@ -39,7 +39,7 @@ docker run -d \
 | `POOL_SIZE` | No | `10` | Ecto connection pool size |
 | `PHX_SERVER` | No | `true` | Set to start the HTTP server |
 | `RELEASE_NODE` | No | `you@you.example.com` | Erlang node name (for Erlang distribution) |
-| `RELEASE_COOKIE` | No | (none) | Erlang cookie (required for Erlang distribution) |
+| `RELEASE_COOKIE` | No | random per boot | Erlang cookie. When unset a random per-boot value is used (fail closed); the `erlang_cookie` setting in the database overrides it at boot |
 | `DNS_CLUSTER_QUERY` | No | (none) | DNS cluster query for distributed Erlang |
 
 ### Volumes
@@ -84,13 +84,14 @@ All nodes must share the same cookie and distribution must be enabled.
 Erlang distribution uses a **cookie-based authentication** model. Two nodes can
 communicate only if they present the same cookie.
 
-You manages the cookie through the **admin settings page** (`/admin/settings`):
+You manages the cookie through the console settings page (`/console?view=settings`):
 
 1. The `erlang_cookie` setting is stored in the database
 2. At boot, `CookieSync` reads it and applies it via `Node.set_cookie/1`
 3. When you change it in settings, it's applied **immediately**
-4. The `RELEASE_COOKIE` env var is still supported but acts as a bootstrap
-   fallback (the DB value overrides it)
+4. The `RELEASE_COOKIE` env var is still supported. When it is unset, a
+   random per-boot value is used, so an unconfigured node refuses consumer
+   connections (fail closed).
 
 **Consumer apps** must have the same cookie configured on their
 side, since they don't read You's database. You must share the cookie value
