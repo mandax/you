@@ -323,11 +323,14 @@ defmodule You.Accounts do
     :ok
   end
 
-  @doc "Lists a user's active session tokens, newest first."
+  @doc "Lists a user's active session tokens, newest first. Expired tokens are hidden."
   def list_user_sessions(%User{id: user_id}) do
+    threshold =
+      DateTime.add(DateTime.utc_now(), -You.Settings.get(:session_expiry_hours) * 3600, :second)
+
     Repo.all(
       from t in UserToken,
-        where: t.user_id == ^user_id and t.context == "session",
+        where: t.user_id == ^user_id and t.context == "session" and t.inserted_at > ^threshold,
         order_by: [desc: t.inserted_at]
     )
   end
