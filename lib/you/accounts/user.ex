@@ -103,7 +103,7 @@ defmodule You.Accounts.User do
           add_error(
             changeset,
             :password,
-            "has appeared in a known data breach — please choose a different one"
+            "has appeared in a known data breach. Please choose a different one"
           )
 
         _ ->

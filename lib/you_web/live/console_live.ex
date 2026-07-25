@@ -797,7 +797,7 @@ defmodule YouWeb.ConsoleLive do
 
       <.dialog id="app-secret" open={@new_secret != nil} on_close="dismiss_secret">
         <:title>Client secret</:title>
-        <:description>Copy this now — it is hashed at rest and never shown again.</:description>
+        <:description>Copy this now. It is hashed at rest and never shown again.</:description>
         <div :if={@new_secret} class="space-y-3">
           <div class="rounded-md border border-border bg-background px-3 py-2 font-mono text-xs break-all text-primary">
             {@new_secret}
@@ -1097,7 +1097,7 @@ defmodule YouWeb.ConsoleLive do
       >
         <:title>Signing secret</:title>
         <:description>
-          Copy this now — deliveries are signed with it and it is never shown again.
+          Copy this now. Deliveries are signed with it and it is never shown again.
         </:description>
         <div :if={@webhook_secret} class="space-y-3">
           <div class="rounded-md border border-border bg-background px-3 py-2 font-mono text-xs break-all text-primary">

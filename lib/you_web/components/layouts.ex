@@ -71,7 +71,7 @@ defmodule YouWeb.Layouts do
       </main>
 
       <footer class="border-t border-border py-8 text-center text-xs text-muted-foreground">
-        You — Identity &amp; Access Management
+        You · Identity &amp; Access Management
       </footer>
     </div>
 
