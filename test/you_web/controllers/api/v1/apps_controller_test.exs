@@ -145,4 +145,49 @@ defmodule YouWeb.API.V1.AppsControllerTest do
       assert %{"error" => "not_found"} = json_response(conn, 404)
     end
   end
+
+  describe "PUT /api/v1/apps/:id/roles/:user_id" do
+    test "assigns a role", %{conn: conn} do
+      {app, _secret} = app_fixture()
+      user = You.AccountsFixtures.user_fixture()
+
+      conn = put(conn, ~p"/api/v1/apps/#{app.id}/roles/#{user.id}", role: "admin")
+
+      assert %{"data" => %{"user_id" => uid, "role" => "admin"}} = json_response(conn, 200)
+      assert uid == user.id
+      assert You.Roles.role_for(app.slug, user.id) == "admin"
+    end
+
+    test "rejects a role the app does not allow", %{conn: conn} do
+      {app, _secret} = app_fixture(%{allowed_roles: ["user"]})
+      user = You.AccountsFixtures.user_fixture()
+
+      conn = put(conn, ~p"/api/v1/apps/#{app.id}/roles/#{user.id}", role: "admin")
+
+      assert %{"error" => "invalid_role"} = json_response(conn, 422)
+    end
+
+    test "unknown app or user is 404", %{conn: conn} do
+      {app, _secret} = app_fixture()
+
+      conn = put(conn, ~p"/api/v1/apps/0/roles/0", role: "admin")
+      assert %{"error" => "not_found"} = json_response(conn, 404)
+
+      conn = put(conn, ~p"/api/v1/apps/#{app.id}/roles/0", role: "admin")
+      assert %{"error" => "not_found"} = json_response(conn, 404)
+    end
+  end
+
+  describe "DELETE /api/v1/apps/:id/roles/:user_id" do
+    test "removes the assignment", %{conn: conn} do
+      {app, _secret} = app_fixture()
+      user = You.AccountsFixtures.user_fixture()
+      {:ok, _} = You.Roles.set_role(app, user, "admin")
+
+      conn = delete(conn, ~p"/api/v1/apps/#{app.id}/roles/#{user.id}")
+
+      assert response(conn, 204)
+      assert You.Roles.role_for(app.slug, user.id) == "user"
+    end
+  end
 end

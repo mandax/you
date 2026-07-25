@@ -182,6 +182,31 @@ curl -X DELETE -H "Authorization: Bearer $API_TOKEN" \
 
 `204` with an empty body.
 
+### Assign a user's role in an app
+
+```sh
+curl -X PUT -H "Authorization: Bearer $API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"role": "admin"}' \
+  https://you.example.com/api/v1/apps/1/roles/42
+```
+
+Roles are per-app and must be one of the app's `allowed_roles` (default
+`["user", "admin"]`); tokens issued for that app carry the role in their
+claims. `200` with `{"data": {"user_id": 42, "role": "admin"}}`,
+`422 invalid_role` for a role the app does not allow, `404` for unknown
+app or user.
+
+### Reset a user's role
+
+```sh
+curl -X DELETE -H "Authorization: Bearer $API_TOKEN" \
+  https://you.example.com/api/v1/apps/1/roles/42
+```
+
+Removes the assignment (back to the implicit `"user"` role). `204` with an
+empty body.
+
 ## Audit
 
 ```sh

@@ -142,6 +142,8 @@ defmodule YouWeb.Router do
     post "/apps", AppsController, :create
     patch "/apps/:id", AppsController, :update
     delete "/apps/:id", AppsController, :delete
+    put "/apps/:id/roles/:user_id", AppsController, :set_role
+    delete "/apps/:id/roles/:user_id", AppsController, :remove_role
 
     get "/audit", AuditController, :index
   end
