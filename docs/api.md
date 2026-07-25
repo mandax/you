@@ -5,7 +5,7 @@
 
 The management API lets you automate You from any service that can speak HTTP:
 provision users, register apps, revoke sessions, and read the recent audit
-stream — no console login required.
+stream. No console login required.
 
 ## Base URL and authentication
 
@@ -37,7 +37,7 @@ Validation failures add a `details` map of field errors:
 | Status | Meaning |
 |--------|---------|
 | `401`  | Missing or wrong bearer token (`invalid_token`) |
-| `403`  | API disabled — no token configured (`management_api_disabled`) |
+| `403`  | API disabled, no token configured (`management_api_disabled`) |
 | `404`  | Unknown id (`not_found`) |
 | `422`  | Invalid payload (`validation_failed` + `details`) |
 | `429`  | Rate limited (`rate_limited`) |
@@ -84,7 +84,7 @@ curl -X POST -H "Authorization: Bearer $API_TOKEN" \
 ```
 
 `201` with the created user under `data`. The account is confirmed
-immediately and the password works right away — no magic-link round-trip.
+immediately and the password works right away, with no magic-link round-trip.
 Invalid input (bad email, short password, duplicate email) returns `422` with
 field errors.
 
@@ -95,7 +95,7 @@ curl -X POST -H "Authorization: Bearer $API_TOKEN" \
   https://you.example.com/api/v1/users/1/logout
 ```
 
-Deletes every token for the user — sessions, magic links, resets. `200` with
+Deletes every token for the user: sessions, magic links, resets. `200` with
 the user under `data`.
 
 ### Delete a user (anonymize)
@@ -158,7 +158,7 @@ curl -X POST -H "Authorization: Bearer $API_TOKEN" \
 }
 ```
 
-This is the only time the secret is shown — store it now. Required fields:
+This is the only time the secret is shown, so store it now. Required fields:
 `slug`, `name`, `callback_url`. Optional: `launch_url`, `first_party`.
 
 ### Update an app
@@ -227,7 +227,7 @@ curl -H "Authorization: Bearer $API_TOKEN" https://you.example.com/api/v1/audit
 ```
 
 Newest first, capped at 100 events. This is the live in-memory activity view,
-not a durable log — for retention, configure the audit webhook.
+not a durable log. For retention, configure the audit webhook.
 
 ## Which API should I use?
 
@@ -237,4 +237,4 @@ your own automation. Use **SCIM** (`/scim/v2`) when an external identity
 system (an IdP or HR tool) needs to push and sync user lifecycle into You
 using the standard protocol. Use **You.SDK** when you're building an app on
 the BEAM and want to consume You as an identity provider over Erlang
-distribution — login flows, token exchange, userinfo — not to administer You.
+distribution (login flows, token exchange, userinfo), not to administer You.

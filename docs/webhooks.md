@@ -1,4 +1,4 @@
-# Webhooks — Outbound Events
+# Webhooks: Outbound Events
 
 You can push signed event notifications to any HTTPS endpoint you control.
 Use it to wire signups into Stripe, mirror audit events into your own

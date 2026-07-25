@@ -1,7 +1,7 @@
 # Integrating an App with You
 
 You is an OpenID Connect identity provider. Any app that can do an HTTP
-redirect and verify a JWT can integrate — no Elixir or Erlang required. Apps
+redirect and verify a JWT can integrate: no Elixir or Erlang required. Apps
 running on the BEAM (Elixir/Erlang) have a second, lower-latency option:
 `You.SDK` over Erlang distribution.
 
@@ -23,7 +23,7 @@ GET /.well-known/openid-configuration
 It advertises the authorization endpoint (`/users/log-in`), the token endpoint
 (`/oauth/token`), the JWKS URI (`/.well-known/jwks.json`), supported scopes
 (`email`, `profile`, `roles`), PKCE (`S256`), and the signing algorithm
-(`EdDSA` — Ed25519).
+(`EdDSA`, Ed25519).
 
 ### 1.2 Authorization (authorization_code + PKCE)
 
@@ -39,7 +39,7 @@ GET /users/log-in
 ```
 
 - `callback_url` must exactly match a callback URL registered for your app.
-- `state` is echoed back — verify it on the callback (CSRF protection).
+- `state` is echoed back; verify it on the callback (CSRF protection).
 - Always send a PKCE challenge; only `S256` is supported.
 
 The user authenticates on You (password, magic link, passkey, or social
@@ -76,13 +76,13 @@ Success (`200`):
 
 Failure (`400`): `{"error": "invalid_grant", "error_description": "..."}`.
 
-No client authentication is required at the token endpoint — this is a public
+No client authentication is required at the token endpoint. This is a public
 client flow; the PKCE verifier authenticates the code holder.
 
 The **refresh_token grant** is also supported: POST the `refresh_token` to
 `/oauth/token` to obtain a new access token without involving the user.
 
-### 1.4 Verifying the JWT — locally, no call to You
+### 1.4 Verifying the JWT locally, with no call to You
 
 The access token is a JWT signed with **EdDSA (Ed25519)**. You's public key is
 published at `/.well-known/jwks.json`. Verification is entirely local: fetch
@@ -109,7 +109,7 @@ defmodule MyApp.YouTokens do
     end
   end
 
-  # The JWKS can hold several keys during rotation — pick by the token's
+  # The JWKS can hold several keys during rotation, so pick by the token's
   # `kid` header (fall back to trying all keys) and pin the algorithm.
   defp verify_with(keys, token) do
     kid = kid_of(token)
@@ -160,7 +160,7 @@ end
 ```
 
 Any JWT library with Ed25519/EdDSA support works the same way in other
-languages — point it at the JWKS URL and validate `exp`.
+languages: point it at the JWKS URL and validate `exp`.
 
 > Note: tokens currently do not carry an `iss` claim; the issuer is documented
 > in the discovery document. Verify signature and `exp`; if You adds `iss`
@@ -168,16 +168,16 @@ languages — point it at the JWKS URL and validate `exp`.
 
 ### 1.5 Revocation and introspection
 
-Local verification proves a token is authentic and unexpired — it does not
+Local verification proves a token is authentic and unexpired, but it does not
 know whether the token was revoked (You keeps a JTI blocklist). When you need
 that check:
 
-- `POST /oauth/introspect` — RFC 7662 token introspection. Client-authenticated
+- `POST /oauth/introspect`: RFC 7662 token introspection. Client-authenticated
   (`client_id` + `client_secret`); returns whether the token is active and its
-  claims. Use sparingly — it costs a round trip to You per call.
-- `POST /oauth/revoke` — RFC 7009 token revocation. Call this when a user
+  claims. Use sparingly, since it costs a round trip to You per call.
+- `POST /oauth/revoke`: RFC 7009 token revocation. Call this when a user
   signs out of your app and you want the token dead immediately.
-- `GET /oauth/userinfo` — returns the user's profile claims for a valid
+- `GET /oauth/userinfo`: returns the user's profile claims for a valid
   access token.
 
 For most requests, local verification plus short token lifetimes
@@ -185,18 +185,18 @@ For most requests, local verification plus short token lifetimes
 
 ---
 
-## 2. Erlang distribution (expert option — trusted BEAM nodes only)
+## 2. Erlang distribution (expert option, trusted BEAM nodes only)
 
 > **Read this before choosing this path.** Erlang distribution is **full
 > trust by design**: every connected node can execute arbitrary code on every
 > other connected node. There is no authorization layer, no sandbox, no
-> per-app credential — the shared cookie is the only gate, and holding it
+> per-app credential. The shared cookie is the only gate, and holding it
 > means owning You's host and database. This is inherent to OTP, not a
 > limitation You can patch. If you are not comfortable reasoning about that
-> threat model, use the OIDC path above — it is the default for a reason.
+> threat model, use the OIDC path above; it is the default for a reason.
 
 Elixir/Erlang apps running in the same cluster can call You directly over
-Erlang distribution via `You.SDK` — no HTTP, no JSON:
+Erlang distribution via `You.SDK` (no HTTP, no JSON):
 
 ```elixir
 config :you_sdk, node: :"you@you.example.com"
@@ -219,14 +219,14 @@ reached, and `{:error, :server_error}` when the call fails inside You.
 The rules are non-negotiable:
 
 - **Only connect nodes you fully control.** Never connect a third party's
-  node — you would be handing them root on your IAM.
+  node; you would be handing them root on your IAM.
 - **Only connect to a You instance you operate.** The trust is mutual: the
   IAM's operator can execute code on your node and sees the credentials
   that flow through it. Integrating with someone else's You? Use OIDC.
 - **Never expose EPMD (port 4369) or the distribution ports** to anything
   but your consumer nodes. Never to the public internet.
 - **Traffic is not encrypted by default.** Credentials and tokens cross the
-  wire in the clear — only use this over a network you already trust
+  wire in the clear. Only use this over a network you already trust
   (private LAN, WireGuard/Tailscale), or configure TLS distribution.
 - **Keep the cookie secret**; treat it like a root credential shared by
   every consumer.
@@ -243,9 +243,9 @@ JWT (see `You.IAM.Claims`). Defaults to `email`.
 
 | Scope | Claims added to the JWT |
 |-------|-------------------------|
-| `email` | `email` — the user's email address |
-| `profile` | `email`, `name` — display name (currently the email address) |
-| `roles` | `email`, `role` — `"admin"` or `"user"`, from the account's admin flag |
+| `email` | `email`: the user's email address |
+| `profile` | `email`, `name`: display name (currently the email address) |
+| `roles` | `email`, `role`: `"admin"` or `"user"`, from the account's admin flag |
 
 Every token also carries `sub` (user id), `app` (`"you"`), `jti`, `iat`, and
 `exp` regardless of scope.

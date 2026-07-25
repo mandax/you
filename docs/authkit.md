@@ -1,4 +1,4 @@
-# AuthKit — Integrating with You
+# AuthKit: Integrating with You
 
 > See also [integration.md](integration.md) for the OIDC endpoints, JWKS
 > verification, and the Erlang distribution path.
@@ -12,7 +12,7 @@ their connected apps at the account hub.
 
 ## 1. Redirect / OAuth flow
 
-Any registered app can use this flow. The browser mediates every step — You owns
+Any registered app can use this flow. The browser mediates every step. You owns
 the login page, the consent screen, and the redirect back to the app.
 
 ### 1.1 Start the flow
@@ -30,7 +30,7 @@ GET /users/log-in
 
 | Param                 | Notes |
 |-----------------------|-------|
-| `callback_url`        | Must match the registered callback URL of one of your apps (exact match — prevents open redirects). |
+| `callback_url`        | Must match the registered callback URL of one of your apps (exact match prevents open redirects). |
 | `scope`               | Space-separated. Supported: `email`, `profile`, `roles`. Defaults to `email`. |
 | `state`               | Opaque value echoed back to your callback; use for CSRF / routing. |
 | `code_challenge`      | PKCE code challenge (S256). |
@@ -42,13 +42,13 @@ GET /users/log-in
 
 ### 1.2 User authenticates
 
-The user lands on You's login page (branded with your app's name — You resolves
-it from the callback URL). They authenticate with any supported method:
+The user lands on You's login page (branded with your app's name, which You
+resolves from the callback URL). They authenticate with any supported method:
 
 - **Password** (with optional TOTP second factor),
 - **Magic link** (sent to their email),
 - **Passkey** (WebAuthn),
-- **Social login** — "Sign in with Google / GitHub / …" (see section 4).
+- **Social login**: "Sign in with Google / GitHub / …" (see section 4).
 
 After authenticating, the user sees a consent screen listing the scopes your app
 requested. They approve it, and You redirects back to your `callback_url`:
@@ -61,7 +61,7 @@ Verify `state` matches the value you sent. Then exchange `code` for tokens.
 
 ### 1.3 Exchange the code
 
-You offers two code-exchange paths — pick the one that fits your stack.
+You offers two code-exchange paths. Pick the one that fits your stack.
 
 #### Via Erlang distribution
 
@@ -115,7 +115,7 @@ Error response (`400`):
 ```
 
 No client authentication is required at the token endpoint (it's a public client
-flow — the PKCE verifier authenticates the code holder).
+flow; the PKCE verifier authenticates the code holder).
 
 ### 1.4 OIDC discovery
 
@@ -138,7 +138,7 @@ GET /.well-known/jwks.json
 ## 2. Headless / invisible flow (first-party only)
 
 Trusted apps that **own their login UI** can authenticate users directly against
-You's API — no redirect, no You-branded page. The user never knows You is involved.
+You's API: no redirect, no You-branded page. The user never knows You is involved.
 
 **Security model:**
 
@@ -231,7 +231,7 @@ admin console at `/console?view=apps`:
 
 1. Find your app in the table and click **Edit**.
 2. Tick the **First-party app** checkbox.
-3. (Optional) Set a **Launch URL** — this is the destination when a user clicks
+3. (Optional) Set a **Launch URL**. This is the destination when a user clicks
    the app's card on the account hub dashboard.
 4. Click **Save**.
 
@@ -242,7 +242,7 @@ app (first-party unchecked) calling `POST /api/auth/login` gets a `403`.
 
 ## 4. The account hub
 
-Signed-in users land at `/users/dashboard`. This page shows a grid of app cards —
+Signed-in users land at `/users/dashboard`. This page shows a grid of app cards,
 one for every app the user has previously granted consent to (via the redirect
 flow). Each card:
 
@@ -253,7 +253,7 @@ flow). Each card:
   the app must re-authorise to access the user's data again.
 
 > The account hub is **optional**. In the headless flow, the user never needs to
-> visit You at all — the app owns the entire experience.
+> visit You at all; the app owns the entire experience.
 
 ---
 
@@ -265,7 +265,7 @@ flows:
 - **Redirect flow:** If the user clicks a social provider on You's login page,
   they are redirected to the upstream IdP, authenticate there, and come back to
   You. You completes the login by handing an authorization code back to the
-  requesting app — exactly like password or magic-link login. The app never
+  requesting app, exactly like password or magic-link login. The app never
   deals with the upstream provider directly.
 
 - **Plain login:** If there is no OAuth consumer in play (the user went directly
