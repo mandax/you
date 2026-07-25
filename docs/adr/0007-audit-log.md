@@ -1,6 +1,6 @@
-# Audit log — historical data for admins
+# Audit log: historical data for admins
 
-Historical events (login attempts, admin actions, token exchanges, account changes, consent grants) are emitted as Telemetry events and written to newline-delimited JSON files. Accessible only to admins via the admin panel. Easy to store, backup, and read — no database coupling.
+Historical events (login attempts, admin actions, token exchanges, account changes, consent grants) are emitted as Telemetry events and written to newline-delimited JSON files. Accessible only to admins via the admin panel. Easy to store, backup, and read, with no database coupling.
 
 ## Decisions
 
@@ -21,7 +21,7 @@ Every auditable action emits a Telemetry event. Telemetry is already in the depe
 
 ### 2. File-backed handler
 
-A Telemetry handler writes each event as a JSON line to a file in a configurable directory. One file per event category (not per event type — categories group related events):
+A Telemetry handler writes each event as a JSON line to a file in a configurable directory. One file per event category (not per event type; categories group related events):
 
 ```
 /var/log/you/
@@ -54,7 +54,7 @@ The admin LiveView reads the log files directly and renders them in a paginated 
 - **Pagination**: reads file backwards from the end (most recent lines first)
 - **No DB**: reads from filesystem, not the database
 
-The `You.Audit.Reader` module handles reading and filtering. It uses `File.stream!` with line-by-line iteration — no loading the whole file into memory. Admin LiveView polls every 30 seconds for new entries.
+The `You.Audit.Reader` module handles reading and filtering. It uses `File.stream!` with line-by-line iteration, without loading the whole file into memory. Admin LiveView polls every 30 seconds for new entries.
 
 ### 5. Log rotation
 
@@ -64,7 +64,7 @@ Files grow unbounded without rotation. The handler checks the file size before a
 - On rotation: rename `login.jsonl` → `login.2026-05-28T18:00:00Z.jsonl`, start a new file
 - Cleanup: delete rotated files older than `retention_days: 90` (configurable)
 
-Rotation is handled by the handler itself at write time — no external cron job needed.
+Rotation is handled by the handler itself at write time, so no external cron job is needed.
 
 ## Status
 
@@ -75,6 +75,6 @@ Proposed
 - `You.Audit.Handler` GenServer attached to Telemetry events on startup.
 - `You.Audit.Reader` module for the admin LiveView to read and filter log files.
 - Admin LiveView gets a new "Audit Log" section.
-- No database migration, no new Ecto schema — purely file-based.
+- No database migration, no new Ecto schema: purely file-based.
 - Backup is a filesystem copy (`cp -r` or rsync). Restore is the reverse.
 - Each auditable action site needs a `:telemetry.execute/3` call added.

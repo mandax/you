@@ -1,4 +1,4 @@
-# You — Identity and Access Management
+# You: Identity and Access Management
 
 Cross-app identity, authentication, authorization, and user settings platform. Every service delegates user management to You.
 
@@ -12,11 +12,11 @@ You ──── auth, users, roles, 2FA, billing (future)
 ```
 
 Apps never touch You's database. Communication goes through:
-- **OIDC over HTTP** — standard authorization-code + PKCE flow, JWKS, userinfo, introspection, revocation (`/.well-known/*`, `/oauth/*`). Works with any OIDC client library, any language
-- **Login UI** — You serves its own LiveView for login, 2FA, magic link
-- **Erlang distribution** (expert option, trusted nodes only) — the same flows with no HTTP hop, via `You.IAM.Server`
-- **`You.SDK`** — small library that wraps the distribution calls for in-cluster BEAM apps
-- **GraphQL** (future) — user profile, settings, teams
+- **OIDC over HTTP**: standard authorization-code + PKCE flow, JWKS, userinfo, introspection, revocation (`/.well-known/*`, `/oauth/*`). Works with any OIDC client library, any language
+- **Login UI**: You serves its own LiveView for login, 2FA, magic link
+- **Erlang distribution** (expert option, trusted nodes only): the same flows with no HTTP hop, via `You.IAM.Server`
+- **`You.SDK`**: a small library that wraps the distribution calls for in-cluster BEAM apps
+- **GraphQL** (future): user profile, settings, teams
 
 ## Stack
 
@@ -56,18 +56,18 @@ receive a single-use authorization code via callback URL:
 2. You serves LiveView: email/password + 2FA + magic link
 3. On success, You creates a single-use auth code (5 min, hashed)
 4. You redirects: 302 callback_url?code=abc123
-5. App exchanges the code at POST /oauth/token (PKCE) — or via
+5. App exchanges the code at POST /oauth/token (PKCE), or via
    You.SDK.exchange_code(code) over Erlang distribution
 6. You validates code, consumes it, returns access + ID + refresh tokens
 7. App verifies the JWT locally against You's JWKS
 ```
 
 Authorization codes reuse the existing `users_tokens` table with
-`context: "oauth_code"` — same hashed-token pattern as magic links.
+`context: "oauth_code"`, the same hashed-token pattern as magic links.
 
 ## SDK
 
-`You.SDK` integrates in-cluster BEAM apps over Erlang distribution — the
+`You.SDK` integrates in-cluster BEAM apps over Erlang distribution. This is the
 expert option for nodes you fully control (distribution is full trust; see
 [docs/integration.md](docs/integration.md)). Everything it does is also
 available over HTTP OIDC.
@@ -100,18 +100,18 @@ when the call fails inside You.
 
 ## API
 
-### OIDC (HTTP — primary)
+### OIDC (HTTP, primary)
 
 Standard provider surface, usable by any OIDC client library:
 
-- `GET /.well-known/openid-configuration` — discovery
-- `GET /.well-known/jwks.json` — Ed25519 public keys (verify tokens locally)
-- `POST /oauth/token` — authorization_code + PKCE and refresh_token grants
-- `GET /oauth/userinfo` — scoped claims for a Bearer token
-- `POST /oauth/introspect` — RFC 7662 (client-authenticated)
-- `POST /oauth/revoke` — RFC 7009 (client-authenticated)
+- `GET /.well-known/openid-configuration`: discovery
+- `GET /.well-known/jwks.json`: Ed25519 public keys (verify tokens locally)
+- `POST /oauth/token`: authorization_code + PKCE and refresh_token grants
+- `GET /oauth/userinfo`: scoped claims for a Bearer token
+- `POST /oauth/introspect`: RFC 7662 (client-authenticated)
+- `POST /oauth/revoke`: RFC 7009 (client-authenticated)
 
-### Authentication (user-facing — via LiveView UI)
+### Authentication (user-facing, via LiveView UI)
 
 Login, registration, 2FA, magic link, and settings are served at `/users/*`
 on You's own web interface. First-party apps can also authenticate users
@@ -119,10 +119,10 @@ headlessly at `/api/auth/*` (client_id + client_secret).
 
 ## Documentation
 
-- [Integrating an app](docs/integration.md) — OIDC and `You.SDK` integration guide
-- [Management REST API](docs/api.md) — `/api/v1` for automating users and apps
-- [Webhooks](docs/webhooks.md) — signed outbound events (Stripe recipe included)
-- [Deployment](docs/ops/deploy.md) — production deployment guide
+- [Integrating an app](docs/integration.md): OIDC and `You.SDK` integration guide
+- [Management REST API](docs/api.md): `/api/v1` for automating users and apps
+- [Webhooks](docs/webhooks.md): signed outbound events (Stripe recipe included)
+- [Deployment](docs/ops/deploy.md): production deployment guide
 
 ## Domain Language
 
@@ -130,9 +130,9 @@ See [CONTEXT.md](CONTEXT.md) for the full glossary of terms.
 
 ## Decision Records
 
-- [ADR-0001](docs/adr/0001-iam-project.md) — overall project architecture
-- [ADR-0002](docs/adr/0002-erlang-distribution.md) — Erlang distribution protocol
-- [ADR-0003](docs/adr/0003-auth-code-flow.md) — auth code flow via redirect
+- [ADR-0001](docs/adr/0001-iam-project.md): overall project architecture
+- [ADR-0002](docs/adr/0002-erlang-distribution.md): Erlang distribution protocol
+- [ADR-0003](docs/adr/0003-auth-code-flow.md): auth code flow via redirect
 
 ## Development
 

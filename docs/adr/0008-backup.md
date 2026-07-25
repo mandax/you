@@ -1,6 +1,6 @@
-# Backup — SQLite and audit logs via rclone
+# Backup: SQLite and audit logs via rclone
 
-Backup script that creates a consistent snapshot of the SQLite database (zero downtime) and the audit log files, archives them, uploads to an rclone remote, and prunes old backups. Proton Drive is shown as one example remote — any rclone remote works.
+Backup script that creates a consistent snapshot of the SQLite database (zero downtime) and the audit log files, archives them, uploads to an rclone remote, and prunes old backups. Proton Drive is shown as one example remote; any rclone remote works.
 
 Pattern: snapshot → tar → upload → prune. Adapted for SQLite's online backup capability.
 
@@ -21,11 +21,11 @@ SQLite `.backup` command creates a consistent snapshot while the app is running.
 sqlite3 "$DATABASE_PATH" ".backup /tmp/you/you.db"
 ```
 
-The audit logs are append-only JSONL files. Copying is safe — at worst the last line is truncated mid-write, which is harmless for JSONL.
+The audit logs are append-only JSONL files. Copying is safe: at worst the last line is truncated mid-write, which is harmless for JSONL.
 
 ### 3. Backup script
 
-A standalone shell script at `bin/backup.sh` — no Elixir dependency, runnable from cron or manually. The upload step targets an rclone remote named `proton` (Proton Drive) as an example — any rclone remote works:
+A standalone shell script at `bin/backup.sh`, with no Elixir dependency, runnable from cron or manually. The upload step targets an rclone remote named `proton` (Proton Drive) as an example, but any rclone remote works:
 
 ```bash
 #!/bin/bash
@@ -79,7 +79,7 @@ else
   echo "[$DATE] Configure with: rclone config (e.g. remote name: proton)"
 fi
 
-# Prune old backups — keep last N daily backups
+# Prune old backups, keeping last N daily backups
 find "$BACKUP_DIR" -name "you-*.tar.gz" -mtime +"$RETENTION_DAYS" -delete 2>/dev/null
 echo "[$DATE] Old backups pruned, keeping last $RETENTION_DAYS days."
 echo "[$DATE] Backup complete."
@@ -87,7 +87,7 @@ echo "[$DATE] Backup complete."
 
 ### 4. Configuration
 
-All via environment variables — matches the 12-factor pattern of `DATABASE_PATH`:
+All via environment variables, matching the 12-factor pattern of `DATABASE_PATH`:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -128,7 +128,7 @@ Proposed
 
 ## Consequences
 
-- `bin/backup.sh` — a single-file script, no Elixir dependency, testable in isolation.
+- `bin/backup.sh`: a single-file script, no Elixir dependency, testable in isolation.
 - Zero downtime for database backup via SQLite `.backup`.
 - Audit logs are best-effort (JSONL is resilient to truncated last lines).
 - rclone must be installed and configured with a remote (`proton:` shown as an example).

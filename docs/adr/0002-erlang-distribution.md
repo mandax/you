@@ -8,7 +8,7 @@ You and its consumer apps run as connected Elixir nodes in the same cluster. Ins
 
 ## Decisions
 
-### 1. You runs `You.IAM.Server` — a named GenServer
+### 1. You runs `You.IAM.Server`, a named GenServer
 
 You registers a GenServer under the name `:iam_server` on the local node. Apps send messages to `{:iam_server, node_where_you_runs}` via `GenServer.call/2`.
 
@@ -26,7 +26,7 @@ All messages use the `GenServer.call/2` pattern. Responses use tagged tuples.
 | `{:get_user, user_id}` | App → You | `{:ok, %{id: integer, email: string}}` or `{:error, :not_found}` |
 | `{:revoke_token, jwt}` | App → You | `:ok` |
 
-The response maps are flat key-value structs — no Ecto schemas cross the node boundary.
+The response maps are flat key-value structs; no Ecto schemas cross the node boundary.
 
 ### 3. IAM.Client helper on the app side
 
@@ -44,18 +44,18 @@ Each function handles three cases:
 2. You is unreachable (`{:EXIT, _}`) → log warning, return `{:error, :unreachable}`
 3. Timeout → log warning, return `{:error, :timeout}`
 
-### 4. Token validation is the hot path — kept fast
+### 4. Token validation is the hot path, kept fast
 
 `verify_token` does:
 1. JOSE signature check (sub-millisecond)
 2. Expiry check (in-memory)
-3. Blocklist check (Repo.get_by on `users_tokens` — indexed)
+3. Blocklist check (Repo.get_by on `users_tokens`, indexed)
 
 No database writes on the hot path. Blocklist lookup is a single indexed query.
 
 ### 5. During development, test within a single node
 
-For dev and test, You and the app run on the same node. `GenServer.call(You.IAM.Server, msg)` works locally without Erlang distribution. This simplifies testing — just start You's supervision tree in the test.
+For dev and test, You and the app run on the same node. `GenServer.call(You.IAM.Server, msg)` works locally without Erlang distribution. This simplifies testing: just start You's supervision tree in the test.
 
 ## Status
 
@@ -63,7 +63,7 @@ Proposed
 
 ## Consequences
 
-- Apps validate tokens via GenServer.call — sub-millisecond latency when You is on the same node, millisecond when on a nearby node in the same cluster.
+- Apps validate tokens via GenServer.call: sub-millisecond latency when You is on the same node, millisecond when on a nearby node in the same cluster.
 - Apps degrade gracefully: if You is unreachable, they use the local `iam_tokens` cache with a configurable grace period (default 15 min).
-- The IAM module is the public API boundary — apps never call You's Ecto schemas or Repo directly.
+- The IAM module is the public API boundary. Apps never call You's Ecto schemas or Repo directly.
 - The `iam_tokens` cache in each app means user display names are available even when You is down.

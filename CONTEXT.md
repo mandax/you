@@ -1,4 +1,4 @@
-# You — Identity and Access Management
+# You: Identity and Access Management
 
 Cross-app identity, authentication, authorization, and user settings platform. Every service delegates user management to You.
 
@@ -13,7 +13,7 @@ A User with `is_admin = true`. Gates access to You's admin panel (`/admin`) and 
 _Avoid_: Superuser, operator, root
 
 **You Session**:
-The browser cookie on you.example.com that proves the user authenticated with You's portal. Database-backed via `users_tokens` (context: "session"). Used to skip the login form on subsequent app authorization flows. Separate from any app JWT — signing out of You does not invalidate app JWTs.
+The browser cookie on you.example.com that proves the user authenticated with You's portal. Database-backed via `users_tokens` (context: "session"). Used to skip the login form on subsequent app authorization flows. Separate from any app JWT: signing out of You does not invalidate app JWTs.
 _Avoid_: Auth token, login cookie, global session
 
 **App JWT**:
@@ -21,7 +21,7 @@ A per-app credential issued to a specific service. Carries `sub` (user ID), `ema
 _Avoid_: Session token, bearer token, access token
 
 **Role**:
-A named set of permissions scoped to a specific app. Example: `(myapp, user-42) → admin`. Roles are always `(app_slug, user_id) → role_name` — never global.
+A named set of permissions scoped to a specific app. Example: `(myapp, user-42) → admin`. Roles are always `(app_slug, user_id) → role_name`, never global.
 _Avoid_: Permission, scope, privilege
 
 **App**:
@@ -45,7 +45,7 @@ An optional second factor on login using TOTP (time-based one-time passwords). A
 _Avoid_: MFA, two-step verification
 
 **Magic Link**:
-A passwordless login flow. The user enters their email, You sends a short-lived signed link (15 min), and clicking it exchanges the link token for a JWT. Single-use — consumed on first click.
+A passwordless login flow. The user enters their email, You sends a short-lived signed link (15 min), and clicking it exchanges the link token for a JWT. Single-use, consumed on first click.
 _Avoid_: Passwordless login, email auth, one-time link
 
 **Authorization Code**:
@@ -57,7 +57,7 @@ The official library for integrating apps with You. Apps add it as a path or Hex
 _Avoid_: HTTP client, REST wrapper, direct GenServer calls
 
 **Erlang Distribution**:
-The communication channel between You and apps. Connected BEAM nodes exchange process messages. You registers `You.IAM.Server` — a GenServer that handles `{:verify_token, jwt}`, `{:exchange_code, code}`, `{:get_user, user_id}`, `{:revoke_token, jwt}`. Apps use `You.SDK` which wraps these calls.
+The communication channel between You and apps. Connected BEAM nodes exchange process messages. You registers `You.IAM.Server`, a GenServer that handles `{:verify_token, jwt}`, `{:exchange_code, code}`, `{:get_user, user_id}`, `{:revoke_token, jwt}`. Apps use `You.SDK` which wraps these calls.
 _Avoid_: RPC, REST, node coupling
 
 **Grant Scope**:
@@ -65,7 +65,7 @@ A declared permission an app requests during authorization. Controls what claims
 _Avoid_: Permission, claim, data access level
 
 **Consent**:
-A record that a user authorized an app with specific grant scopes. Stored in the `consents` table. Checked at auth code exchange time — expired or missing consent means the user must re-authorize. Expires alongside the App JWT.
+A record that a user authorized an app with specific grant scopes. Stored in the `consents` table. Checked at auth code exchange time; expired or missing consent means the user must re-authorize. Expires alongside the App JWT.
 _Avoid_: Authorization grant, permission record, approval
 
 **Anonymization**:

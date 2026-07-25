@@ -1,6 +1,6 @@
-# You — Cross-app Identity and Access Management
+# You: Cross-app Identity and Access Management
 
-Extract user identity, authentication, authorization, and user settings into a standalone IAM project called **You**. Every app delegates user management to You — no app owns its own user table beyond a lightweight token cache.
+Extract user identity, authentication, authorization, and user settings into a standalone IAM project called **You**. Every app delegates user management to You. No app owns its own user table beyond a lightweight token cache.
 
 ## Context
 
@@ -25,7 +25,7 @@ You (separate project)
 
 ### 1. You is a standalone Elixir/Phoenix application
 
-You is a separate OTP application in its own repository, alongside the consumer apps' repositories. It has its own Ecto repo, its own database, and its own deployment. Apps never touch You's database directly — they call You's API or, for token validation, communicate via Erlang distribution.
+You is a separate OTP application in its own repository, alongside the consumer apps' repositories. It has its own Ecto repo, its own database, and its own deployment. Apps never touch You's database directly. They call You's API or, for token validation, communicate via Erlang distribution.
 
 ### 2. You is built on `mix phx.gen.auth` as the starting point
 
@@ -39,7 +39,7 @@ You is a separate OTP application in its own repository, alongside the consumer 
 
 ### 7. Erlang distribution for app↔You communication with SDK
 
-You exposes `You.IAM.Server` — a GenServer registered on the You node.
+You exposes `You.IAM.Server`, a GenServer registered on the You node.
 Consumer apps communicate with it via Erlang distribution, wrapped by the
 `You.SDK` dependency:
 
@@ -78,22 +78,22 @@ Benefits:
 
 The implementation follows this sequence:
 
-1. ✅ `mix phx.gen.auth` — generate User schema, Accounts context, email infrastructure
-2. ✅ **JWT layer** — replace sessions with JWT on login/logout; add `jose` signing/verification
-3. ✅ **Magic link** — reuse `UserToken` pattern for email-based passwordless login
-4. ✅ **2FA** — add `nimble_totp` column to User, pre-auth token flow, recovery codes
-5. **SDK module** — build `You.SDK` wrapping Erlang distribution calls ← CURRENT
-6. **First consumer app integration** — update the first consumer app to use `You.SDK` as a dependency
+1. ✅ `mix phx.gen.auth`: generate User schema, Accounts context, email infrastructure
+2. ✅ **JWT layer**: replace sessions with JWT on login/logout; add `jose` signing/verification
+3. ✅ **Magic link**: reuse `UserToken` pattern for email-based passwordless login
+4. ✅ **2FA**: add `nimble_totp` column to User, pre-auth token flow, recovery codes
+5. **SDK module**: build `You.SDK` wrapping Erlang distribution calls ← CURRENT
+6. **First consumer app integration**: update the first consumer app to use `You.SDK` as a dependency
 
 Steps 1–5 are self-contained within You. Step 6 is in the consumer app's repo.
 
 ## Status
 
-Proposed — replaces previous version of this ADR.
+Proposed, replacing the previous version of this ADR.
 
 ## Consequences
 
 - You owns the full authentication flow. Apps never see passwords, TOTP secrets, or 2FA codes.
-- Apps connect to You via Erlang distribution for token validation — sub-millisecond latency on the same node.
+- Apps connect to You via Erlang distribution for token validation: sub-millisecond latency on the same node.
 - The `You.SDK` is a standalone Hex package that wraps the GenServer calls.
 - Losing the Erlang connection to You means SDK returns `{:error, :unreachable}`.
