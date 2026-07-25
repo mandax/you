@@ -46,7 +46,13 @@ defmodule YouWeb.Components.Base.DropdownMenu do
 
   def dropdown_menu(assigns) do
     ~H"""
-    <div id={@id} phx-hook=".DropdownMenu" class="relative inline-block text-left" {@rest}>
+    <div
+      id={@id}
+      phx-hook=".DropdownMenu"
+      data-align={@align}
+      class="relative inline-block text-left"
+      {@rest}
+    >
       <button
         type="button"
         data-part="trigger"
@@ -65,7 +71,7 @@ defmodule YouWeb.Components.Base.DropdownMenu do
         hidden
         class={
           cx([
-            "absolute z-50 mt-1 min-w-[8rem] overflow-hidden rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md",
+            "animate-palette-in absolute z-50 mt-1 min-w-[8rem] overflow-hidden rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md",
             @align == "start" && "left-0 origin-top-left",
             @align == "end" && "right-0 origin-top-right",
             @class
@@ -102,15 +108,32 @@ defmodule YouWeb.Components.Base.DropdownMenu do
 
           this.isOpen = () => !this.popup.hasAttribute("hidden")
 
+          // The popup escapes overflow containers (tables with overflow-x-auto
+          // would otherwise grow scrollbars or clip it): once visible, it is
+          // positioned fixed against the trigger's viewport rect.
           this.open = () => {
             this.popup.removeAttribute("hidden")
             this.trigger.setAttribute("aria-expanded", "true")
+
+            const rect = this.trigger.getBoundingClientRect()
+            const popupRect = this.popup.getBoundingClientRect()
+            this.popup.style.position = "fixed"
+            this.popup.style.margin = "0"
+            this.popup.style.top = `${rect.bottom + 4}px`
+            this.popup.style.left = this.el.dataset.align === "end"
+              ? `${rect.right - popupRect.width}px`
+              : `${rect.left}px`
+
             this.highlight(0)
           }
 
           this.close = ({focusTrigger = false} = {}) => {
             if (!this.isOpen()) return
             this.popup.setAttribute("hidden", "")
+            this.popup.style.position = ""
+            this.popup.style.top = ""
+            this.popup.style.left = ""
+            this.popup.style.margin = ""
             this.trigger.setAttribute("aria-expanded", "false")
             this.items().forEach((el) => el.removeAttribute("data-highlighted"))
             this.index = -1
@@ -147,13 +170,23 @@ defmodule YouWeb.Components.Base.DropdownMenu do
           this.onPopupClick = () => this.close({focusTrigger: true})
           this.onDocClick = (e) => { if (!this.el.contains(e.target)) this.close() }
 
+          // Close when the pointer leaves the whole dropdown (with a small
+          // grace period so crossing the fixed-position gap doesn't flicker).
+          this.onMouseLeave = () => {
+            this.leaveTimer = setTimeout(() => this.close(), 200)
+          }
+          this.onMouseEnter = () => clearTimeout(this.leaveTimer)
+
           this.trigger.addEventListener("click", this.onTriggerClick)
           this.popup.addEventListener("click", this.onPopupClick)
           this.el.addEventListener("keydown", this.onKeydown)
+          this.el.addEventListener("mouseleave", this.onMouseLeave)
+          this.el.addEventListener("mouseenter", this.onMouseEnter)
           document.addEventListener("click", this.onDocClick)
         },
 
         destroyed() {
+          clearTimeout(this.leaveTimer)
           document.removeEventListener("click", this.onDocClick)
         }
       }
