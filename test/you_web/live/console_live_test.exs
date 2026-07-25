@@ -130,6 +130,7 @@ defmodule YouWeb.ConsoleLiveTest do
       other = You.AccountsFixtures.user_fixture()
       {:ok, lv, _} = live(conn, "/console?view=users")
 
+      render_click(lv, "edit_user", %{"id" => other.id})
       render_click(lv, "set_you_role", %{"user_id" => other.id, "role" => "admin"})
       assert Accounts.get_user!(other.id).is_admin
 
@@ -140,6 +141,7 @@ defmodule YouWeb.ConsoleLiveTest do
     test "admin cannot revoke their own admin rights", %{conn: conn, admin: admin} do
       {:ok, lv, _} = live(conn, "/console?view=users")
 
+      render_click(lv, "edit_user", %{"id" => admin.id})
       render_click(lv, "set_you_role", %{"user_id" => admin.id, "role" => "user"})
       assert Accounts.get_user!(admin.id).is_admin
     end
@@ -208,6 +210,8 @@ defmodule YouWeb.ConsoleLiveTest do
 
       other = You.AccountsFixtures.user_fixture()
       {:ok, lv, _} = live(conn, "/console?view=users")
+
+      render_click(lv, "edit_user", %{"id" => other.id})
 
       render_click(lv, "save_app_role", %{
         "app_id" => app.id,

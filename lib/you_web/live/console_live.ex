@@ -61,6 +61,7 @@ defmodule YouWeb.ConsoleLive do
        webhook_secret: nil,
        webhook_endpoint: nil,
        user_filters: %{},
+       editing_user: nil,
        base_url: YouWeb.Endpoint.url(),
        oidc_providers:
          Application.get_env(:you, :oidc_providers, %{}) |> Map.keys() |> Enum.sort(),
@@ -197,7 +198,15 @@ defmodule YouWeb.ConsoleLive do
           socket
       end
 
-    {:noreply, socket}
+    {:noreply, refresh_editing_user(socket, user_id)}
+  end
+
+  def handle_event("edit_user", %{"id" => id}, socket) do
+    {:noreply, assign(socket, editing_user: Admin.get_user!(id))}
+  end
+
+  def handle_event("cancel_edit_user", _params, socket) do
+    {:noreply, assign(socket, editing_user: nil)}
   end
 
   def handle_event("save_app_role", params, socket) do
@@ -206,7 +215,7 @@ defmodule YouWeb.ConsoleLive do
 
     case Roles.set_role(app, user, params["role"]) do
       {:ok, _} ->
-        {:noreply, load_data(socket)}
+        {:noreply, socket |> load_data() |> refresh_editing_user(params["user_id"])}
 
       {:error, _} ->
         {:noreply, put_flash(socket, :error, "Role is not allowed for this app.")}
@@ -342,6 +351,20 @@ defmodule YouWeb.ConsoleLive do
   end
 
   # ── data loading ──────────────────────────────────────────────
+  defp refresh_editing_user(socket, user_id) do
+    case socket.assigns[:editing_user] do
+      nil ->
+        socket
+
+      %{id: id} ->
+        if to_string(id) == to_string(user_id) do
+          assign(socket, editing_user: Admin.get_user!(id))
+        else
+          socket
+        end
+    end
+  end
+
   defp audit_admin(socket, action, target) do
     :telemetry.execute([:you, :audit, :admin, :action], %{}, %{
       admin_user_id: socket.assigns.current_scope.user.id,
@@ -457,6 +480,7 @@ defmodule YouWeb.ConsoleLive do
                 assignments={@assignments}
                 filters={@user_filters}
                 current_scope={@current_scope}
+                editing_user={@editing_user}
               />
             <% "apps" -> %>
               <.apps_view
@@ -531,6 +555,7 @@ defmodule YouWeb.ConsoleLive do
   attr :assignments, :map, required: true
   attr :filters, :map, required: true
   attr :current_scope, :map, required: true
+  attr :editing_user, :map, default: nil
 
   defp users_view(assigns) do
     assigns =
@@ -636,57 +661,31 @@ defmodule YouWeb.ConsoleLive do
           <td class="px-3 py-2">
             <.status_badge status={if row.user.confirmed_at, do: "running", else: "idle"} />
           </td>
-          <td class="px-3 py-2">
-            <.dropdown_menu id={"you-role-#{row.user.id}"}>
-              <:trigger>
-                <span class={[
-                  "inline-flex h-7 items-center gap-1.5 rounded-md border border-input bg-background px-2 font-mono text-xs transition-colors hover:bg-accent",
-                  row.user.is_admin && "text-primary"
-                ]}>
-                  {if row.user.is_admin, do: "admin", else: "user"}
-                  <span class="lucide-chevron-down size-3 block" />
-                </span>
-              </:trigger>
-              <.menu_item
-                phx-click="set_you_role"
-                phx-value-user_id={row.user.id}
-                phx-value-role="user"
-              >
-                user
-              </.menu_item>
-              <.menu_item
-                phx-click="set_you_role"
-                phx-value-user_id={row.user.id}
-                phx-value-role="admin"
-              >
-                admin
-              </.menu_item>
-            </.dropdown_menu>
+          <td class={[
+            "px-3 py-2 font-mono text-xs",
+            if(row.user.is_admin, do: "text-primary", else: "text-muted-foreground")
+          ]}>
+            {if row.user.is_admin, do: "admin", else: "user"}
           </td>
-          <td :for={app <- @apps} class="px-3 py-2">
-            <.dropdown_menu id={"app-role-#{app.id}-#{row.user.id}"}>
-              <:trigger>
-                <span class={[
-                  "inline-flex h-7 items-center gap-1.5 rounded-md border border-input bg-background px-2 font-mono text-xs transition-colors hover:bg-accent",
-                  app_role(@assignments, row.user.id, app.id) != "user" && "text-primary"
-                ]}>
-                  {app_role(@assignments, row.user.id, app.id)}
-                  <span class="lucide-chevron-down size-3 block" />
-                </span>
-              </:trigger>
-              <.menu_item
-                :for={role <- app.allowed_roles || ["user", "admin"]}
-                phx-click="save_app_role"
-                phx-value-app_id={app.id}
-                phx-value-user_id={row.user.id}
-                phx-value-role={role}
-              >
-                {role}
-              </.menu_item>
-            </.dropdown_menu>
+          <td
+            :for={app <- @apps}
+            class={[
+              "px-3 py-2 font-mono text-xs",
+              app_role(@assignments, row.user.id, app.id) != "user" && "text-primary"
+            ]}
+          >
+            {app_role(@assignments, row.user.id, app.id)}
           </td>
           <td class="px-3 py-2 text-right">
             <div class="flex items-center justify-end gap-1">
+              <button
+                type="button"
+                phx-click="edit_user"
+                phx-value-id={row.user.id}
+                class="rounded px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              >
+                Edit
+              </button>
               <button
                 :if={row.user.id != @current_scope.user.id}
                 type="button"
@@ -711,6 +710,64 @@ defmodule YouWeb.ConsoleLive do
           </td>
         </tr>
       </.data_table>
+
+      <.dialog id="edit-user" open={@editing_user != nil} on_close="cancel_edit_user">
+        <:title>{@editing_user && @editing_user.email}</:title>
+        <:description>Roles for this user on You and per app.</:description>
+        <div :if={@editing_user} class="space-y-4">
+          <div class="flex items-center justify-between gap-4 text-sm">
+            <span class="text-muted-foreground">You</span>
+            <.dropdown_menu id="edit-you-role" align="end">
+              <:trigger>
+                <span class="inline-flex h-8 items-center gap-1.5 rounded-md border border-input bg-background px-2.5 font-mono text-xs transition-colors hover:bg-accent">
+                  {if @editing_user.is_admin, do: "admin", else: "user"}
+                  <span class="lucide-chevron-down size-3 block" />
+                </span>
+              </:trigger>
+              <.menu_item
+                phx-click="set_you_role"
+                phx-value-user_id={@editing_user.id}
+                phx-value-role="user"
+              >
+                user
+              </.menu_item>
+              <.menu_item
+                phx-click="set_you_role"
+                phx-value-user_id={@editing_user.id}
+                phx-value-role="admin"
+              >
+                admin
+              </.menu_item>
+            </.dropdown_menu>
+          </div>
+          <div
+            :for={app <- @apps}
+            class="flex items-center justify-between gap-4 text-sm"
+          >
+            <span class="text-muted-foreground">{app.name}</span>
+            <.dropdown_menu id={"edit-app-role-#{app.id}"} align="end">
+              <:trigger>
+                <span class="inline-flex h-8 items-center gap-1.5 rounded-md border border-input bg-background px-2.5 font-mono text-xs transition-colors hover:bg-accent">
+                  {app_role(@assignments, @editing_user.id, app.id)}
+                  <span class="lucide-chevron-down size-3 block" />
+                </span>
+              </:trigger>
+              <.menu_item
+                :for={role <- app.allowed_roles || ["user", "admin"]}
+                phx-click="save_app_role"
+                phx-value-app_id={app.id}
+                phx-value-user_id={@editing_user.id}
+                phx-value-role={role}
+              >
+                {role}
+              </.menu_item>
+            </.dropdown_menu>
+          </div>
+        </div>
+        <:footer>
+          <.button variant="outline" phx-click="cancel_edit_user">Done</.button>
+        </:footer>
+      </.dialog>
     </div>
     """
   end
