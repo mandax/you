@@ -10,7 +10,7 @@ defmodule YouWeb.ConsoleLive do
   """
   use YouWeb, :live_view
 
-  alias You.{Admin, Organizations, Accounts, Settings}
+  alias You.{Admin, Organizations, Accounts, Settings, Webhooks}
   alias You.Audit.Streamer
 
   @nav [
@@ -19,6 +19,7 @@ defmodule YouWeb.ConsoleLive do
     %{id: "apps", label: "Apps", icon: "lucide-boxes"},
     %{id: "orgs", label: "Organizations", icon: "lucide-building-2"},
     %{id: "audit", label: "Audit Log", icon: "lucide-scroll-text"},
+    %{id: "webhooks", label: "Webhooks", icon: "lucide-webhook"},
     %{id: "settings", label: "Settings", icon: "lucide-settings"}
   ]
 
@@ -58,6 +59,8 @@ defmodule YouWeb.ConsoleLive do
        selected_org: nil,
        members: [],
        audit_filter: "",
+       webhook_secret: nil,
+       webhook_endpoint: nil,
        base_url: YouWeb.Endpoint.url(),
        oidc_providers:
          Application.get_env(:you, :oidc_providers, %{}) |> Map.keys() |> Enum.sort(),
@@ -227,6 +230,57 @@ defmodule YouWeb.ConsoleLive do
     {:noreply, assign(socket, :audit_filter, filter)}
   end
 
+  # ── webhooks ──────────────────────────────────────────────────
+  def handle_event("create_webhook", params, socket) do
+    events = Map.get(params, "events", %{})
+
+    attrs = %{
+      "url" => params["url"],
+      "events" => for({event, "true"} <- events, do: event)
+    }
+
+    case Webhooks.create_endpoint(attrs) do
+      {:ok, endpoint} ->
+        audit_admin(socket, "create_webhook", endpoint.url)
+
+        {:noreply,
+         socket
+         |> load_data()
+         |> assign(webhook_secret: endpoint.secret, webhook_endpoint: endpoint)}
+
+      {:error, changeset} ->
+        {:noreply, put_flash(socket, :error, "Could not create endpoint: #{errors(changeset)}")}
+    end
+  end
+
+  def handle_event("toggle_webhook", %{"id" => id}, socket) do
+    endpoint = Webhooks.get_endpoint!(id)
+    {:ok, _} = Webhooks.update_endpoint(endpoint, %{"enabled" => !endpoint.enabled})
+    {:noreply, load_data(socket)}
+  end
+
+  def handle_event("rotate_webhook_secret", %{"id" => id}, socket) do
+    endpoint = Webhooks.get_endpoint!(id)
+    {:ok, rotated} = Webhooks.rotate_secret(endpoint)
+    audit_admin(socket, "rotate_webhook_secret", endpoint.url)
+
+    {:noreply,
+     socket
+     |> load_data()
+     |> assign(webhook_secret: rotated.secret, webhook_endpoint: rotated)}
+  end
+
+  def handle_event("delete_webhook", %{"id" => id}, socket) do
+    endpoint = Webhooks.get_endpoint!(id)
+    {:ok, _} = Webhooks.delete_endpoint(endpoint)
+    audit_admin(socket, "delete_webhook", endpoint.url)
+    {:noreply, socket |> load_data() |> put_flash(:info, "Endpoint deleted.")}
+  end
+
+  def handle_event("dismiss_webhook_secret", _params, socket) do
+    {:noreply, assign(socket, webhook_secret: nil, webhook_endpoint: nil)}
+  end
+
   def handle_event("save_settings", params, socket) do
     Enum.each(@settings_fields, fn %{key: key} ->
       raw = params[Atom.to_string(key)]
@@ -270,7 +324,8 @@ defmodule YouWeb.ConsoleLive do
       users: Admin.list_users_with_stats(),
       apps: Admin.list_apps(),
       orgs: Organizations.list_organizations_with_counts(),
-      events: Streamer.recent()
+      events: Streamer.recent(),
+      endpoints: Webhooks.list_endpoints()
     )
     |> assign(members: if(org, do: Organizations.list_members(org), else: []))
   end
@@ -377,6 +432,13 @@ defmodule YouWeb.ConsoleLive do
               <.orgs_view orgs={@orgs} selected={@selected_org} members={@members} roles={@roles} />
             <% "audit" -> %>
               <.audit_view events={@events} audit_filter={@audit_filter} />
+            <% "webhooks" -> %>
+              <.webhooks_view
+                endpoints={@endpoints}
+                events={Webhooks.events()}
+                webhook_secret={@webhook_secret}
+                webhook_endpoint={@webhook_endpoint}
+              />
             <% "settings" -> %>
               <.settings_view
                 settings={@settings}
@@ -830,6 +892,139 @@ defmodule YouWeb.ConsoleLive do
   defp audit_matches?(event, filter) do
     haystack = String.downcase("#{event.event} #{brief(event.metadata)}")
     String.contains?(haystack, String.downcase(filter))
+  end
+
+  # ── section: webhooks ─────────────────────────────────────────
+  attr :endpoints, :list, required: true
+  attr :events, :list, required: true
+  attr :webhook_secret, :string, default: nil
+  attr :webhook_endpoint, :map, default: nil
+
+  defp webhooks_view(assigns) do
+    ~H"""
+    <div class="space-y-4">
+      <p class="font-mono text-xs text-muted-foreground">
+        signed outbound webhooks · retries 3 times · secret shown once after create or rotate
+      </p>
+
+      <div class="rounded-lg border border-border bg-card p-5">
+        <div class="flex items-center gap-2 text-sm font-medium">
+          <span class="lucide-webhook size-4 block text-primary" /> Add endpoint
+        </div>
+        <form phx-submit="create_webhook" class="mt-4 space-y-3">
+          <.base_input
+            type="url"
+            name="url"
+            placeholder="https://your-service.example/hooks/you"
+            required
+            class="h-8 font-mono text-xs"
+          />
+          <div class="flex flex-wrap gap-x-4 gap-y-2">
+            <label
+              :for={event <- @events}
+              class="flex items-center gap-1.5 font-mono text-xs text-muted-foreground"
+            >
+              <input
+                type="checkbox"
+                name={"events[#{event}]"}
+                value="true"
+                class="size-3.5 rounded border-input accent-[hsl(var(--primary))]"
+              />
+              {event}
+            </label>
+          </div>
+          <.button type="submit" class="mt-2">Create endpoint</.button>
+        </form>
+      </div>
+
+      <.data_table cols={~w(URL Events Status Created) ++ [""]} empty={@endpoints == []}>
+        <tr
+          :for={endpoint <- @endpoints}
+          class="border-b border-border/60 transition-colors last:border-0 hover:bg-muted/40"
+        >
+          <td class="max-w-[16rem] truncate px-3 py-2 font-mono text-xs text-foreground/90">
+            {endpoint.url}
+          </td>
+          <td class="px-3 py-2">
+            <div class="flex max-w-xs flex-wrap gap-1">
+              <span
+                :for={event <- endpoint.events}
+                class="rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground"
+              >
+                {event}
+              </span>
+            </div>
+          </td>
+          <td class="px-3 py-2">
+            <button
+              type="button"
+              phx-click="toggle_webhook"
+              phx-value-id={endpoint.id}
+              class={[
+                "rounded-full px-2 py-0.5 font-mono text-[11px] transition-colors",
+                if(endpoint.enabled,
+                  do: "bg-signal-ok/15 text-signal-ok",
+                  else: "bg-muted text-muted-foreground"
+                )
+              ]}
+            >
+              {if endpoint.enabled, do: "enabled", else: "disabled"}
+            </button>
+          </td>
+          <td class="px-3 py-2 text-right font-mono text-xs tabular-nums text-muted-foreground">
+            {Calendar.strftime(endpoint.inserted_at, "%Y-%m-%d")}
+          </td>
+          <td class="px-3 py-2 text-right">
+            <div class="flex items-center justify-end gap-1">
+              <button
+                type="button"
+                phx-click="rotate_webhook_secret"
+                phx-value-id={endpoint.id}
+                data-confirm="Rotate the signing secret? Deliveries signed with the old secret will fail verification."
+                class="rounded px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              >
+                Rotate secret
+              </button>
+              <button
+                type="button"
+                phx-click="delete_webhook"
+                phx-value-id={endpoint.id}
+                data-confirm={"Delete endpoint #{endpoint.url}?"}
+                class="rounded px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-destructive hover:text-destructive-foreground"
+              >
+                Delete
+              </button>
+            </div>
+          </td>
+        </tr>
+      </.data_table>
+
+      <.dialog
+        id="webhook-secret"
+        open={@webhook_secret != nil}
+        on_close="dismiss_webhook_secret"
+      >
+        <:title>Signing secret</:title>
+        <:description>
+          Copy this now — deliveries are signed with it and it is never shown again.
+        </:description>
+        <div :if={@webhook_secret} class="space-y-3">
+          <div class="rounded-md border border-border bg-background px-3 py-2 font-mono text-xs break-all text-primary">
+            {@webhook_secret}
+          </div>
+          <div class="flex items-center justify-between">
+            <span :if={@webhook_endpoint} class="font-mono text-xs text-muted-foreground">
+              {@webhook_endpoint.url}
+            </span>
+            <.copy_button id="copy-webhook-secret" value={@webhook_secret} label="Copy secret" />
+          </div>
+        </div>
+        <:footer>
+          <.button variant="outline" phx-click="dismiss_webhook_secret">Done</.button>
+        </:footer>
+      </.dialog>
+    </div>
+    """
   end
 
   # ── section: settings ─────────────────────────────────────────
