@@ -535,12 +535,12 @@ defmodule YouWeb.ConsoleLive do
   defp users_view(assigns) do
     assigns =
       assign(assigns,
-        filtered: filter_users(assigns.users, assigns.filters, assigns.apps, assigns.assignments)
+        filtered: filter_users(assigns.users, assigns.filters, assigns.assignments)
       )
 
     ~H"""
     <div class="space-y-4">
-      <div class="flex flex-wrap items-center justify-between gap-3">
+      <div class="flex flex-wrap items-center gap-3">
         <span class="font-mono text-xs text-muted-foreground">
           <span class="text-foreground">{length(@filtered)}</span> of {length(@users)} users
         </span>
@@ -595,25 +595,30 @@ defmodule YouWeb.ConsoleLive do
               You: user
             </.menu_item>
           </.filter_dropdown>
-          <.filter_dropdown
-            :for={app <- @apps}
-            id={"filter-app-#{app.id}"}
-            label={app_filter_label(@filters["app_#{app.id}"], app.name)}
-          >
-            <.menu_item
-              phx-click="filter_users"
-              phx-value-filter_key={"app_#{app.id}"}
-              phx-value-value=""
-            >
-              {app.name}: any
+          <.filter_dropdown id="filter-app" label={app_label(@filters["app"], @apps)}>
+            <.menu_item phx-click="filter_users" phx-value-filter_key="app" phx-value-value="">
+              any app
             </.menu_item>
             <.menu_item
-              :for={role <- app.allowed_roles || ["user", "admin"]}
+              :for={app <- @apps}
               phx-click="filter_users"
-              phx-value-filter_key={"app_#{app.id}"}
+              phx-value-filter_key="app"
+              phx-value-value={to_string(app.id)}
+            >
+              {app.name}
+            </.menu_item>
+          </.filter_dropdown>
+          <.filter_dropdown id="filter-role" label={filter_label(@filters["role"], "any role")}>
+            <.menu_item phx-click="filter_users" phx-value-filter_key="role" phx-value-value="">
+              any role
+            </.menu_item>
+            <.menu_item
+              :for={role <- all_roles(@apps)}
+              phx-click="filter_users"
+              phx-value-filter_key="role"
               phx-value-value={role}
             >
-              {app.name}: {role}
+              {role}
             </.menu_item>
           </.filter_dropdown>
         </div>
@@ -732,20 +737,32 @@ defmodule YouWeb.ConsoleLive do
   defp filter_label("", default), do: default
   defp filter_label(value, _default), do: value
 
-  defp app_filter_label(nil, app_name), do: "#{app_name}: any"
-  defp app_filter_label("", app_name), do: "#{app_name}: any"
-  defp app_filter_label(role, app_name), do: "#{app_name}: #{role}"
+  defp app_label(nil, _apps), do: "any app"
+  defp app_label("", _apps), do: "any app"
+
+  defp app_label(id, apps) do
+    case Enum.find(apps, &(to_string(&1.id) == id)) do
+      nil -> "any app"
+      app -> app.name
+    end
+  end
+
+  defp all_roles(apps) do
+    apps
+    |> Enum.flat_map(&(&1.allowed_roles || ["user", "admin"]))
+    |> Enum.uniq()
+  end
 
   defp app_role(assignments, user_id, app_id) do
     get_in(assignments, [user_id, app_id]) || "user"
   end
 
-  defp filter_users(users, filters, apps, assignments) do
+  defp filter_users(users, filters, assignments) do
     Enum.filter(users, fn row ->
       email_match?(row.user, filters["email"]) and
         status_match?(row.user, filters["status"]) and
         you_role_match?(row.user, filters["you_role"]) and
-        app_roles_match?(row.user, filters, apps, assignments)
+        app_roles_match?(row.user, filters, assignments)
     end)
   end
 
@@ -765,15 +782,29 @@ defmodule YouWeb.ConsoleLive do
   defp you_role_match?(user, "admin"), do: user.is_admin
   defp you_role_match?(user, "user"), do: not user.is_admin
 
-  defp app_roles_match?(user, filters, apps, assignments) do
-    Enum.all?(apps, fn app ->
-      case filters["app_#{app.id}"] do
-        nil -> true
-        "" -> true
-        role -> app_role(assignments, user.id, app.id) == role
-      end
-    end)
+  defp app_roles_match?(user, filters, assignments) do
+    app_id = present(filters["app"])
+    role = present(filters["role"])
+    user_roles = Map.get(assignments, user.id, %{})
+
+    cond do
+      app_id && role ->
+        Map.get(user_roles, String.to_integer(app_id)) == role
+
+      app_id ->
+        Map.has_key?(user_roles, String.to_integer(app_id))
+
+      role ->
+        role in Map.values(user_roles)
+
+      true ->
+        true
+    end
   end
+
+  defp present(nil), do: nil
+  defp present(""), do: nil
+  defp present(value), do: value
 
   # ── section: apps ─────────────────────────────────────────────
   attr :apps, :list, required: true

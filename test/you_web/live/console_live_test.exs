@@ -176,6 +176,25 @@ defmodule YouWeb.ConsoleLiveTest do
 
       refute html =~ "findme@example.com"
     end
+
+    test "app and role filters compose", %{conn: conn, admin: admin} do
+      {:ok, app, _secret} =
+        Admin.create_app(%{
+          "name" => "Combo App",
+          "slug" => "combo-app",
+          "callback_url" => "https://combo.example.com/cb"
+        })
+
+      other = You.AccountsFixtures.user_fixture()
+      {:ok, _} = You.Roles.set_role(app, admin, "admin")
+      {:ok, lv, _} = live(conn, "/console?view=users")
+
+      render_click(lv, "filter_users", %{"filter_key" => "app", "value" => to_string(app.id)})
+      html = render_click(lv, "filter_users", %{"filter_key" => "role", "value" => "admin"})
+
+      assert html =~ admin.email
+      refute html =~ other.email
+    end
   end
 
   describe "app roles" do
