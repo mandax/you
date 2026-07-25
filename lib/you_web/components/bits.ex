@@ -89,7 +89,7 @@ defmodule YouWeb.Components.Bits do
     ~H"""
     <div class={
       cx([
-        "mb-3 inline-flex items-center gap-2 font-mono text-xs uppercase tracking-widest text-azure-brand",
+        "mb-3 inline-flex items-center gap-2 font-mono text-xs tracking-widest text-azure-brand",
         @class
       ])
     }>

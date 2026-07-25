@@ -37,17 +37,7 @@
     </div>
   </section>
 
-  <%!-- ── connect sample: highlighted, no window chrome ── --%>
-  <div class="relative z-10 mx-auto -mt-16 max-w-3xl px-5">
-    <div class="animate-rise-in overflow-hidden rounded-xl border border-border bg-card shadow-2xl shadow-primary/10 [animation-delay:80ms]">
-      <div class="border-b border-border px-4 py-2 font-mono text-xs text-muted-foreground">
-        connect.ex
-      </div>
-      <.highlighted_code code={YouWeb.LandingContent.connect_sample()} />
-    </div>
-  </div>
-
-  <div class="mt-10 border-y border-border bg-card/40">
+  <div class="border-y border-border bg-card/40">
     <div class="mx-auto flex max-w-6xl flex-wrap items-center justify-center gap-x-6 gap-y-1 px-5 py-3 text-center font-mono text-sm text-muted-foreground">
       <%= for {item, i} <- Enum.with_index(YouWeb.LandingContent.trust_strip()) do %>
         <span :if={i > 0} class="text-border">·</span>
@@ -71,55 +61,33 @@
     </div>
   </section>
 
-  <%!-- ── security / threat model ────────────────────────────────── --%>
-  <section id="security" class="border-b border-border py-20">
+  <%!-- ── console / operations ────────────────────────────────── --%>
+  <section id="console" class="border-b border-border py-20">
     <div class="mx-auto max-w-6xl px-5">
-      <.eyebrow>01 · Security</.eyebrow>
+      <.eyebrow>01 · The console</.eyebrow>
       <h2 class="max-w-2xl text-3xl font-bold tracking-tight">
-        Identity is the perimeter. Treat it like one.
+        Identity you can actually operate.
       </h2>
       <p class="mt-3 max-w-2xl text-muted-foreground">
-        Every app you connect trusts whatever sits behind the login button. These are the concrete
-        things attackers try against identity systems — and what You stops before it happens.
+        You ships with a management console out of the box. Register apps, manage users
+        and orgs, watch the audit trail live, and tune the instance. No YAML, no restarts.
       </p>
 
-      <div class="mt-10 grid gap-4 lg:grid-cols-2">
-        <div class="rounded-xl border border-border bg-card p-6">
-          <div class="flex items-center gap-2 text-signal-down">
-            <span class="lucide-x size-4 block" />
-            <h3 class="text-sm font-semibold uppercase tracking-wide">
-              What attackers try
-            </h3>
-          </div>
-          <ul class="mt-4 space-y-3 text-sm text-muted-foreground">
-            <li :for={trick <- YouWeb.LandingContent.tricks()} class="flex items-start gap-2.5">
-              <span class="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-signal-down/70" />
-              {trick}
-            </li>
-          </ul>
-        </div>
-
-        <div class="rounded-xl border border-border bg-card p-6">
-          <div class="flex items-center gap-2 text-signal-ok">
-            <span class="lucide-shield size-4 block" />
-            <h3 class="text-sm font-semibold uppercase tracking-wide">What You does</h3>
-          </div>
-          <ul class="mt-4 space-y-4">
-            <li :for={block <- YouWeb.LandingContent.blocks()} class="flex items-start gap-2.5">
-              <span class="lucide-check mt-0.5 size-4 block shrink-0 text-signal-ok" />
-              <div>
-                <div class="text-sm font-medium text-foreground">{block.title}</div>
-                <p class="mt-0.5 text-sm leading-relaxed text-muted-foreground">{block.body}</p>
-              </div>
-            </li>
-          </ul>
+      <div class="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div
+          :for={feature <- YouWeb.LandingContent.console_features()}
+          class="rounded-xl border border-border bg-card p-5 transition-colors hover:border-primary/40"
+        >
+          <span class={[feature.icon, "size-5 block text-magenta-brand"]} />
+          <h3 class="mt-3 text-sm font-semibold">{feature.title}</h3>
+          <p class="mt-1.5 text-sm leading-relaxed text-muted-foreground">{feature.body}</p>
         </div>
       </div>
     </div>
   </section>
 
   <%!-- ── security pillars ───────────────────────────────────────── --%>
-  <section class="border-b border-border bg-card/30 py-20">
+  <section id="security" class="border-b border-border bg-card/30 py-20">
     <div class="mx-auto max-w-6xl px-5">
       <.eyebrow>02 · Built in, not bolted on</.eyebrow>
       <h2 class="max-w-2xl text-3xl font-bold tracking-tight">
@@ -141,7 +109,7 @@
   <%!-- ── when hosted auth is right ───────────────────────────────── --%>
   <section class="border-b border-border py-20">
     <div class="mx-auto max-w-6xl px-5">
-      <.eyebrow>03 · When not to use You</.eyebrow>
+      <.eyebrow>03 · When not to use <span class="text-magenta-brand">You</span></.eyebrow>
       <h2 class="max-w-2xl text-3xl font-bold tracking-tight">
         Sometimes hosted auth is the right call.
       </h2>

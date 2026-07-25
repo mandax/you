@@ -41,33 +41,40 @@ defmodule YouWeb.LandingContent do
     ]
   end
 
-  def tricks do
-    [
-      "Credential stuffing against a login endpoint with no rate limit.",
-      "Session fixation across an app that never rotates its cookie.",
-      "Account takeover on a login with no second factor.",
-      "Replaying a stolen or leaked access token after it should be dead.",
-      "Reading admin access no one is watching in an audit log."
-    ]
-  end
-
-  def blocks do
+  def console_features do
     [
       %{
-        title: "Hardened, rate-limited login",
-        body: "Bcrypt-hashed passwords behind a login endpoint that throttles repeated failures."
+        icon: "lucide-key-round",
+        title: "Apps & client secrets",
+        body: "Register consumer apps, issue one-time client secrets, rotate them anytime."
       },
       %{
-        title: "TOTP 2FA + recovery codes",
-        body: "A second factor with backup codes for when the authenticator app is unreachable."
+        icon: "lucide-users",
+        title: "Users & roles",
+        body: "Promote admins, force a user logged out everywhere, anonymize on request."
       },
       %{
-        title: "Single-use, 5-minute auth codes",
-        body: "The redirect handshake issues a code that expires fast and burns on first use."
+        icon: "lucide-building-2",
+        title: "Organizations",
+        body: "Group users into orgs with per-member roles, ready for team billing later."
       },
       %{
-        title: "JTI revocation",
-        body: "Every JWT carries a tracked ID — revoke one token without invalidating the rest."
+        icon: "lucide-scroll-text",
+        title: "Live audit trail",
+        body:
+          "Every login, grant and admin action lands in a readable stream you can filter and forward to a webhook."
+      },
+      %{
+        icon: "lucide-settings",
+        title: "Instance settings",
+        body:
+          "Node name, distribution cookie, SCIM token, token lifetimes. No restarts, no config files."
+      },
+      %{
+        icon: "lucide-ticket-check",
+        title: "Sessions & tokens",
+        body:
+          "Short-lived JWTs with per-token revocation by JTI. Kill one session without touching the rest."
       }
     ]
   end

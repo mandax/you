@@ -32,12 +32,23 @@ defmodule YouWeb.Components.SiteChrome do
       <div class="mx-auto flex h-14 max-w-6xl items-center justify-between px-5">
         <.wordmark />
         <nav class="hidden items-center gap-6 text-sm text-muted-foreground md:flex">
-          <.link href="/#security" class="hover:text-foreground">Security</.link>
+          <.link href="/#console" class="hover:text-foreground">Console</.link>
+          <.link href="/#security" class="hover:text-foreground">Features</.link>
           <.link href="/#comparison" class="hover:text-foreground">Compare</.link>
           <.link href="/#pricing" class="hover:text-foreground">Self-host</.link>
           <.link href="/#faq" class="hover:text-foreground">FAQ</.link>
         </nav>
         <div class="flex items-center gap-2">
+          <button
+            id="theme-toggle"
+            type="button"
+            phx-hook="ThemeToggle"
+            aria-label="Toggle dark mode"
+            class="rounded-md p-2 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          >
+            <span class="lucide-moon block size-4 dark:hidden" />
+            <span class="lucide-sun hidden size-4 dark:block" />
+          </button>
           <.button :if={@current_scope} size="sm" navigate={~p"/users/dashboard"}>Dashboard</.button>
           <.button :if={!@current_scope} size="sm" href="/#pricing">Self-host You</.button>
         </div>
@@ -55,8 +66,7 @@ defmodule YouWeb.Components.SiteChrome do
         <div>
           <.wordmark />
           <p class="mt-3 max-w-xs text-sm text-muted-foreground">
-            Self-hosted identity for the BEAM — one login your Elixir apps connect to over Erlang
-            distribution.
+            Self-hosted identity, standard OIDC. One login for every service you run.
           </p>
           <div class="mt-3 flex items-center gap-2 font-mono text-xs text-muted-foreground">
             <span class="lucide-server size-3.5 block" /> free community image · v0.1.0
