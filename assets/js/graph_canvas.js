@@ -43,7 +43,7 @@ function startGraphCanvas(canvas) {
       edge: hsl("--brand-azure", "210 90% 52%"),
       node: hsl("--brand-azure", "210 90% 52%"),
       hub: hsl("--brand-magenta", "330 85% 55%"),
-      pulse: hsl("--brand-lime", "90 75% 40%")
+      pulse: hsl("--foreground", "250 20% 96%")
     }
     state.dark = document.documentElement.classList.contains("dark")
   }
