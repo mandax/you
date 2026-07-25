@@ -1,7 +1,7 @@
 defmodule You.Accounts.PwnedPasswords do
   @moduledoc """
   Checks a password against Have I Been Pwned's Pwned Passwords range API using
-  k-anonymity: only the first five hex chars of the password's SHA-1 are sent —
+  k-anonymity: only the first five hex chars of the password's SHA-1 are sent,
   never the password or its full hash. The API returns every suffix under that
   prefix with a breach count; we match ours locally.
 

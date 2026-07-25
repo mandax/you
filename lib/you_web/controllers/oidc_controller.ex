@@ -58,12 +58,12 @@ defmodule YouWeb.OIDCController do
 
   Handles two grants:
 
-    * `authorization_code` — exchanges an authorization code (with optional
+    * `authorization_code`: exchanges an authorization code (with optional
       PKCE `code_verifier`) for an access token, id_token, and refresh token.
       This is the HTTP twin of the Erlang-distribution `exchange_code` call
       on `You.IAM.Server`. The `grant_type` parameter may be omitted for
       backward compatibility.
-    * `refresh_token` — rotates a refresh token (single-use) and issues a
+    * `refresh_token`: rotates a refresh token (single-use) and issues a
       fresh token set for the same user and scopes.
   """
   def create_token(conn, %{"grant_type" => "refresh_token"} = params) do

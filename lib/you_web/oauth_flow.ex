@@ -96,7 +96,7 @@ defmodule YouWeb.OAuthFlow do
   and clears the one-shot flow session keys.
 
   `state` is passed in, not read from the session: login renews the session
-  (anti-fixation) before this runs, which wipes it — callers capture it first.
+  (anti-fixation) before this runs, which wipes it; callers capture it first.
   """
   def redirect_with_code(conn, callback_url, code, state) do
     query =

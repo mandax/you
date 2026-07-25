@@ -4,7 +4,7 @@ defmodule You.Audit.Streamer do
 
   Attaches to `[:you, :audit, ...]` telemetry events and, when
   `config :you, :audit_webhook_url` is set to a non-empty string,
-  POSTs them as JSON to that URL. Fire-and-forget — failures are
+  POSTs them as JSON to that URL. Fire-and-forget: failures are
   logged but never affect the application.
 
   Disabled by default (config value is `nil`). Enable by setting:
@@ -61,10 +61,10 @@ defmodule You.Audit.Streamer do
   @doc """
   Returns the most recent audit events (newest first), capped at #{@max_recent}.
 
-  In-memory only — this is a live activity view, not a durable log. Durable
+  In-memory only: this is a live activity view, not a durable log. Durable
   retention is the job of the outbound webhook (`reload/0`).
 
-  Degrades to `[]` if the streamer process is unavailable — a live activity
+  Degrades to `[]` if the streamer process is unavailable; a live activity
   view must never take down the page that shows it.
   """
   def recent do

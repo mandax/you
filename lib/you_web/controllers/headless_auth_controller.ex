@@ -4,7 +4,7 @@ defmodule YouWeb.HeadlessAuthController do
   `You.IAM.Server.password_login/3`, for non-BEAM consumers).
 
   The app authenticates the end user from its own UI and receives a token
-  bundle directly — no redirect, no You-branded page. The app itself is
+  bundle directly: no redirect, no You-branded page. The app itself is
   authenticated by its `client_id` + `client_secret` (HTTP Basic, or in the
   body), and must be flagged `first_party`.
   """

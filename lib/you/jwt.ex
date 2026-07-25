@@ -14,8 +14,8 @@ defmodule You.JWT do
         }
 
   With no `:keys` configured, a key is generated on first call and cached in
-  application env under the default kid `"you-ed25519-v1"` — fine for dev, but
-  tokens stop verifying after a restart. Configure persistent keys for
+  application env under the default kid `"you-ed25519-v1"`, which is fine for
+  dev, but tokens stop verifying after a restart. Configure persistent keys for
   production.
 
   ## Rotation
@@ -28,7 +28,7 @@ defmodule You.JWT do
      (see `You.Settings` `:jwt_expiry_hours`), then drop it. JWKS only ever
      exposes the public parts, so consumers pick up new keys automatically.
 
-  Legacy tokens signed before kids existed carry no `kid` header — those are
+  Legacy tokens signed before kids existed carry no `kid` header; those are
   verified against every key in the store.
   """
 

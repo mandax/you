@@ -1,6 +1,6 @@
 defmodule You.Organizations do
   @moduledoc """
-  The Organizations context — multi-tenancy primitives.
+  The Organizations context: multi-tenancy primitives.
 
   Users can belong to organizations with a role (owner / admin / member).
   """

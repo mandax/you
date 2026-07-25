@@ -127,7 +127,7 @@ defmodule You.Admin do
 
   @doc """
   Bootstraps the first admin user. Creates the user if needed, sets is_admin.
-  Idempotent — returns `{:ok, user}` if already an admin.
+  Idempotent: returns `{:ok, user}` if already an admin.
   """
   def bootstrap_admin(email, password) do
     user =

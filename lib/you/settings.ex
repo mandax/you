@@ -3,15 +3,15 @@ defmodule You.Settings do
   Reads and caches instance configuration from the `settings` table.
 
   Defaults:
-  - `session_expiry_hours` — 24
-  - `jwt_expiry_hours` — 1
-  - `code_expiry_minutes` — 5
-  - `magic_link_expiry_minutes` — 15
-  - `erlang_cookie` — ""
-  - `erlang_node_name` — "you@you.example.com"
-  - `epmd_port` — 4369
-  - `scim_bearer_token` — ""
-  - `audit_webhook_url` — ""
+  - `session_expiry_hours`: 24
+  - `jwt_expiry_hours`: 1
+  - `code_expiry_minutes`: 5
+  - `magic_link_expiry_minutes`: 15
+  - `erlang_cookie`: ""
+  - `erlang_node_name`: "you@you.example.com"
+  - `epmd_port`: 4369
+  - `scim_bearer_token`: ""
+  - `audit_webhook_url`: ""
   """
 
   alias You.Settings.Setting
@@ -53,7 +53,7 @@ defmodule You.Settings do
   end
 
   @doc """
-  Sets a setting value. Upserts — creates if missing, updates if exists.
+  Sets a setting value. Upserts: creates if missing, updates if exists.
   Accepts both integers and strings.
   """
   def set(key, value) when is_atom(key) and is_integer(value) do

@@ -3,7 +3,7 @@ defmodule You.Webhooks.Endpoint do
   An outbound webhook endpoint: a URL that receives signed JSON
   deliveries for a subscribed set of events.
 
-  The `secret` is stored in plaintext — it is the shared key used to
+  The `secret` is stored in plaintext; it is the shared key used to
   compute the `you-signature` HMAC on every delivery, so it cannot be
   hashed at rest. The console only displays it once, right after
   creation or rotation.

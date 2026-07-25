@@ -2,7 +2,7 @@ defmodule YouWeb.Components.Base.Input do
   @moduledoc """
   Text input primitive.
 
-  Deliberately thin — no label, no error slot, no form coupling. It is the
+  Deliberately thin: no label, no error slot, no form coupling. It is the
   styled `<input>` the client has. Form-aware inputs belong in
   `YouWeb.CoreComponents`, which can wrap this.
 

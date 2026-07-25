@@ -51,7 +51,7 @@ defmodule YouWeb.Plugs.ManagementAuth do
   end
 
   # secure_compare/2 raises on length mismatch, which would leak the
-  # configured token length as a 500 — compare lengths first.
+  # configured token length as a 500, so compare lengths first.
   defp secure_compare(token, configured_token) do
     byte_size(token) == byte_size(configured_token) and
       Plug.Crypto.secure_compare(token, configured_token)

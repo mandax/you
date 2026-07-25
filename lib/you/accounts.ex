@@ -102,7 +102,7 @@ defmodule You.Accounts do
   Registers a user with email and password, confirmed immediately.
 
   Used by the management API: an operator-created account must be usable
-  right away, without the magic-link confirmation round-trip. Atomic —
+  right away, without the magic-link confirmation round-trip. Atomic:
   either the whole account exists or nothing does.
 
   Returns `{:ok, user}` or `{:error, changeset}`.
@@ -407,7 +407,7 @@ defmodule You.Accounts do
   Pass `code_challenge` (base64url SHA-256 of the client's code_verifier) to
   bind the code to a PKCE verifier that must be presented at exchange time.
 
-  Pass `app_slug` when the code is issued for a known app — it is returned by
+  Pass `app_slug` when the code is issued for a known app; it is returned by
   `consume_auth_code/2` and drives per-app role claims in the issued JWT.
   """
   def generate_auth_code(%User{} = user, scopes \\ nil, code_challenge \\ nil, app_slug \\ nil) do
@@ -421,7 +421,7 @@ defmodule You.Accounts do
 
   When the code was issued with a PKCE `code_challenge`, `code_verifier` is
   required and must satisfy `base64url(sha256(code_verifier)) == code_challenge`;
-  otherwise the code is rejected. The code is single-use — it is always deleted
+  otherwise the code is rejected. The code is single-use; it is always deleted
   once found, so a failed verification cannot be retried.
 
   Returns `{:ok, user, scopes}`, `{:error, :invalid_grant}` (PKCE failure), or
@@ -764,7 +764,7 @@ defmodule You.Accounts do
   @doc """
   Revokes all access the user granted to a given app.
 
-  Deletes the user's consent row(s) for the app. Scoped to the user —
+  Deletes the user's consent row(s) for the app. Scoped to the user;
   other users' consents for the same app are untouched.
 
   Returns `{count, nil}` where count is the number of consents deleted.
@@ -806,7 +806,7 @@ defmodule You.Accounts do
   - If a user with the given email already exists, links the federated identity
     to that user **only when the IdP asserts the email is verified**. Linking to
     a pre-existing (typically password) account by email alone is an
-    account-takeover vector — an attacker who controls an unverified IdP account
+    account-takeover vector: an attacker who controls an unverified IdP account
     matching a victim's email could otherwise hijack it. Unverified → returns
     `{:error, :email_not_verified}` (the user must link explicitly while logged in).
   - Otherwise, creates a user (confirmed only when the email is verified).
@@ -863,7 +863,7 @@ defmodule You.Accounts do
   end
 
   # A brand-new account has no existing credentials to hijack, so creation is
-  # allowed even for an unverified email — but it stays unconfirmed until proven.
+  # allowed even for an unverified email, but it stays unconfirmed until proven.
   defp insert_federated_user!(email, email_verified) do
     changeset = User.email_changeset(%User{}, %{email: email})
 
@@ -912,7 +912,7 @@ defmodule You.Accounts do
   @doc """
   Deletes a federated identity by id, scoped to the owning user.
 
-  Returns `{count, nil}` — `{1, nil}` when unlinked, `{0, nil}` when the id
+  Returns `{count, nil}`: `{1, nil}` when unlinked, `{0, nil}` when the id
   does not exist or is not owned by this user.
   """
   def delete_user_federated_identity(%User{id: user_id}, id) do
@@ -945,11 +945,11 @@ defmodule You.Accounts do
   Stores a verified WebAuthn credential for the given user.
 
   The `attrs` map may contain:
-    - `:credential_id` — binary credential ID from the authenticator
-    - `:public_key` — COSE key **map** (will be term_to_binary encoded) or already-encoded binary
-    - `:sign_count` — initial sign count (usually 0 or 1)
-    - `:label` — optional human-readable label
-    - `:aaguid` — optional AAGUID from the authenticator
+    - `:credential_id`: binary credential ID from the authenticator
+    - `:public_key`: COSE key **map** (will be term_to_binary encoded) or already-encoded binary
+    - `:sign_count`: initial sign count (usually 0 or 1)
+    - `:label`: optional human-readable label
+    - `:aaguid`: optional AAGUID from the authenticator
 
   Returns `{:ok, %Passkey{}}` or `{:error, %Ecto.Changeset{}}`.
   """

@@ -83,7 +83,7 @@ defmodule YouWeb.Router do
     end
   end
 
-  ## OIDC — public JSON endpoints for standard OpenID Connect discovery and
+  ## OIDC: public JSON endpoints for standard OpenID Connect discovery and
   ## token exchange. These allow non-BEAM consumers to integrate without
   ## Erlang distribution.
 
@@ -103,7 +103,7 @@ defmodule YouWeb.Router do
     post "/oauth/revoke", OIDCController, :revoke
   end
 
-  ## Headless auth API — first-party apps authenticate users directly (no
+  ## Headless auth API: first-party apps authenticate users directly (no
   ## redirect / no You UI). Client-authenticated by client_id + client_secret.
 
   scope "/api/auth", YouWeb do
@@ -120,7 +120,7 @@ defmodule YouWeb.Router do
     end
   end
 
-  ## Management REST API — bearer-token automation for operators (see
+  ## Management REST API: bearer-token automation for operators (see
   ## docs/api.md). Token-authenticated, rate-limited per IP.
 
   pipeline :api_management do
@@ -200,7 +200,7 @@ defmodule YouWeb.Router do
 
     get "/users/log-in", UserSessionController, :new
     # Static /users/log-in/* sub-paths MUST precede the dynamic /:token
-    # (magic-link) route — Phoenix matches in definition order, so otherwise
+    # (magic-link) route. Phoenix matches in definition order, so otherwise
     # e.g. /users/log-in/totp is captured as token="totp".
     get "/users/log-in/totp", UserSessionController, :totp
     get "/users/log-in/email-2fa", UserSessionController, :email_2fa

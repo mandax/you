@@ -2,7 +2,7 @@ defmodule YouWeb.Components.Bits do
   @moduledoc """
   Small presentational pieces shared by the landing page and the console.
 
-  These are deliberately *not* in `YouWeb.Components.Base` — that layer is
+  These are deliberately *not* in `YouWeb.Components.Base`; that layer is
   for behavior-first Base UI primitives. Everything here is pure markup with no
   interaction contract to get right, and several encode You's own semantics
   (what colour "live" is) rather than a generic UI concept.
@@ -80,7 +80,7 @@ defmodule YouWeb.Components.Bits do
   end
 
   @doc """
-  Section eyebrow — the small cyan rule-and-caption above a heading.
+  Section eyebrow: the small cyan rule-and-caption above a heading.
   """
   attr :class, :any, default: nil
   slot :inner_block, required: true

@@ -2,7 +2,7 @@ defmodule YouWeb.Components.Base.Dialog do
   @moduledoc """
   Modal dialog.
 
-  Anatomy follows Base UI — `trigger`, backdrop, popup, close — but the popup is
+  Anatomy follows Base UI (`trigger`, backdrop, popup, close), but the popup is
   a native `<dialog>` opened with `showModal()`. That hands focus trapping,
   Escape-to-close, inertness of the background, and top-layer stacking to the
   platform instead of reimplementing them in JS, which is where hand-rolled
@@ -13,8 +13,8 @@ defmodule YouWeb.Components.Base.Dialog do
 
   Two ways to drive it:
 
-    * **Uncontrolled** — pass a `trigger` slot and the hook wires it up.
-    * **From the server** — omit `trigger` and toggle `open`, e.g. after a
+    * **Uncontrolled**: pass a `trigger` slot and the hook wires it up.
+    * **From the server**: omit `trigger` and toggle `open`, e.g. after a
       `phx-click` sets some assign. Useful when opening depends on loaded data.
 
   `on_close` fires an event when the dialog closes by any route (Escape,

@@ -6,7 +6,7 @@ defmodule Mix.Tasks.You.BootstrapAdmin do
 
       mix you.bootstrap_admin
 
-  Prompts for email and password. Idempotent — if the user is already
+  Prompts for email and password. Idempotent: if the user is already
   an admin, prints a message and exits.
   """
 

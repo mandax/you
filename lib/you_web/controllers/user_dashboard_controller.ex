@@ -5,7 +5,7 @@ defmodule YouWeb.UserDashboardController do
   alias You.Admin
 
   @doc """
-  The signed-in user's account hub — cards for every app the user has
+  The signed-in user's account hub: cards for every app the user has
   granted consent to, linking into the app (where they're already
   authenticated via You).
   """

@@ -7,7 +7,7 @@ defmodule You.Webhooks.Dispatcher do
   `reload/0` whenever `You.Webhooks` mutates them), so deliveries never
   touch the database on the hot path. Each endpoint gets its own delivery
   task with up to 3 attempts (immediate, +2s, +10s); a slow or failing
-  endpoint never delays the others. Deliveries are not persisted — a
+  endpoint never delays the others. Deliveries are not persisted; a
   restart drops in-flight retries.
   """
   use GenServer

@@ -2,9 +2,9 @@ defmodule YouWeb.Components.Base.CopyButton do
   @moduledoc """
   Copies a value to the clipboard and confirms it.
 
-  Clipboard access and the "Copied" flash are purely client-side — sending a
+  Clipboard access and the "Copied" flash are purely client-side: sending a
   round-trip to the server just to swap an icon would make the button feel
-  laggy for no benefit — so all of it lives in a colocated hook.
+  laggy for no benefit, so all of it lives in a colocated hook.
 
   The value travels in a data attribute rather than the slot, so the button can
   copy something other than the label it shows (a whole code block, say).

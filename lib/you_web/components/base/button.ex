@@ -3,7 +3,7 @@ defmodule YouWeb.Components.Base.Button do
   Button primitive.
 
   Renders a `<button>` by default, or an `<a>` when `navigate`, `patch`, or
-  `href` is given — the link case still carries button styling, which is what
+  `href` is given. The link case still carries button styling, which is what
   Base UI's `render` prop does in the React version.
 
   ## Examples

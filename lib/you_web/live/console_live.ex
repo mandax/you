@@ -1,12 +1,12 @@
 defmodule YouWeb.ConsoleLive do
   @moduledoc """
-  Operator console — the admin surface at `/console`.
+  Operator console: the admin surface at `/console`.
 
   A single LiveView shell (sidebar + topbar + section views) with a dense,
   mono-accented design: cards and tables, a live
   connection indicator, and `?view=` navigation. Every section is wired to the
   real domain (`You.Admin`, `You.Organizations`, `You.Settings`,
-  `You.Audit.Streamer`) — no fabricated data.
+  `You.Audit.Streamer`). No fabricated data.
   """
   use YouWeb, :live_view
 

@@ -4,7 +4,7 @@ defmodule YouWeb.Components.Base.DropdownMenu do
 
   Anatomy follows Base UI's `Menu`: `dropdown_menu` is the root with a `trigger`
   slot, and each entry is a separate `menu_item` component rather than a slot.
-  That split is not cosmetic — slots cannot declare `:global` attributes, so a
+  That split is not cosmetic: slots cannot declare `:global` attributes, so a
   slot-based item could never accept the `phx-click` / `phx-value-*` bindings
   that make a menu item do anything. Composition also matches how the client
   used `Menu.Item`.

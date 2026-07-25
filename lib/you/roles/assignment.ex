@@ -1,7 +1,7 @@
 defmodule You.Roles.Assignment do
   @moduledoc """
   A user's role in one app. Roles are always scoped `(app, user) -> role`
-  and must be one of the app's `allowed_roles` — there is no global role
+  and must be one of the app's `allowed_roles`; there is no global role
   beyond You's own `is_admin` flag.
   """
   use Ecto.Schema

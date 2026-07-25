@@ -2,7 +2,7 @@ defmodule YouWeb.API.V1.JSON do
   @moduledoc """
   Shared serializers and error formatting for the management API.
 
-  These are the only places where structs become wire format — hashes and
+  These are the only places where structs become wire format: hashes and
   secrets (`hashed_password`, `client_secret_hash`, tokens) never leave the
   app through this module.
   """

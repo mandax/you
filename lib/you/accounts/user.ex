@@ -91,7 +91,7 @@ defmodule You.Accounts.User do
   end
 
   # Rejects passwords found in known breaches (Have I Been Pwned). Only runs on
-  # a real submit (`hash_password: true`) — not on every LiveView keystroke —
+  # a real submit (`hash_password: true`), not on every LiveView keystroke,
   # and fails open if HIBP is unreachable.
   defp validate_not_pwned(changeset, opts) do
     check? = Keyword.get(opts, :hash_password, true) and pwned_check_enabled?()

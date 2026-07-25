@@ -28,7 +28,7 @@ defmodule You.Accounts.CookieSync do
 
   @doc """
   Reads `erlang_cookie` from settings and applies it to the local node.
-  Safe to call multiple times — no-op if no cookie is configured or if
+  Safe to call multiple times; no-op if no cookie is configured or if
   the node isn't distributed.
   """
   def apply_cookie do

@@ -13,7 +13,7 @@ defmodule YouWeb.API.V1.AppsController do
   def create(conn, params) do
     case Admin.create_app(params) do
       {:ok, app, client_secret} ->
-        # The plaintext secret is returned exactly once, here — only its
+        # The plaintext secret is returned exactly once, here; only its
         # SHA-256 hash is stored.
         conn
         |> put_status(201)

@@ -12,7 +12,7 @@ defmodule YouWeb.Components.Base.Class do
 
     * **Additive** caller classes (spacing, layout, colors the variant doesn't
       set) work exactly as expected.
-    * **Conflicting** caller classes are unreliable — `class="h-9"` on a
+    * **Conflicting** caller classes are unreliable: `class="h-9"` on a
       `size="default"` button will not reliably beat the variant's `h-10`.
 
   So prefer adding a variant over overriding one from the call site. If a

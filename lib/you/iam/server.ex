@@ -90,7 +90,7 @@ defmodule You.IAM.Server do
 
   @doc """
   Headless password login for a trusted **first-party** app: authenticates the
-  end user directly and returns a token bundle — no browser redirect, no You
+  end user directly and returns a token bundle: no browser redirect, no You
   login page, so the consumer app owns the whole experience ("invisible You").
 
   `params` is a map (atom or string keys) with `email`, `password`, optional
@@ -99,7 +99,7 @@ defmodule You.IAM.Server do
   Returns `{:ok, %{user_id, email, jwt, refresh_token}}` or `{:error, reason}`
   where reason is `:invalid_client` | `:not_first_party` | `:invalid_credentials`
   | `:mfa_required` | `:invalid_mfa`. Only apps flagged `first_party` may use
-  this — third-party apps must go through the redirect + consent flow.
+  this; third-party apps must go through the redirect + consent flow.
   """
   def password_login(client_id, client_secret, params)
       when is_binary(client_id) and is_binary(client_secret) and is_map(params) do
@@ -118,7 +118,7 @@ defmodule You.IAM.Server do
   Returns `{:ok, %{user_id, email, jwt, refresh_token}}` or `{:error, reason}`
   where reason is `:invalid_client` | `:not_first_party` |
   `:email_taken` | `:invalid_registration`.  Only apps flagged `first_party`
-  may use this — third-party apps must go through the redirect + consent flow.
+  may use this; third-party apps must go through the redirect + consent flow.
   """
   def register(client_id, client_secret, params)
       when is_binary(client_id) and is_binary(client_secret) and is_map(params) do

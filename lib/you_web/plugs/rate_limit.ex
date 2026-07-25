@@ -61,7 +61,7 @@ defmodule YouWeb.Plugs.RateLimit do
 
   # You is deployed behind a reverse proxy (see docs/ops/deploy.md), so the
   # real client address arrives in X-Forwarded-For. If the app is exposed
-  # directly, clients can spoof that header to dodge the limit — don't.
+  # directly, clients can spoof that header to dodge the limit, so don't.
   defp client_ip(conn) do
     case get_req_header(conn, "x-forwarded-for") do
       [header | _] -> header |> String.split(",", parts: 2) |> hd() |> String.trim()

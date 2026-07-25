@@ -3,7 +3,7 @@ defmodule You.SDK do
   SDK for integrating apps with the You IAM service via Erlang distribution.
 
   Consumer apps add this as a dependency and call these functions. They communicate
-  with You's `You.IAM.Server` GenServer over Erlang distribution — no HTTP needed.
+  with You's `You.IAM.Server` GenServer over Erlang distribution, no HTTP needed.
 
   ## Usage in a consumer app (on a connected Erlang node)
 

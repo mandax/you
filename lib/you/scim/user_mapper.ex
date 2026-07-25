@@ -56,7 +56,7 @@ defmodule You.SCIM.UserMapper do
   end
 
   @doc """
-  Same as `from_scim/1` but for PATCH-style partial updates — keeps only the
+  Same as `from_scim/1` but for PATCH-style partial updates: keeps only the
   keys present in the request body.
   """
   def from_scim_patch(params) when is_map(params) do

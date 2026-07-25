@@ -7,7 +7,7 @@ defmodule YouWeb.SCIM.BearerAuth do
       config :you, :scim_bearer_token, "your-secret-token"
 
   When `:scim_bearer_token` is `nil` (the default), the plug returns 401
-  for every request — SCIM is effectively disabled.
+  for every request; SCIM is effectively disabled.
 
   The incoming `Authorization: Bearer <token>` header is compared in
   constant time to avoid timing side-channels.

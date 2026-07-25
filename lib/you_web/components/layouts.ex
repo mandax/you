@@ -8,7 +8,7 @@ defmodule YouWeb.Layouts do
   embed_templates "layouts/*"
 
   # ──────────────────────────────────────────────
-  # Public layout — landing, docs, pricing, etc.
+  # Public layout: landing, docs, pricing, etc.
   # ──────────────────────────────────────────────
   attr :flash, :map, default: %{}, doc: "flash messages"
   attr :current_scope, :map, default: nil
@@ -80,7 +80,7 @@ defmodule YouWeb.Layouts do
   end
 
   # ──────────────────────────────────────────────
-  # App layout — authenticated area (tabs + side panel)
+  # App layout: authenticated area (tabs + side panel)
   # ──────────────────────────────────────────────
   attr :flash, :map, default: %{}, doc: "flash messages"
   attr :current_scope, :map, default: nil, doc: "the current user scope"

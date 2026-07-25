@@ -75,7 +75,7 @@ defmodule YouWeb.UserSessionController do
   end
 
   # The OAuth params stashed in the session, as a query map for embedding in
-  # the magic-link URL. Omits blanks; none are secrets — the code_verifier
+  # the magic-link URL. Omits blanks; none are secrets. The code_verifier
   # never leaves the consumer.
   defp oauth_link_params(conn) do
     scope =

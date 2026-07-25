@@ -10,7 +10,7 @@ defmodule You.Webhooks do
   ## Security note (SSRF)
 
   Only the http/https schemes are accepted, but nothing prevents an
-  endpoint from pointing at an internal address — deliveries originate
+  endpoint from pointing at an internal address; deliveries originate
   from the server, so operators must only register endpoints they
   control.
   """
@@ -115,7 +115,7 @@ defmodule You.Webhooks do
   Rotates an endpoint's signing secret.
 
   Returns `{:ok, endpoint}` with the new plaintext secret in
-  `endpoint.secret` — show it once, it is not displayed again.
+  `endpoint.secret`; show it once, it is not displayed again.
   """
   def rotate_secret(%Endpoint{} = endpoint) do
     result =
