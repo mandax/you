@@ -9,6 +9,7 @@ defmodule You.Admin.App do
     field :launch_url, :string
     field :logo_url, :string
     field :brand_color, :string
+    field :allowed_roles, {:array, :string}, default: ["user", "admin"]
     field :first_party, :boolean, default: false
     field :client_secret_hash, :binary
     timestamps()
@@ -23,6 +24,7 @@ defmodule You.Admin.App do
       :launch_url,
       :logo_url,
       :brand_color,
+      :allowed_roles,
       :first_party
     ])
     |> validate_required([:slug, :name, :callback_url])
