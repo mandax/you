@@ -68,6 +68,17 @@ defmodule You.Roles do
   end
 
   @doc """
+  Returns all role assignments as `%{user_id => %{app_id => role}}` for
+  rendering per-user role matrices.
+  """
+  def all_assignments do
+    Repo.all(from a in Assignment, select: {a.user_id, a.app_id, a.role})
+    |> Enum.reduce(%{}, fn {user_id, app_id, role}, acc ->
+      Map.update(acc, user_id, %{app_id => role}, &Map.put(&1, app_id, role))
+    end)
+  end
+
+  @doc """
   Lists all users with their role in the app, sorted by email. Every user
   appears exactly once, unassigned users with role `"user"`.
   """

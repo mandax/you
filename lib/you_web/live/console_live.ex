@@ -61,8 +61,7 @@ defmodule YouWeb.ConsoleLive do
        audit_filter: "",
        webhook_secret: nil,
        webhook_endpoint: nil,
-       roles_app: nil,
-       roles_members: [],
+       user_filters: %{},
        base_url: YouWeb.Endpoint.url(),
        oidc_providers:
          Application.get_env(:you, :oidc_providers, %{}) |> Map.keys() |> Enum.sort(),
@@ -85,20 +84,6 @@ defmodule YouWeb.ConsoleLive do
 
   # ── users ─────────────────────────────────────────────────────
   @impl true
-  def handle_event("promote", %{"id" => id}, socket) do
-    user = Admin.get_user!(id)
-    Admin.promote_admin(user)
-    audit_admin(socket, "promote_admin", user.email)
-    {:noreply, socket |> load_data() |> put_flash(:info, "User promoted to admin.")}
-  end
-
-  def handle_event("demote", %{"id" => id}, socket) do
-    user = Admin.get_user!(id)
-    Admin.demote_admin(user)
-    audit_admin(socket, "demote_admin", user.email)
-    {:noreply, socket |> load_data() |> put_flash(:info, "Admin rights revoked.")}
-  end
-
   def handle_event("logout_user", %{"id" => id}, socket) do
     user = Admin.get_user!(id)
     Accounts.delete_all_user_tokens(user)
@@ -181,14 +166,34 @@ defmodule YouWeb.ConsoleLive do
     {:noreply, assign(socket, editing_app: nil)}
   end
 
-  def handle_event("edit_app_roles", %{"id" => id}, socket) do
-    app = Admin.get_app!(id)
-
-    {:noreply, assign(socket, roles_app: app, roles_members: Roles.list_for_app(app))}
+  def handle_event("filter_users", params, socket) do
+    {:noreply, assign(socket, user_filters: params)}
   end
 
-  def handle_event("cancel_edit_roles", _params, socket) do
-    {:noreply, assign(socket, roles_app: nil, roles_members: [])}
+  def handle_event("set_you_role", %{"user_id" => user_id, "role" => role}, socket) do
+    user = Admin.get_user!(user_id)
+    self? = user.id == socket.assigns.current_scope.user.id
+
+    socket =
+      cond do
+        role == "user" and user.is_admin and self? ->
+          put_flash(socket, :error, "You cannot revoke your own admin rights.")
+
+        role == "admin" and not user.is_admin ->
+          Admin.promote_admin(user)
+          audit_admin(socket, "promote_admin", user.email)
+          load_data(socket)
+
+        role == "user" and user.is_admin ->
+          Admin.demote_admin(user)
+          audit_admin(socket, "demote_admin", user.email)
+          load_data(socket)
+
+        true ->
+          socket
+      end
+
+    {:noreply, socket}
   end
 
   def handle_event("save_app_role", params, socket) do
@@ -197,19 +202,11 @@ defmodule YouWeb.ConsoleLive do
 
     case Roles.set_role(app, user, params["role"]) do
       {:ok, _} ->
-        {:noreply, assign(socket, roles_members: Roles.list_for_app(app))}
+        {:noreply, load_data(socket)}
 
       {:error, _} ->
         {:noreply, put_flash(socket, :error, "Role is not allowed for this app.")}
     end
-  end
-
-  def handle_event("remove_app_role", params, socket) do
-    app = Admin.get_app!(params["app_id"])
-    user = Admin.get_user!(params["user_id"])
-    Roles.remove_role(app, user)
-
-    {:noreply, assign(socket, roles_members: Roles.list_for_app(app))}
   end
 
   def handle_event("dismiss_secret", _params, socket),
@@ -358,7 +355,8 @@ defmodule YouWeb.ConsoleLive do
       apps: Admin.list_apps(),
       orgs: Organizations.list_organizations_with_counts(),
       events: Streamer.recent(),
-      endpoints: Webhooks.list_endpoints()
+      endpoints: Webhooks.list_endpoints(),
+      assignments: Roles.all_assignments()
     )
     |> assign(members: if(org, do: Organizations.list_members(org), else: []))
   end
@@ -453,15 +451,19 @@ defmodule YouWeb.ConsoleLive do
             <% "overview" -> %>
               <.overview users={@users} apps={@apps} orgs={@orgs} events={@events} />
             <% "users" -> %>
-              <.users_view users={@users} current_scope={@current_scope} />
+              <.users_view
+                users={@users}
+                apps={@apps}
+                assignments={@assignments}
+                filters={@user_filters}
+                current_scope={@current_scope}
+              />
             <% "apps" -> %>
               <.apps_view
                 apps={@apps}
                 new_secret={@new_secret}
                 secret_app={@secret_app}
                 editing_app={@editing_app}
-                roles_app={@roles_app}
-                roles_members={@roles_members}
               />
             <% "orgs" -> %>
               <.orgs_view orgs={@orgs} selected={@selected_org} members={@members} roles={@roles} />
@@ -525,56 +527,103 @@ defmodule YouWeb.ConsoleLive do
 
   # ── section: users ────────────────────────────────────────────
   attr :users, :list, required: true
+  attr :apps, :list, required: true
+  attr :assignments, :map, required: true
+  attr :filters, :map, required: true
   attr :current_scope, :map, required: true
 
   defp users_view(assigns) do
+    assigns =
+      assign(assigns,
+        filtered: filter_users(assigns.users, assigns.filters, assigns.apps, assigns.assignments)
+      )
+
     ~H"""
     <div class="space-y-4">
-      <div class="font-mono text-xs text-muted-foreground">
-        <span class="text-foreground">{length(@users)} users</span>
-        · {Enum.count(@users, & &1.user.is_admin)} admins
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <span class="font-mono text-xs text-muted-foreground">
+          <span class="text-foreground">{length(@filtered)}</span> of {length(@users)} users
+        </span>
+        <form phx-change="filter_users" class="flex flex-wrap items-center gap-2">
+          <input
+            type="text"
+            name="email"
+            value={@filters["email"]}
+            placeholder="filter email"
+            class="h-8 w-44 rounded-md border border-input bg-background px-3 font-mono text-xs placeholder:text-muted-foreground/60"
+          />
+          <.filter_select
+            name="status"
+            value={@filters["status"]}
+            options={[{"", "any status"}, {"confirmed", "confirmed"}, {"unconfirmed", "unconfirmed"}]}
+          />
+          <.filter_select
+            name="you_role"
+            value={@filters["you_role"]}
+            options={[{"", "You: any"}, {"admin", "You: admin"}, {"user", "You: user"}]}
+          />
+          <.filter_select
+            :for={app <- @apps}
+            name={"app_#{app.id}"}
+            value={@filters["app_#{app.id}"]}
+            options={
+              [{"", "#{app.name}: any"}] ++
+                Enum.map(app.allowed_roles || ["user", "admin"], &{&1, "#{app.name}: #{&1}"})
+            }
+          />
+        </form>
       </div>
 
-      <.data_table cols={~w(Email Status Role Passkeys Federated) ++ [""]} empty={@users == []}>
+      <.data_table
+        cols={["Email", "Status", "You"] ++ Enum.map(@apps, & &1.name) ++ [""]}
+        empty={@filtered == []}
+      >
         <tr
-          :for={row <- @users}
+          :for={row <- @filtered}
           class="border-b border-border/60 transition-colors last:border-0 hover:bg-muted/40"
         >
           <td class="px-3 py-2 font-mono text-xs text-foreground/90">{row.user.email}</td>
           <td class="px-3 py-2">
             <.status_badge status={if row.user.confirmed_at, do: "running", else: "idle"} />
           </td>
-          <td class="px-3 py-2 font-mono text-xs">
-            <span class={if row.user.is_admin, do: "text-primary", else: "text-muted-foreground"}>
-              {if row.user.is_admin, do: "admin", else: "user"}
-            </span>
+          <td class="px-3 py-2">
+            <form phx-change="set_you_role">
+              <input type="hidden" name="user_id" value={row.user.id} />
+              <select
+                name="role"
+                class={[
+                  "h-7 rounded-md border border-input bg-background px-1.5 font-mono text-xs",
+                  row.user.is_admin && "text-primary"
+                ]}
+              >
+                <option value="user" selected={!row.user.is_admin}>user</option>
+                <option value="admin" selected={row.user.is_admin}>admin</option>
+              </select>
+            </form>
           </td>
-          <td class="px-3 py-2 text-right font-mono text-xs tabular-nums text-muted-foreground">
-            {row.passkeys}
-          </td>
-          <td class="px-3 py-2 text-right font-mono text-xs tabular-nums text-muted-foreground">
-            {row.identities}
+          <td :for={app <- @apps} class="px-3 py-2">
+            <form phx-change="save_app_role">
+              <input type="hidden" name="app_id" value={app.id} />
+              <input type="hidden" name="user_id" value={row.user.id} />
+              <select
+                name="role"
+                class={[
+                  "h-7 rounded-md border border-input bg-background px-1.5 font-mono text-xs",
+                  app_role(@assignments, row.user.id, app.id) != "user" && "text-primary"
+                ]}
+              >
+                <option
+                  :for={option <- app.allowed_roles || ["user", "admin"]}
+                  value={option}
+                  selected={app_role(@assignments, row.user.id, app.id) == option}
+                >
+                  {option}
+                </option>
+              </select>
+            </form>
           </td>
           <td class="px-3 py-2 text-right">
             <div class="flex items-center justify-end gap-1">
-              <button
-                :if={!row.user.is_admin}
-                type="button"
-                phx-click="promote"
-                phx-value-id={row.user.id}
-                class="rounded px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-primary hover:text-primary-foreground"
-              >
-                Make admin
-              </button>
-              <button
-                :if={row.user.is_admin && row.user.id != @current_scope.user.id}
-                type="button"
-                phx-click="demote"
-                phx-value-id={row.user.id}
-                class="rounded px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-destructive hover:text-destructive-foreground"
-              >
-                Revoke
-              </button>
               <button
                 :if={row.user.id != @current_scope.user.id}
                 type="button"
@@ -603,13 +652,67 @@ defmodule YouWeb.ConsoleLive do
     """
   end
 
+  attr :name, :string, required: true
+  attr :value, :string, default: nil
+  attr :options, :list, required: true
+
+  defp filter_select(assigns) do
+    ~H"""
+    <select
+      name={@name}
+      class="h-8 rounded-md border border-input bg-background px-2 font-mono text-xs text-muted-foreground"
+    >
+      <option :for={{value, label} <- @options} value={value} selected={@value == value}>
+        {label}
+      </option>
+    </select>
+    """
+  end
+
+  defp app_role(assignments, user_id, app_id) do
+    get_in(assignments, [user_id, app_id]) || "user"
+  end
+
+  defp filter_users(users, filters, apps, assignments) do
+    Enum.filter(users, fn row ->
+      email_match?(row.user, filters["email"]) and
+        status_match?(row.user, filters["status"]) and
+        you_role_match?(row.user, filters["you_role"]) and
+        app_roles_match?(row.user, filters, apps, assignments)
+    end)
+  end
+
+  defp email_match?(_user, nil), do: true
+  defp email_match?(_user, ""), do: true
+
+  defp email_match?(user, filter),
+    do: String.contains?(String.downcase(user.email || ""), String.downcase(filter))
+
+  defp status_match?(_user, nil), do: true
+  defp status_match?(_user, ""), do: true
+  defp status_match?(user, "confirmed"), do: not is_nil(user.confirmed_at)
+  defp status_match?(user, "unconfirmed"), do: is_nil(user.confirmed_at)
+
+  defp you_role_match?(_user, nil), do: true
+  defp you_role_match?(_user, ""), do: true
+  defp you_role_match?(user, "admin"), do: user.is_admin
+  defp you_role_match?(user, "user"), do: not user.is_admin
+
+  defp app_roles_match?(user, filters, apps, assignments) do
+    Enum.all?(apps, fn app ->
+      case filters["app_#{app.id}"] do
+        nil -> true
+        "" -> true
+        role -> app_role(assignments, user.id, app.id) == role
+      end
+    end)
+  end
+
   # ── section: apps ─────────────────────────────────────────────
   attr :apps, :list, required: true
   attr :new_secret, :string, default: nil
   attr :secret_app, :map, default: nil
   attr :editing_app, :map, default: nil
-  attr :roles_app, :map, default: nil
-  attr :roles_members, :list, default: []
 
   defp apps_view(assigns) do
     ~H"""
@@ -667,14 +770,6 @@ defmodule YouWeb.ConsoleLive do
             <.status_badge status={if app.client_secret_hash, do: "running", else: "idle"} />
           </td>
           <td class="px-3 py-2 text-right whitespace-nowrap">
-            <button
-              type="button"
-              phx-click="edit_app_roles"
-              phx-value-id={app.id}
-              class="rounded px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-            >
-              Roles
-            </button>
             <button
               type="button"
               phx-click="edit_app"
@@ -747,52 +842,6 @@ defmodule YouWeb.ConsoleLive do
             <.button type="submit">Save</.button>
           </div>
         </form>
-      </.dialog>
-
-      <.dialog id="app-roles" open={@roles_app != nil} on_close="cancel_edit_roles">
-        <:title>Roles for {@roles_app && @roles_app.name}</:title>
-        <:description>
-          Per-app role each user gets in tokens issued for this app. Unassigned users are "user".
-        </:description>
-        <div :if={@roles_app} class="max-h-80 space-y-1 overflow-y-auto">
-          <div
-            :for={{user, role} <- @roles_members}
-            class="flex items-center justify-between gap-3 border-b border-border/50 py-1.5 last:border-0"
-          >
-            <span class="truncate font-mono text-xs text-foreground/90">{user.email}</span>
-            <div class="flex shrink-0 items-center gap-2">
-              <form phx-change="save_app_role">
-                <input type="hidden" name="app_id" value={@roles_app.id} />
-                <input type="hidden" name="user_id" value={user.id} />
-                <select
-                  name="role"
-                  class="h-7 rounded-md border border-input bg-background px-2 font-mono text-xs"
-                >
-                  <option
-                    :for={option <- @roles_app.allowed_roles || ["user", "admin"]}
-                    value={option}
-                    selected={role == option}
-                  >
-                    {option}
-                  </option>
-                </select>
-              </form>
-              <button
-                :if={role != "user"}
-                type="button"
-                phx-click="remove_app_role"
-                phx-value-app_id={@roles_app.id}
-                phx-value-user_id={user.id}
-                class="rounded px-1.5 py-1 text-xs text-muted-foreground transition-colors hover:text-destructive"
-              >
-                reset
-              </button>
-            </div>
-          </div>
-        </div>
-        <:footer>
-          <.button variant="outline" phx-click="cancel_edit_roles">Done</.button>
-        </:footer>
       </.dialog>
 
       <.dialog id="app-secret" open={@new_secret != nil} on_close="dismiss_secret">

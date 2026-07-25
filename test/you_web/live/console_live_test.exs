@@ -149,15 +149,40 @@ defmodule YouWeb.ConsoleLiveTest do
   end
 
   describe "users" do
-    test "promote and demote another user", %{conn: conn} do
+    test "change You role via the role select", %{conn: conn} do
       other = You.AccountsFixtures.user_fixture()
       {:ok, lv, _} = live(conn, "/console?view=users")
 
-      render_click(lv, "promote", %{"id" => other.id})
+      lv
+      |> form("form[phx-change=set_you_role]:has(input[value='#{other.id}'])", %{
+        "user_id" => other.id,
+        "role" => "admin"
+      })
+      |> render_change()
+
       assert Accounts.get_user!(other.id).is_admin
 
-      render_click(lv, "demote", %{"id" => other.id})
+      lv
+      |> form("form[phx-change=set_you_role]:has(input[value='#{other.id}'])", %{
+        "user_id" => other.id,
+        "role" => "user"
+      })
+      |> render_change()
+
       refute Accounts.get_user!(other.id).is_admin
+    end
+
+    test "admin cannot revoke their own admin rights", %{conn: conn, admin: admin} do
+      {:ok, lv, _} = live(conn, "/console?view=users")
+
+      lv
+      |> form("form[phx-change=set_you_role]:has(input[value='#{admin.id}'])", %{
+        "user_id" => admin.id,
+        "role" => "user"
+      })
+      |> render_change()
+
+      assert Accounts.get_user!(admin.id).is_admin
     end
 
     test "logout revokes sessions and anonymize wipes the account", %{conn: conn} do
@@ -171,10 +196,21 @@ defmodule YouWeb.ConsoleLiveTest do
       render_click(lv, "anonymize_user", %{"id" => other.id})
       refute Accounts.get_user!(other.id).email == other.email
     end
+
+    test "filters narrow the user list", %{conn: conn} do
+      You.AccountsFixtures.user_fixture(%{email: "findme@example.com"})
+      {:ok, lv, _} = live(conn, "/console?view=users")
+
+      html = render_change(lv, "filter_users", %{"email" => "findme"})
+      assert html =~ "findme@example.com"
+
+      html = render_change(lv, "filter_users", %{"email" => "no-such-user"})
+      refute html =~ "findme@example.com"
+    end
   end
 
   describe "app roles" do
-    test "assign and reset a user's role in an app", %{conn: conn} do
+    test "assign a per-app role from the users view", %{conn: conn} do
       {:ok, app, _secret} =
         Admin.create_app(%{
           "name" => "Role App",
@@ -183,12 +219,10 @@ defmodule YouWeb.ConsoleLiveTest do
         })
 
       other = You.AccountsFixtures.user_fixture()
-      {:ok, lv, _} = live(conn, "/console?view=apps")
-
-      render_click(lv, "edit_app_roles", %{"id" => app.id})
+      {:ok, lv, _} = live(conn, "/console?view=users")
 
       lv
-      |> form("form:has(input[value='#{other.id}'])", %{
+      |> form("form[phx-change=save_app_role]:has(input[value='#{other.id}'])", %{
         "app_id" => app.id,
         "user_id" => other.id,
         "role" => "admin"
@@ -196,9 +230,6 @@ defmodule YouWeb.ConsoleLiveTest do
       |> render_change()
 
       assert You.Roles.role_for(app.slug, other.id) == "admin"
-
-      render_click(lv, "remove_app_role", %{"app_id" => app.id, "user_id" => other.id})
-      assert You.Roles.role_for(app.slug, other.id) == "user"
     end
   end
 
