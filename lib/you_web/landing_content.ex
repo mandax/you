@@ -12,6 +12,7 @@ defmodule YouWeb.LandingContent do
       "magic links",
       "JWT + revocation",
       "audit log",
+      "GDPR/LGPD data rights",
       "runs on your BEAM"
     ]
   end
@@ -199,6 +200,11 @@ defmodule YouWeb.LandingContent do
         q: "How is it secured?",
         a:
           "Bcrypt-hashed, rate-limited passwords; TOTP 2FA with recovery codes; single-use auth codes that expire in five minutes; JTI-tracked JWTs you can revoke individually; and a full audit trail of logins, grants and admin actions."
+      },
+      %{
+        q: "Does it help with GDPR and LGPD?",
+        a:
+          "The data rights tooling is built in. Users can export everything you hold about them, consent is recorded per app and scope, and anonymization wipes personal data while keeping referential integrity. Compliance is still your process, but the machinery for it ships with You."
       },
       %{
         q: "How is it different from Auth0?",
