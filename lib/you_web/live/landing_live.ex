@@ -23,43 +23,4 @@ defmodule YouWeb.LandingLive do
     {:noreply,
      assign(socket, :faq_open, if(socket.assigns.faq_open == index, do: nil, else: index))}
   end
-
-  @doc """
-  Syntax-highlighted code block (server-side, via Makeup).
-  """
-  attr :code, :string, required: true
-
-  def highlighted_code(assigns) do
-    ~H"""
-    <pre class="overflow-x-auto p-4 font-mono text-[13px] leading-relaxed makeup"><code>{Phoenix.HTML.raw(Makeup.highlight(@code))}</code></pre>
-    """
-  end
-
-  @doc """
-  Comparison table cell — check, dash, or cross.
-  """
-  attr :value, :atom, required: true, values: [:yes, :no, :partial]
-
-  def comparison_cell(assigns) do
-    ~H"""
-    <span
-      :if={@value == :yes}
-      class="lucide-check mx-auto size-4 block text-signal-ok"
-      aria-label="yes"
-      role="img"
-    />
-    <span
-      :if={@value == :partial}
-      class="lucide-minus mx-auto size-4 block text-signal-warn"
-      aria-label="partial"
-      role="img"
-    />
-    <span
-      :if={@value == :no}
-      class="lucide-x mx-auto size-4 block text-muted-foreground/50"
-      aria-label="no"
-      role="img"
-    />
-    """
-  end
 end

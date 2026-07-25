@@ -6,31 +6,6 @@ defmodule YouWeb.LandingContent do
   without wading through markup, and so the LiveView stays about behavior.
   """
 
-  @connect_sample """
-  # 1. your app sends the user to You to authenticate
-  redirect_url =
-    "https://you.example.com/users/log-in?" <>
-      URI.encode_query(%{
-        callback_url: "https://myapp.example.com/auth/callback",
-        scope: "profile email"
-      })
-
-  redirect(conn, external: redirect_url)
-
-  # 2. after login, You redirects back with a single-use code —
-  #    your app trades it for tokens over plain HTTPS
-  %{status: 200, body: tokens} =
-    Req.post!("https://you.example.com/oauth/token",
-      form: [code: auth_code, code_verifier: verifier])
-
-  # 3. verify tokens.access_token locally against You's JWKS
-  #    no call home per request\
-  """
-
-  def connect_sample, do: @connect_sample
-
-  def works_with, do: ~w(Phoenix LiveView SQLite Erlang\ distribution JOSE)
-
   def trust_strip do
     [
       "password + TOTP 2FA",
@@ -83,8 +58,7 @@ defmodule YouWeb.LandingContent do
     [
       %{
         title: "Hardened login",
-        body:
-          "Bcrypt hashing and rate limiting are on from the first request — nothing to enable."
+        body: "Bcrypt hashing and rate limiting are on from the first request. Nothing to enable."
       },
       %{
         title: "2FA built in",
@@ -92,7 +66,7 @@ defmodule YouWeb.LandingContent do
       },
       %{
         title: "Revocable sessions",
-        body: "Short-lived, JTI-tracked JWTs — pull one token without touching the rest."
+        body: "Short-lived, JTI-tracked JWTs. Pull one token without touching the rest."
       },
       %{
         title: "Audit everything",
@@ -130,12 +104,37 @@ defmodule YouWeb.LandingContent do
 
   def comparison do
     [
-      %{feature: "Self-host your data", you: :yes, auth0: :no, keycloak: :yes},
-      %{feature: "BEAM-native dist RPC", you: :yes, auth0: :no, keycloak: :no},
-      %{feature: "No per-MAU pricing", you: :yes, auth0: :no, keycloak: :yes},
-      %{feature: "Built-in 2FA + recovery", you: :yes, auth0: :yes, keycloak: :yes},
-      %{feature: "Phoenix-first", you: :yes, auth0: :no, keycloak: :no},
-      %{feature: "JVM-free", you: :yes, auth0: :yes, keycloak: :no}
+      %{
+        label: "Who holds user credentials",
+        you: "You do",
+        auth0: "They do",
+        keycloak: "You do"
+      },
+      %{label: "Protocol", you: "OIDC, JWKS, SCIM", auth0: "OIDC, SAML", keycloak: "OIDC, SAML"},
+      %{
+        label: "Runs on",
+        you: "One container, SQLite inside",
+        auth0: "Their cloud",
+        keycloak: "A JVM you operate"
+      },
+      %{
+        label: "Cost",
+        you: "Free, MIT",
+        auth0: "Per user per month",
+        keycloak: "Free, paid in ops"
+      },
+      %{
+        label: "Elixir integration",
+        you: "OIDC plus in-cluster RPC",
+        auth0: "HTTP only",
+        keycloak: "HTTP only"
+      },
+      %{
+        label: "2FA, passkeys, audit",
+        you: "Built in",
+        auth0: "Paid tiers",
+        keycloak: "Plugins and config"
+      }
     ]
   end
 
@@ -162,12 +161,12 @@ defmodule YouWeb.LandingContent do
       %{
         q: "Is You open source?",
         a:
-          "Yes — MIT-licensed, source on GitHub. You self-host it on your own cluster, so your users' data stays inside your infrastructure."
+          "Yes. MIT-licensed, source on GitHub. You self-host it on your own cluster, so your users' data stays inside your infrastructure."
       },
       %{
         q: "How do apps connect?",
         a:
-          "Two steps. Your app redirects the user to You's /users/log-in with a callback_url and scope; after login You redirects back with a single-use code. Your app then trades that code for a JWT over standard HTTP (OIDC, any language) — or, for Elixir apps you trust in your own cluster, over Erlang distribution with no HTTP hop."
+          "Two steps. Your app redirects the user to You's /users/log-in with a callback_url and scope; after login You redirects back with a single-use code. Your app then trades that code for a JWT over standard HTTP (OIDC, any language). Elixir apps you trust in your own cluster can skip HTTP entirely and call You over Erlang distribution."
       },
       %{
         q: "How is it secured?",
@@ -177,7 +176,7 @@ defmodule YouWeb.LandingContent do
       %{
         q: "How is it different from Auth0?",
         a:
-          "Auth0 is a solid hosted IdP — but hosted means your users' credentials live on their infrastructure and you pay per user. You gives you the same OIDC standard on your own node, plus a distribution-native shortcut for trusted Elixir apps. It's not better or worse — it's about who holds your users."
+          "Auth0 is a solid hosted IdP, but hosted means your users' credentials live on their infrastructure and you pay per user. You gives you the same OIDC standard on your own node, plus a distribution-native shortcut for trusted Elixir apps. The real question is who holds your users."
       }
     ]
   end

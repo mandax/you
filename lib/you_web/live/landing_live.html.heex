@@ -27,10 +27,11 @@
 
         <div class="mt-7 flex flex-col gap-3 sm:flex-row">
           <.button size="lg" class="h-11" href="#pricing">
-            Self-host You <span class="lucide-arrow-right size-4 block" />
+            Self-host <span class="you-badge-invert">You</span>
+            <span class="lucide-arrow-right size-4 block" />
           </.button>
-          <.button size="lg" variant="outline" class="h-11" href="#security">
-            Read the security model
+          <.button size="lg" variant="outline" class="h-11" href="#console">
+            See the console
           </.button>
         </div>
       </div>
@@ -45,21 +46,6 @@
       <% end %>
     </div>
   </div>
-
-  <%!-- ── works with ──────────────────────────────────────────── --%>
-  <section class="border-b border-border py-8">
-    <div class="mx-auto flex max-w-5xl flex-wrap items-center justify-center gap-x-3 gap-y-2 px-5 text-center">
-      <span class="font-mono text-xs uppercase tracking-widest text-muted-foreground">
-        Works with
-      </span>
-      <span
-        :for={label <- YouWeb.LandingContent.works_with()}
-        class="font-mono text-sm text-muted-foreground/80"
-      >
-        {label}
-      </span>
-    </div>
-  </section>
 
   <%!-- ── console / operations ────────────────────────────────── --%>
   <section id="console" class="border-b border-border py-20">
@@ -115,7 +101,7 @@
       </h2>
       <p class="mt-3 max-w-2xl text-muted-foreground">
         You exists for one reason: identity that lives inside your own BEAM cluster. If that's not
-        your constraint, other tools are simpler — here's the honest routing.
+        your constraint, other tools are simpler. Here is the honest routing.
       </p>
       <div class="mt-10 grid gap-4 md:grid-cols-3">
         <div
@@ -136,7 +122,11 @@
             "mt-4 font-mono text-sm",
             if(alt.ours, do: "text-primary", else: "text-muted-foreground")
           ]}>
-            {alt.pick}
+            <%= if alt.ours do %>
+              Use <span class="you-badge">You</span>
+            <% else %>
+              {alt.pick}
+            <% end %>
           </div>
         </div>
       </div>
@@ -150,20 +140,19 @@
         <span class="lucide-cloud-off size-5 block text-primary" />
         <h3 class="mt-4 text-xl font-bold tracking-tight">Built to be ignorable</h3>
         <p class="mt-2 text-sm text-muted-foreground">
-          Once a token is issued, apps verify it locally against your JWKS —
-          You can go down and nobody notices.
+          Once a token is issued, apps verify it locally against your JWKS. You can go
+          down and nobody notices.
         </p>
       </div>
       <div class="rounded-xl border border-border bg-background p-7">
         <span class="lucide-network size-5 block text-primary" />
         <h3 class="mt-4 text-xl font-bold tracking-tight">
-          Distribution-native — no HTTP hop for token exchange
+          Elixir apps skip HTTP entirely
         </h3>
         <p class="mt-2 text-sm text-muted-foreground">
-          Your app calls You's <code class="text-azure-brand">exchange_code</code>
-          straight over Erlang distribution once the user redirects back with an auth code — no
-          extra network hop, no shared webhook secret to rotate. For trusted nodes you
-          control — distribution is full trust by design. Everyone else uses standard OIDC.
+          Apps you trust call You directly over Erlang distribution, in memory between
+          nodes in the same cluster. No extra network hop, no shared webhook secret to
+          rotate. Everyone else uses standard OIDC.
         </p>
       </div>
       <div class="rounded-xl border border-border bg-background p-7">
@@ -171,10 +160,10 @@
         <h3 class="mt-4 text-xl font-bold tracking-tight">Add a consumer app in one row</h3>
         <p class="mt-2 text-sm text-muted-foreground">
           Register a callback URL and scope in the console and the app can redirect users to You
-          immediately — no client libraries to install, no SDK to keep in sync.
+          immediately. No client libraries to install, no SDK to keep in sync.
         </p>
         <code class="mt-5 block rounded-lg border border-border bg-card px-3 py-2 font-mono text-sm text-azure-brand">
-          You.SDK.exchange_code(auth_code)
+          https://you.example.com/.well-known/jwks.json
         </code>
       </div>
     </div>
@@ -184,19 +173,21 @@
   <section id="comparison" class="border-b border-border bg-card/30 py-20">
     <div class="mx-auto max-w-4xl px-5">
       <.eyebrow>04 · Honest comparison</.eyebrow>
-      <h2 class="text-3xl font-bold tracking-tight">You vs the field.</h2>
+      <h2 class="text-3xl font-bold tracking-tight">
+        <span class="you-badge">You</span> vs the field.
+      </h2>
       <p class="mt-3 text-muted-foreground">
         Hosted providers and JVM-based IdPs are both solid choices. You is the free, self-hosted
-        take for teams running on the BEAM who want identity inside their own cluster.
+        take for teams who want identity inside their own infrastructure.
       </p>
       <div class="mt-8 overflow-x-auto rounded-xl border border-border">
         <table class="w-full text-sm">
           <thead>
             <tr class="border-b border-border bg-muted/40 text-left">
-              <th class="px-4 py-3 font-medium">Capability</th>
-              <th class="px-4 py-3 text-center font-mono font-medium text-primary">You</th>
-              <th class="px-4 py-3 text-center font-medium text-muted-foreground">Auth0</th>
-              <th class="px-4 py-3 text-center font-medium text-muted-foreground">Keycloak</th>
+              <th class="px-4 py-3 font-medium"></th>
+              <th class="px-4 py-3 font-medium text-primary">You</th>
+              <th class="px-4 py-3 font-medium text-muted-foreground">Auth0</th>
+              <th class="px-4 py-3 font-medium text-muted-foreground">Keycloak</th>
             </tr>
           </thead>
           <tbody>
@@ -204,10 +195,10 @@
               :for={{row, i} <- Enum.with_index(YouWeb.LandingContent.comparison())}
               class={rem(i, 2) == 1 && "bg-muted/20"}
             >
-              <td class="px-4 py-3">{row.feature}</td>
-              <td class="px-4 py-3"><.comparison_cell value={row.you} /></td>
-              <td class="px-4 py-3"><.comparison_cell value={row.auth0} /></td>
-              <td class="px-4 py-3"><.comparison_cell value={row.keycloak} /></td>
+              <td class="px-4 py-3 text-muted-foreground">{row.label}</td>
+              <td class="bg-primary/5 px-4 py-3 font-medium">{row.you}</td>
+              <td class="px-4 py-3 text-muted-foreground">{row.auth0}</td>
+              <td class="px-4 py-3 text-muted-foreground">{row.keycloak}</td>
             </tr>
           </tbody>
         </table>
@@ -222,7 +213,7 @@
         <.eyebrow>05 · Self-host</.eyebrow>
         <h2 class="text-3xl font-bold tracking-tight">Free to run. Yours to keep.</h2>
         <p class="mt-3 text-muted-foreground">
-          MIT-licensed and open source — clone the repo or pull the prebuilt Docker image.
+          MIT-licensed and open source. Clone the repo or pull the prebuilt Docker image.
         </p>
       </div>
       <div class="mx-auto mt-10 max-w-md">
