@@ -245,7 +245,7 @@ JWT (see `You.IAM.Claims`). Defaults to `email`.
 |-------|-------------------------|
 | `email` | `email`: the user's email address |
 | `profile` | `email`, `name`: display name (currently the email address) |
-| `roles` | `email`, `role`: `"admin"` or `"user"`, from the account's admin flag |
+| `roles` | `email`, `role`: the user's role in the app the token was issued for (per-app assignment, `"user"` when unassigned). First-party tokens without an app fall back to the account's admin flag |
 
 Every token also carries `sub` (user id), `app` (`"you"`), `jti`, `iat`, and
 `exp` regardless of scope.
