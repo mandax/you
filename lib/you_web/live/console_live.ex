@@ -166,8 +166,13 @@ defmodule YouWeb.ConsoleLive do
     {:noreply, assign(socket, editing_app: nil)}
   end
 
+  def handle_event("filter_users", %{"filter_key" => key, "value" => value}, socket) do
+    {:noreply, assign(socket, user_filters: Map.put(socket.assigns.user_filters, key, value))}
+  end
+
   def handle_event("filter_users", params, socket) do
-    {:noreply, assign(socket, user_filters: params)}
+    filters = Map.merge(socket.assigns.user_filters, Map.take(params, ["email"]))
+    {:noreply, assign(socket, user_filters: filters)}
   end
 
   def handle_event("set_you_role", %{"user_id" => user_id, "role" => role}, socket) do
@@ -544,34 +549,79 @@ defmodule YouWeb.ConsoleLive do
         <span class="font-mono text-xs text-muted-foreground">
           <span class="text-foreground">{length(@filtered)}</span> of {length(@users)} users
         </span>
-        <form phx-change="filter_users" class="flex flex-wrap items-center gap-2">
-          <input
-            type="text"
-            name="email"
-            value={@filters["email"]}
-            placeholder="filter email"
-            class="h-8 w-44 rounded-md border border-input bg-background px-3 font-mono text-xs placeholder:text-muted-foreground/60"
-          />
-          <.filter_select
-            name="status"
-            value={@filters["status"]}
-            options={[{"", "any status"}, {"confirmed", "confirmed"}, {"unconfirmed", "unconfirmed"}]}
-          />
-          <.filter_select
-            name="you_role"
-            value={@filters["you_role"]}
-            options={[{"", "You: any"}, {"admin", "You: admin"}, {"user", "You: user"}]}
-          />
-          <.filter_select
+        <div class="flex flex-wrap items-center gap-2">
+          <form phx-change="filter_users">
+            <input
+              type="text"
+              name="email"
+              value={@filters["email"]}
+              placeholder="filter email"
+              class="h-8 w-44 rounded-md border border-input bg-background px-3 font-mono text-xs placeholder:text-muted-foreground/60"
+            />
+          </form>
+          <.filter_dropdown id="filter-status" label={filter_label(@filters["status"], "any status")}>
+            <.menu_item phx-click="filter_users" phx-value-filter_key="status" phx-value-value="">
+              any status
+            </.menu_item>
+            <.menu_item
+              phx-click="filter_users"
+              phx-value-filter_key="status"
+              phx-value-value="confirmed"
+            >
+              confirmed
+            </.menu_item>
+            <.menu_item
+              phx-click="filter_users"
+              phx-value-filter_key="status"
+              phx-value-value="unconfirmed"
+            >
+              unconfirmed
+            </.menu_item>
+          </.filter_dropdown>
+          <.filter_dropdown
+            id="filter-you-role"
+            label={filter_label(@filters["you_role"], "You: any")}
+          >
+            <.menu_item phx-click="filter_users" phx-value-filter_key="you_role" phx-value-value="">
+              You: any
+            </.menu_item>
+            <.menu_item
+              phx-click="filter_users"
+              phx-value-filter_key="you_role"
+              phx-value-value="admin"
+            >
+              You: admin
+            </.menu_item>
+            <.menu_item
+              phx-click="filter_users"
+              phx-value-filter_key="you_role"
+              phx-value-value="user"
+            >
+              You: user
+            </.menu_item>
+          </.filter_dropdown>
+          <.filter_dropdown
             :for={app <- @apps}
-            name={"app_#{app.id}"}
-            value={@filters["app_#{app.id}"]}
-            options={
-              [{"", "#{app.name}: any"}] ++
-                Enum.map(app.allowed_roles || ["user", "admin"], &{&1, "#{app.name}: #{&1}"})
-            }
-          />
-        </form>
+            id={"filter-app-#{app.id}"}
+            label={app_filter_label(@filters["app_#{app.id}"], app.name)}
+          >
+            <.menu_item
+              phx-click="filter_users"
+              phx-value-filter_key={"app_#{app.id}"}
+              phx-value-value=""
+            >
+              {app.name}: any
+            </.menu_item>
+            <.menu_item
+              :for={role <- app.allowed_roles || ["user", "admin"]}
+              phx-click="filter_users"
+              phx-value-filter_key={"app_#{app.id}"}
+              phx-value-value={role}
+            >
+              {app.name}: {role}
+            </.menu_item>
+          </.filter_dropdown>
+        </div>
       </div>
 
       <.data_table
@@ -587,40 +637,53 @@ defmodule YouWeb.ConsoleLive do
             <.status_badge status={if row.user.confirmed_at, do: "running", else: "idle"} />
           </td>
           <td class="px-3 py-2">
-            <form phx-change="set_you_role">
-              <input type="hidden" name="user_id" value={row.user.id} />
-              <select
-                name="role"
-                class={[
-                  "h-7 rounded-md border border-input bg-background px-1.5 font-mono text-xs",
+            <.dropdown_menu id={"you-role-#{row.user.id}"}>
+              <:trigger>
+                <span class={[
+                  "inline-flex h-7 items-center gap-1.5 rounded-md border border-input bg-background px-2 font-mono text-xs transition-colors hover:bg-accent",
                   row.user.is_admin && "text-primary"
-                ]}
+                ]}>
+                  {if row.user.is_admin, do: "admin", else: "user"}
+                  <span class="lucide-chevron-down size-3 block" />
+                </span>
+              </:trigger>
+              <.menu_item
+                phx-click="set_you_role"
+                phx-value-user_id={row.user.id}
+                phx-value-role="user"
               >
-                <option value="user" selected={!row.user.is_admin}>user</option>
-                <option value="admin" selected={row.user.is_admin}>admin</option>
-              </select>
-            </form>
+                user
+              </.menu_item>
+              <.menu_item
+                phx-click="set_you_role"
+                phx-value-user_id={row.user.id}
+                phx-value-role="admin"
+              >
+                admin
+              </.menu_item>
+            </.dropdown_menu>
           </td>
           <td :for={app <- @apps} class="px-3 py-2">
-            <form phx-change="save_app_role">
-              <input type="hidden" name="app_id" value={app.id} />
-              <input type="hidden" name="user_id" value={row.user.id} />
-              <select
-                name="role"
-                class={[
-                  "h-7 rounded-md border border-input bg-background px-1.5 font-mono text-xs",
+            <.dropdown_menu id={"app-role-#{app.id}-#{row.user.id}"}>
+              <:trigger>
+                <span class={[
+                  "inline-flex h-7 items-center gap-1.5 rounded-md border border-input bg-background px-2 font-mono text-xs transition-colors hover:bg-accent",
                   app_role(@assignments, row.user.id, app.id) != "user" && "text-primary"
-                ]}
+                ]}>
+                  {app_role(@assignments, row.user.id, app.id)}
+                  <span class="lucide-chevron-down size-3 block" />
+                </span>
+              </:trigger>
+              <.menu_item
+                :for={role <- app.allowed_roles || ["user", "admin"]}
+                phx-click="save_app_role"
+                phx-value-app_id={app.id}
+                phx-value-user_id={row.user.id}
+                phx-value-role={role}
               >
-                <option
-                  :for={option <- app.allowed_roles || ["user", "admin"]}
-                  value={option}
-                  selected={app_role(@assignments, row.user.id, app.id) == option}
-                >
-                  {option}
-                </option>
-              </select>
-            </form>
+                {role}
+              </.menu_item>
+            </.dropdown_menu>
           </td>
           <td class="px-3 py-2 text-right">
             <div class="flex items-center justify-end gap-1">
@@ -652,22 +715,31 @@ defmodule YouWeb.ConsoleLive do
     """
   end
 
-  attr :name, :string, required: true
-  attr :value, :string, default: nil
-  attr :options, :list, required: true
+  attr :id, :string, required: true
+  attr :label, :string, required: true
+  slot :inner_block, required: true
 
-  defp filter_select(assigns) do
+  defp filter_dropdown(assigns) do
     ~H"""
-    <select
-      name={@name}
-      class="h-8 rounded-md border border-input bg-background px-2 font-mono text-xs text-muted-foreground"
-    >
-      <option :for={{value, label} <- @options} value={value} selected={@value == value}>
-        {label}
-      </option>
-    </select>
+    <.dropdown_menu id={@id}>
+      <:trigger>
+        <span class="inline-flex h-8 items-center gap-1.5 rounded-md border border-input bg-background px-2.5 font-mono text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
+          {@label}
+          <span class="lucide-chevron-down size-3 block" />
+        </span>
+      </:trigger>
+      {render_slot(@inner_block)}
+    </.dropdown_menu>
     """
   end
+
+  defp filter_label(nil, default), do: default
+  defp filter_label("", default), do: default
+  defp filter_label(value, _default), do: value
+
+  defp app_filter_label(nil, app_name), do: "#{app_name}: any"
+  defp app_filter_label("", app_name), do: "#{app_name}: any"
+  defp app_filter_label(role, app_name), do: "#{app_name}: #{role}"
 
   defp app_role(assignments, user_id, app_id) do
     get_in(assignments, [user_id, app_id]) || "user"

@@ -149,39 +149,21 @@ defmodule YouWeb.ConsoleLiveTest do
   end
 
   describe "users" do
-    test "change You role via the role select", %{conn: conn} do
+    test "change You role via the role dropdown", %{conn: conn} do
       other = You.AccountsFixtures.user_fixture()
       {:ok, lv, _} = live(conn, "/console?view=users")
 
-      lv
-      |> form("form[phx-change=set_you_role]:has(input[value='#{other.id}'])", %{
-        "user_id" => other.id,
-        "role" => "admin"
-      })
-      |> render_change()
-
+      render_click(lv, "set_you_role", %{"user_id" => other.id, "role" => "admin"})
       assert Accounts.get_user!(other.id).is_admin
 
-      lv
-      |> form("form[phx-change=set_you_role]:has(input[value='#{other.id}'])", %{
-        "user_id" => other.id,
-        "role" => "user"
-      })
-      |> render_change()
-
+      render_click(lv, "set_you_role", %{"user_id" => other.id, "role" => "user"})
       refute Accounts.get_user!(other.id).is_admin
     end
 
     test "admin cannot revoke their own admin rights", %{conn: conn, admin: admin} do
       {:ok, lv, _} = live(conn, "/console?view=users")
 
-      lv
-      |> form("form[phx-change=set_you_role]:has(input[value='#{admin.id}'])", %{
-        "user_id" => admin.id,
-        "role" => "user"
-      })
-      |> render_change()
-
+      render_click(lv, "set_you_role", %{"user_id" => admin.id, "role" => "user"})
       assert Accounts.get_user!(admin.id).is_admin
     end
 
@@ -206,6 +188,16 @@ defmodule YouWeb.ConsoleLiveTest do
 
       html = render_change(lv, "filter_users", %{"email" => "no-such-user"})
       refute html =~ "findme@example.com"
+
+      render_change(lv, "filter_users", %{"email" => ""})
+
+      html = render_click(lv, "filter_users", %{"filter_key" => "status", "value" => "confirmed"})
+      assert html =~ "findme@example.com"
+
+      html =
+        render_click(lv, "filter_users", %{"filter_key" => "status", "value" => "unconfirmed"})
+
+      refute html =~ "findme@example.com"
     end
   end
 
@@ -221,13 +213,11 @@ defmodule YouWeb.ConsoleLiveTest do
       other = You.AccountsFixtures.user_fixture()
       {:ok, lv, _} = live(conn, "/console?view=users")
 
-      lv
-      |> form("form[phx-change=save_app_role]:has(input[value='#{other.id}'])", %{
+      render_click(lv, "save_app_role", %{
         "app_id" => app.id,
         "user_id" => other.id,
         "role" => "admin"
       })
-      |> render_change()
 
       assert You.Roles.role_for(app.slug, other.id) == "admin"
     end
