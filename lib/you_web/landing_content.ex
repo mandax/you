@@ -54,6 +54,33 @@ defmodule YouWeb.LandingContent do
     ]
   end
 
+  def solo_features do
+    [
+      %{
+        icon: "lucide-layout-dashboard",
+        title: "One console for everything",
+        body: "Every user of every app you run: apps, roles, orgs, sessions and audit."
+      },
+      %{
+        icon: "lucide-palette",
+        title: "Per-app login pages",
+        body:
+          "Your app's name, logo and brand color on the login your users see. The default stays clean."
+      },
+      %{
+        icon: "lucide-plug",
+        title: "REST and RPC APIs",
+        body:
+          "SCIM provisioning and OIDC over HTTP for any service. In-cluster RPC for your Elixir apps."
+      },
+      %{
+        icon: "lucide-webhook",
+        title: "Webhooks for the real world",
+        body: "Signups and auth events, signed and retried, to Stripe or anywhere else."
+      }
+    ]
+  end
+
   def security_items do
     [
       %{

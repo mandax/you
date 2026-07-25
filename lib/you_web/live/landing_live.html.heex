@@ -73,10 +73,31 @@
     </div>
   </section>
 
+  <%!-- ── solo developers ───────────────────────────────────── --%>
+  <section class="border-b border-border py-20">
+    <div class="mx-auto max-w-6xl px-5">
+      <.eyebrow>02 · Made for solo developers</.eyebrow>
+      <h2 class="max-w-2xl text-3xl font-bold tracking-tight">
+        Every user of every app you run, in one place.
+      </h2>
+
+      <div class="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div
+          :for={feature <- YouWeb.LandingContent.solo_features()}
+          class="rounded-xl border border-border bg-card p-5 transition-colors hover:border-primary/40"
+        >
+          <span class={[feature.icon, "size-5 block text-magenta-brand"]} />
+          <h3 class="mt-3 text-sm font-semibold">{feature.title}</h3>
+          <p class="mt-1.5 text-sm leading-relaxed text-muted-foreground">{feature.body}</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <%!-- ── security pillars ───────────────────────────────────────── --%>
   <section id="security" class="border-b border-border bg-card/30 py-20">
     <div class="mx-auto max-w-6xl px-5">
-      <.eyebrow>02 · Built in, not bolted on</.eyebrow>
+      <.eyebrow>03 · Built in, not bolted on</.eyebrow>
       <h2 class="max-w-2xl text-3xl font-bold tracking-tight">
         Every defense on by default, not a paid add-on.
       </h2>
@@ -96,7 +117,7 @@
   <%!-- ── when hosted auth is right ───────────────────────────────── --%>
   <section class="border-b border-border py-20">
     <div class="mx-auto max-w-6xl px-5">
-      <.eyebrow>03 · When not to use <span class="text-magenta-brand">You</span></.eyebrow>
+      <.eyebrow>04 · When not to use <span class="text-magenta-brand">You</span></.eyebrow>
       <h2 class="max-w-2xl text-3xl font-bold tracking-tight">
         Sometimes hosted auth is the right call.
       </h2>
@@ -173,7 +194,7 @@
   <%!-- ── comparison ──────────────────────────────────────────── --%>
   <section id="comparison" class="border-b border-border bg-card/30 py-20">
     <div class="mx-auto max-w-4xl px-5">
-      <.eyebrow>04 · Honest comparison</.eyebrow>
+      <.eyebrow>05 · Honest comparison</.eyebrow>
       <h2 class="text-3xl font-bold tracking-tight">
         <span class="you-badge">You</span> vs the field.
       </h2>
@@ -211,7 +232,7 @@
   <section id="pricing" class="border-b border-border py-20">
     <div class="mx-auto max-w-6xl px-5">
       <div class="text-center">
-        <.eyebrow>05 · Self-host</.eyebrow>
+        <.eyebrow>06 · Self-host</.eyebrow>
         <h2 class="text-3xl font-bold tracking-tight">Free to run. Yours to keep.</h2>
         <p class="mt-3 text-muted-foreground">
           MIT-licensed and open source. Clone the repo or pull the prebuilt Docker image.
@@ -253,7 +274,7 @@
   <%!-- ── faq ─────────────────────────────────────────────────── --%>
   <section id="faq" class="border-b border-border py-20">
     <div class="mx-auto max-w-3xl px-5">
-      <.eyebrow>06 · FAQ</.eyebrow>
+      <.eyebrow>07 · FAQ</.eyebrow>
       <h2 class="text-3xl font-bold tracking-tight">Questions, answered.</h2>
       <div class="mt-8 divide-y divide-border rounded-xl border border-border">
         <div :for={{faq, i} <- Enum.with_index(YouWeb.LandingContent.faqs())}>
