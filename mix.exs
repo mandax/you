@@ -25,6 +25,7 @@ defmodule You.MixProject do
   defp package do
     [
       licenses: ["MIT"],
+      maintainers: ["Anderson F. Pinto"],
       links: %{"GitHub" => @source_url}
     ]
   end

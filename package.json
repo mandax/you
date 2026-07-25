@@ -14,7 +14,7 @@
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
-  "author": "",
+  "author": "mandax (Anderson F. Pinto) <anderson@afp.sh>",
   "license": "MIT",
   "dependencies": {
     "@tailwindcss/cli": "^4.3.0",

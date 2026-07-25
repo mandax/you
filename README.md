@@ -138,4 +138,4 @@ mix compile --warnings-as-errors
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE), © Anderson F. Pinto ([mandax](https://github.com/mandax))
