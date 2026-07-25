@@ -53,6 +53,45 @@ defmodule YouWeb.UserSessionControllerTest do
       assert response =~ ~p"/users/register"
       assert response =~ "Email me a magic link"
     end
+
+    test "shows logo and brand color for a branded app's OAuth login", %{conn: conn} do
+      {:ok, _app, _secret} =
+        You.Admin.create_app(%{
+          slug: "branded",
+          name: "Branded",
+          callback_url: "https://branded.example.com/cb",
+          logo_url: "https://branded.example.com/logo.png",
+          brand_color: "#7c3aed"
+        })
+
+      html =
+        conn
+        |> get(~p"/users/log-in?callback_url=https://branded.example.com/cb")
+        |> html_response(200)
+
+      assert html =~ "Sign in to continue to"
+      assert html =~ ~s(<img src="https://branded.example.com/logo.png")
+      assert html =~ ~s(style="color: #7c3aed")
+    end
+
+    test "unbranded app gets the default login design", %{conn: conn} do
+      {:ok, _app, _secret} =
+        You.Admin.create_app(%{
+          slug: "plain",
+          name: "Plain",
+          callback_url: "https://plain.example.com/cb"
+        })
+
+      html =
+        conn
+        |> get(~p"/users/log-in?callback_url=https://plain.example.com/cb")
+        |> html_response(200)
+
+      assert html =~ "Sign in to continue to"
+      assert html =~ ~s(<span class="text-primary">Plain</span>)
+      assert html =~ "lucide-lock"
+      refute html =~ "<img"
+    end
   end
 
   describe "GET /users/log-in/:token" do

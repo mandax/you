@@ -113,7 +113,15 @@ defmodule YouWeb.ConsoleLive do
   # ── apps ──────────────────────────────────────────────────────
   def handle_event("create_app", params, socket) do
     case Admin.create_app(
-           Map.take(params, ["name", "slug", "callback_url", "launch_url", "first_party"])
+           Map.take(params, [
+             "name",
+             "slug",
+             "callback_url",
+             "launch_url",
+             "logo_url",
+             "brand_color",
+             "first_party"
+           ])
          ) do
       {:ok, app, secret} ->
         {:noreply, socket |> load_data() |> assign(new_secret: secret, secret_app: app)}
@@ -146,7 +154,14 @@ defmodule YouWeb.ConsoleLive do
 
     case Admin.update_app(
            app,
-           Map.take(params, ["name", "callback_url", "launch_url", "first_party"])
+           Map.take(params, [
+             "name",
+             "callback_url",
+             "launch_url",
+             "logo_url",
+             "brand_color",
+             "first_party"
+           ])
          ) do
       {:ok, _app} ->
         {:noreply,
@@ -513,6 +528,14 @@ defmodule YouWeb.ConsoleLive do
             <.input type="text" name="slug" label="Slug (client_id)" value="" required />
             <.input type="url" name="callback_url" label="Callback URL" value="" required />
             <.input type="url" name="launch_url" label="Launch URL (optional)" value="" />
+            <.input type="url" name="logo_url" label="Logo URL (optional)" value="" />
+            <.input
+              type="text"
+              name="brand_color"
+              label="Brand color (optional)"
+              value=""
+              placeholder="#7c3aed"
+            />
             <.input
               type="checkbox"
               name="first_party"
@@ -591,6 +614,19 @@ defmodule YouWeb.ConsoleLive do
             name="launch_url"
             label="Launch URL (optional)"
             value={@editing_app.launch_url}
+          />
+          <.input
+            type="url"
+            name="logo_url"
+            label="Logo URL (optional)"
+            value={@editing_app.logo_url}
+          />
+          <.input
+            type="text"
+            name="brand_color"
+            label="Brand color (optional)"
+            value={@editing_app.brand_color}
+            placeholder="#7c3aed"
           />
           <.input
             type="checkbox"

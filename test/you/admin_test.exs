@@ -53,6 +53,50 @@ defmodule You.AdminTest do
     end
   end
 
+  describe "app branding" do
+    alias You.Admin.App
+
+    @valid_attrs %{slug: "myapp", name: "Myapp", callback_url: "https://myapp.example.com/cb"}
+
+    test "stores optional logo_url and brand_color" do
+      assert {:ok, app, _secret} =
+               Admin.create_app(
+                 Map.merge(@valid_attrs, %{
+                   logo_url: "https://myapp.example.com/logo.png",
+                   brand_color: "#7c3aed"
+                 })
+               )
+
+      assert app.logo_url == "https://myapp.example.com/logo.png"
+      assert app.brand_color == "#7c3aed"
+    end
+
+    test "brand_color must be a 6-digit hex color, nil allowed" do
+      assert %{brand_color: ["has invalid format"]} =
+               errors_on(App.changeset(%App{}, Map.put(@valid_attrs, :brand_color, "purple")))
+
+      assert %{brand_color: ["has invalid format"]} =
+               errors_on(App.changeset(%App{}, Map.put(@valid_attrs, :brand_color, "#12345")))
+
+      assert App.changeset(%App{}, Map.put(@valid_attrs, :brand_color, "#7c3aed")).valid?
+      assert App.changeset(%App{}, @valid_attrs).valid?
+    end
+
+    test "logo_url must be an http(s) URL, nil allowed" do
+      for url <- ["javascript:alert(1)", "ftp://example.com/logo.png", "not a url"] do
+        assert %{logo_url: ["must be an http(s) URL"]} =
+                 errors_on(App.changeset(%App{}, Map.put(@valid_attrs, :logo_url, url)))
+      end
+
+      assert App.changeset(
+               %App{},
+               Map.put(@valid_attrs, :logo_url, "https://example.com/logo.png")
+             ).valid?
+
+      assert App.changeset(%App{}, @valid_attrs).valid?
+    end
+  end
+
   describe "rotate_app_secret/1" do
     test "rotates the client secret" do
       {:ok, app, original_secret} =

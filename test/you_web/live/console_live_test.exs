@@ -87,6 +87,42 @@ defmodule YouWeb.ConsoleLiveTest do
       assert updated.launch_url == "https://edit.example.com/launch"
       assert updated.first_party
     end
+
+    test "create and edit app with login branding", %{conn: conn} do
+      {:ok, lv, _} = live(conn, "/console?view=apps")
+
+      lv
+      |> form("#new-app form", %{
+        "name" => "Branded",
+        "slug" => "branded",
+        "callback_url" => "https://branded.example.com/cb",
+        "logo_url" => "https://branded.example.com/logo.png",
+        "brand_color" => "#7c3aed"
+      })
+      |> render_submit()
+
+      assert [app] = Admin.list_apps()
+      assert app.logo_url == "https://branded.example.com/logo.png"
+      assert app.brand_color == "#7c3aed"
+
+      render_click(lv, "edit_app", %{"id" => app.id})
+
+      html =
+        lv
+        |> form("#edit-app form", %{
+          "name" => "Branded",
+          "callback_url" => "https://branded.example.com/cb",
+          "logo_url" => "",
+          "brand_color" => "#0ea5e9"
+        })
+        |> render_submit()
+
+      assert html =~ "App updated"
+
+      updated = Admin.get_app!(app.id)
+      assert updated.logo_url == nil
+      assert updated.brand_color == "#0ea5e9"
+    end
   end
 
   describe "orgs" do

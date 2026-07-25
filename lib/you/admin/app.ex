@@ -7,6 +7,8 @@ defmodule You.Admin.App do
     field :name, :string
     field :callback_url, :string
     field :launch_url, :string
+    field :logo_url, :string
+    field :brand_color, :string
     field :first_party, :boolean, default: false
     field :client_secret_hash, :binary
     timestamps()
@@ -14,8 +16,23 @@ defmodule You.Admin.App do
 
   def changeset(app, attrs) do
     app
-    |> cast(attrs, [:slug, :name, :callback_url, :launch_url, :first_party])
+    |> cast(attrs, [
+      :slug,
+      :name,
+      :callback_url,
+      :launch_url,
+      :logo_url,
+      :brand_color,
+      :first_party
+    ])
     |> validate_required([:slug, :name, :callback_url])
+    |> validate_format(:brand_color, ~r/^#[0-9a-fA-F]{6}$/)
+    |> validate_change(:logo_url, fn :logo_url, url ->
+      case URI.parse(url) do
+        %URI{scheme: scheme} when scheme in ["http", "https"] -> []
+        _ -> [logo_url: "must be an http(s) URL"]
+      end
+    end)
     |> unique_constraint(:slug)
   end
 end

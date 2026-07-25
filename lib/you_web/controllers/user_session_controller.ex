@@ -44,22 +44,26 @@ defmodule YouWeb.UserSessionController do
     else
       email = get_in(conn.assigns, [:current_scope, Access.key(:user), Access.key(:email)])
       form = Phoenix.Component.to_form(%{"email" => email}, as: "user")
+      app = app_for(conn)
 
       render(conn, :new,
         form: form,
         callback_url: get_session(conn, :callback_url),
         providers: oidc_providers(),
-        app_name: app_name_for(conn)
+        app_name: app && app.name,
+        app_logo_url: app && app.logo_url,
+        app_brand_color: app && app.brand_color
       )
     end
   end
 
-  # Name of the registered app in an OAuth login flow ("sign in to continue to
-  # <app>"); nil for a plain login.
-  defp app_name_for(conn) do
+  # Registered app in an OAuth login flow ("sign in to continue to <app>");
+  # nil for a plain login. Its branding (logo_url, brand_color) optionally
+  # customizes the login page.
+  defp app_for(conn) do
     with url when is_binary(url) <- get_session(conn, :callback_url),
          {:ok, app} <- You.Admin.lookup_app_by_callback(url) do
-      app.name
+      app
     else
       _ -> nil
     end
