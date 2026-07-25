@@ -432,10 +432,6 @@ defmodule YouWeb.ConsoleLive do
             <span class="lucide-log-out size-4 block shrink-0" /> Sign out
           </.link>
         </div>
-
-        <div class="border-t border-sidebar-border px-4 py-2.5 font-mono text-[11px] text-muted-foreground">
-          Identity &amp; Access
-        </div>
       </aside>
 
       <div class="flex min-w-0 flex-1 flex-col">
