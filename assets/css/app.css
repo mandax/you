@@ -133,24 +133,24 @@
 }
 
 .dark {
-  --background: 260 12% 7%;
+  --background: 255 8% 7%;
   --foreground: 250 20% 96%;
-  --card: 260 26% 9%;
+  --card: 255 10% 10%;
   --card-foreground: 250 20% 96%;
-  --popover: 260 28% 8%;
+  --popover: 255 10% 11%;
   --popover-foreground: 250 20% 96%;
   --primary: 210 92% 62%;
   --primary-foreground: 260 35% 12%;
-  --secondary: 260 20% 16%;
+  --secondary: 255 10% 16%;
   --secondary-foreground: 250 20% 96%;
-  --muted: 260 16% 14%;
-  --muted-foreground: 255 16% 60%;
-  --accent: 260 20% 16%;
+  --muted: 255 9% 15%;
+  --muted-foreground: 255 14% 62%;
+  --accent: 255 10% 16%;
   --accent-foreground: 250 20% 96%;
   --destructive: 0 72% 56%;
   --destructive-foreground: 0 0% 98%;
-  --border: 260 18% 17%;
-  --input: 260 18% 17%;
+  --border: 255 10% 22%;
+  --input: 255 10% 22%;
   --ring: 210 92% 62%;
 
   /* Triadic brand hues */
@@ -165,12 +165,12 @@
   --signal-down: 0 72% 56%;
 
   /* Sidebar — ink panel, one step darker than --card */
-  --sidebar-background: 260 30% 7%;
-  --sidebar-foreground: 255 16% 62%;
-  --sidebar-muted: 260 18% 13%;
+  --sidebar-background: 255 12% 8%;
+  --sidebar-foreground: 255 14% 62%;
+  --sidebar-muted: 255 9% 14%;
   --sidebar-accent: 210 92% 62%;
   --sidebar-accent-foreground: 260 35% 12%;
-  --sidebar-border: 260 18% 15%;
+  --sidebar-border: 255 9% 18%;
   --sidebar-ring: 210 92% 62%;
 }
 
