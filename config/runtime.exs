@@ -109,6 +109,9 @@ if config_env() == :prod do
     )
   end
 
+  # Management REST API bearer token. Unset/empty disables the API (403).
+  config :you, :api_token, System.get_env("API_TOKEN")
+
   config :wax_,
     origin: "https://#{host}",
     rp_id: :auto

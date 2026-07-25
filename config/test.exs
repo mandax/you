@@ -39,3 +39,6 @@ config :you, check_pwned_passwords: false
 # Off by default so the whole suite doesn't share a 127.0.0.1 bucket;
 # the rate-limit tests set their own limits.
 config :you, YouWeb.RateLimit, %{}
+
+# Management REST API bearer token
+config :you, :api_token, "test-api-token"

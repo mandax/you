@@ -120,6 +120,32 @@ defmodule YouWeb.Router do
     end
   end
 
+  ## Management REST API — bearer-token automation for operators (see
+  ## docs/api.md). Token-authenticated, rate-limited per IP.
+
+  pipeline :api_management do
+    plug :accepts, ["json"]
+    plug YouWeb.Plugs.ManagementAuth
+    plug YouWeb.Plugs.RateLimit, key: :api_mgmt
+  end
+
+  scope "/api/v1", YouWeb.API.V1 do
+    pipe_through :api_management
+
+    get "/users", UsersController, :index
+    post "/users", UsersController, :create
+    get "/users/:id", UsersController, :show
+    post "/users/:id/logout", UsersController, :logout
+    delete "/users/:id", UsersController, :delete
+
+    get "/apps", AppsController, :index
+    post "/apps", AppsController, :create
+    patch "/apps/:id", AppsController, :update
+    delete "/apps/:id", AppsController, :delete
+
+    get "/audit", AuditController, :index
+  end
+
   ## Authentication routes
 
   scope "/", YouWeb do

@@ -88,6 +88,33 @@ defmodule You.Accounts do
     |> Repo.insert()
   end
 
+  @doc """
+  Registers a user with email and password, confirmed immediately.
+
+  Used by the management API: an operator-created account must be usable
+  right away, without the magic-link confirmation round-trip. Atomic —
+  either the whole account exists or nothing does.
+
+  Returns `{:ok, user}` or `{:error, changeset}`.
+  """
+  def register_user_with_password(attrs) do
+    Repo.transact(fn ->
+      with {:ok, user} <- register_user(attrs),
+           {:ok, {user, _tokens}} <- update_user_password(user, attrs),
+           {:ok, user} <- confirm_user(user) do
+        {:ok, user}
+      end
+    end)
+  end
+
+  # Mirrors the confirmation done by the magic-link login: stamp
+  # confirmed_at so the account is considered proven.
+  defp confirm_user(user) do
+    user
+    |> Ecto.Changeset.change(confirmed_at: DateTime.utc_now(:second))
+    |> Repo.update()
+  end
+
   ## Settings
 
   @doc """
