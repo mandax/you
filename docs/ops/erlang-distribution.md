@@ -1,7 +1,6 @@
 # Erlang Distribution: Security for Operators
 
-Consumer BEAM apps talk to You over Erlang distribution (see
-[ADR 0009](../adr/0009-erlang-distribution-operational.md)). Distribution is
+Consumer BEAM apps talk to You over Erlang distribution. Distribution is
 convenient and fast, but its security model is simple and unforgiving: **the
 shared cookie is the only gate**. Any node that presents the cookie can run
 arbitrary code on every connected node, including You itself. **The trust is

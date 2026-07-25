@@ -110,7 +110,6 @@ defmodule YouWeb.Components.SiteChrome do
         links: [
           {"Docs", "#"},
           {"Status", "#"},
-          {"ADRs", "#"},
           {"Contact", "#"}
         ]
       }

@@ -128,12 +128,6 @@ headlessly at `/api/auth/*` (client_id + client_secret).
 
 See [CONTEXT.md](CONTEXT.md) for the full glossary of terms.
 
-## Decision Records
-
-- [ADR-0001](docs/adr/0001-iam-project.md): overall project architecture
-- [ADR-0002](docs/adr/0002-erlang-distribution.md): Erlang distribution protocol
-- [ADR-0003](docs/adr/0003-auth-code-flow.md): auth code flow via redirect
-
 ## Development
 
 ```bash
