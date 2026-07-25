@@ -28,8 +28,9 @@ defmodule You.Application do
 
     # Always include the Streamer — it is a no-op when unconfigured. Appended
     # (not prepended) because it reads the audit-webhook setting from the DB at
-    # init, so it must start after You.Repo.
-    children = children ++ [You.Audit.Streamer]
+    # init, so it must start after You.Repo. Same for the webhook Dispatcher,
+    # which queries endpoints from the DB per event.
+    children = children ++ [You.Audit.Streamer, You.Webhooks.Dispatcher]
 
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options

@@ -24,7 +24,9 @@ defmodule You.Audit.Streamer do
     [:you, :audit, :token, :refresh],
     [:you, :audit, :account, :update],
     [:you, :audit, :consent, :grant],
-    [:you, :audit, :consent, :revoke]
+    [:you, :audit, :consent, :revoke],
+    [:you, :audit, :user, :registered],
+    [:you, :audit, :user, :anonymized]
   ]
 
   @doc """
@@ -107,7 +109,7 @@ defmodule You.Audit.Streamer do
   """
   def build_payload(event_name, measurements, metadata, timestamp \\ DateTime.utc_now()) do
     %{
-      event: event_name |> Enum.drop(2) |> Enum.join(":"),
+      event: You.Webhooks.event_type(event_name),
       measurements: measurements,
       metadata: metadata,
       at: DateTime.to_iso8601(timestamp)

@@ -83,9 +83,19 @@ defmodule You.Accounts do
 
   """
   def register_user(attrs) do
-    %User{}
-    |> User.email_changeset(attrs)
-    |> Repo.insert()
+    result =
+      %User{}
+      |> User.email_changeset(attrs)
+      |> Repo.insert()
+
+    with {:ok, user} <- result do
+      :telemetry.execute([:you, :audit, :user, :registered], %{}, %{
+        user_id: user.id,
+        email: user.email
+      })
+    end
+
+    result
   end
 
   @doc """
@@ -645,6 +655,10 @@ defmodule You.Accounts do
 
         {:ok, updated}
       end)
+
+    with {:ok, updated} <- result do
+      :telemetry.execute([:you, :audit, :user, :anonymized], %{}, %{user_id: updated.id})
+    end
 
     result
   end
