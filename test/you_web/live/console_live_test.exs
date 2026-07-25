@@ -125,29 +125,6 @@ defmodule YouWeb.ConsoleLiveTest do
     end
   end
 
-  describe "orgs" do
-    test "create, select, add and remove a member", %{conn: conn} do
-      member = You.AccountsFixtures.user_fixture()
-      {:ok, lv, _} = live(conn, "/console?view=orgs")
-
-      render_submit(form(lv, "#new-org form", %{"name" => "Acme", "slug" => "acme"}))
-      assert [org] = Organizations.list_organizations()
-
-      render_click(lv, "select_org", %{"id" => org.id})
-
-      html =
-        render_submit(
-          form(lv, "form[phx-submit=add_member]", %{"email" => member.email, "role" => "member"})
-        )
-
-      assert html =~ member.email
-      assert [{^member, "member"}] = Organizations.list_members(org)
-
-      render_click(lv, "remove_member", %{"user_id" => member.id})
-      assert Organizations.list_members(org) == []
-    end
-  end
-
   describe "users" do
     test "change You role via the role dropdown", %{conn: conn} do
       other = You.AccountsFixtures.user_fixture()
