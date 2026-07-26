@@ -200,6 +200,15 @@ orgs =
 # memberships line up with the user list; everyone else lands in Acme Labs.
 by_slug = Map.new(orgs, &{&1.slug, &1})
 
+# Memberships are uniquely indexed on (org, user): on a rerun, set the role
+# instead of failing the insert.
+ensure_member = fn org, user, role ->
+  case Organizations.add_member(org, user, role) do
+    {:ok, membership} -> membership
+    {:error, _} -> Organizations.update_member_role(org, user, role)
+  end
+end
+
 Enum.each(users, fn user ->
   [_, domain] = String.split(user.email, "@")
   slug = domain |> String.replace(".com", "") |> String.replace(~r/\.(io|dev|co|net|studio)$/, "")
@@ -213,10 +222,10 @@ Enum.each(users, fn user ->
       true -> "member"
     end
 
-  Organizations.add_member(org, user, role)
+  ensure_member.(org, user, role)
 end)
 
-{:ok, _} = Organizations.add_member(by_slug["northwind"], admin, "owner")
+ensure_member.(by_slug["northwind"], admin, "owner")
 
 IO.puts(
   "  #{length(orgs)} orgs, #{Repo.aggregate(You.Organizations.Membership, :count)} memberships"
