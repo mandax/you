@@ -123,9 +123,9 @@ defmodule YouWeb.LandingContent do
     [
       %{
         label: "Who holds user credentials",
-        you: "You do",
+        you: ~s(<span class="you-badge">You</span> do),
         auth0: "They do",
-        keycloak: "You do"
+        keycloak: ~s(<span class="you-badge">You</span> do)
       },
       %{label: "Protocol", you: "OIDC, JWKS, SCIM", auth0: "OIDC, SAML", keycloak: "OIDC, SAML"},
       %{
@@ -183,7 +183,7 @@ defmodule YouWeb.LandingContent do
       %{
         title: "Integrate an app",
         body:
-          "Register the app in the console, redirect its users to You, verify tokens locally against the JWKS. Any OIDC client library works.",
+          "Register the app in the console, redirect its users to <span class=\"you-badge\">You</span>, verify tokens locally against the JWKS. Any OIDC client library works.",
         code: nil
       }
     ]
@@ -219,14 +219,14 @@ defmodule YouWeb.LandingContent do
   def faqs do
     [
       %{
-        q: "Is You open source?",
+        q: ~s(Is <span class="you-badge">You</span> open source?),
         a:
           "Yes. MIT-licensed, source on GitHub. You self-host it on your own cluster, so your users' data stays inside your infrastructure."
       },
       %{
         q: "How do apps connect?",
         a:
-          "Two steps. Your app redirects the user to You's /users/log-in with a callback_url and scope; after login You redirects back with a single-use code. Your app then trades that code for a JWT over standard HTTP (OIDC, any language). Elixir apps you trust in your own cluster can skip HTTP entirely and call You over Erlang distribution."
+          "Two steps. Your app redirects the user to <span class=\"you-badge\">You</span>'s /users/log-in with a callback_url and scope; after login <span class=\"you-badge\">You</span> redirects back with a single-use code. Your app then trades that code for a JWT over standard HTTP (OIDC, any language). Elixir apps you trust in your own cluster can skip HTTP entirely and call <span class=\"you-badge\">You</span> over Erlang distribution."
       },
       %{
         q: "How is it secured?",
@@ -241,7 +241,7 @@ defmodule YouWeb.LandingContent do
       %{
         q: "How is it different from Auth0?",
         a:
-          "Auth0 is a solid hosted IdP, but hosted means your users' credentials live on their infrastructure and you pay per user. You gives you the same OIDC standard on your own node, plus a distribution-native shortcut for trusted Elixir apps. The real question is who holds your users."
+          "Auth0 is a solid hosted IdP, but hosted means your users' credentials live on their infrastructure and you pay per user. <span class=\"you-badge\">You</span> gives you the same OIDC standard on your own node, plus a distribution-native shortcut for trusted Elixir apps. The real question is who holds your users."
       }
     ]
   end
