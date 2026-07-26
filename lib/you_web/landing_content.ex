@@ -172,18 +172,17 @@ defmodule YouWeb.LandingContent do
   def setup_steps do
     [
       %{
-        title: "Build and run",
-        body: "One container with SQLite inside. No other services to run.",
+        title: "Pull and run",
+        body: "Pre-built image on GitHub Container Registry. One container with SQLite inside.",
         code: """
-        git clone https://github.com/mandax/you.git && cd you
-        docker build -t you:latest .
+        docker pull ghcr.io/mandax/you:latest
         docker run -d \\
           -e DATABASE_PATH=/data/you/prod.db \\
           -e SECRET_KEY_BASE=$(openssl rand -base64 48) \\
           -e PHX_HOST=you.example.com \\
           -v you-data:/data/you \\
           -p 4000:4000 \\
-          you:latest\
+          ghcr.io/mandax/you:latest\
         """
       },
       %{

@@ -4,8 +4,8 @@
 # Builds an Elixir release containing only the compiled binary, ERTS,
 # and runtime config — no source code leaks into the final image.
 #
-# Usage:
-#   docker build -t you:latest .
+# Usage (pre-built image):
+#   docker pull ghcr.io/mandax/you:latest
 #
 #   docker run -d \
 #     -e DATABASE_PATH=/data/you/prod.db \
@@ -13,7 +13,10 @@
 #     -e PHX_HOST=you.example.com \
 #     -v you-data:/data/you \
 #     -p 4000:4000 \
-#     you:latest
+#     ghcr.io/mandax/you:latest
+#
+# Or build from source:
+#   docker build -t you:latest .
 #
 #   # Run migrations
 #   docker exec <container> bin/migrate

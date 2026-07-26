@@ -130,7 +130,7 @@ docker run -d --name you \
   -e PHX_HOST=you.example.com \
   -v you-data:/data/you \
   -p 4000:4000 \
-  you:latest
+  ghcr.io/mandax/you:latest
 ```
 
 ### Migrate

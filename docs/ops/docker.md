@@ -1,10 +1,22 @@
 # Docker: Production Deployment
 
-Build and run You IAM as a Docker container using the multi-stage `Dockerfile`.
+Run You IAM as a Docker container. Pre-built images are published to
+[GitHub Container Registry](https://github.com/mandax/you/pkgs/container/you).
 
-## Build
+## Pull (recommended)
 
 ```bash
+docker pull ghcr.io/mandax/you:latest
+```
+
+Tagged images follow semver (`v0.1.0`, `v0.2`, etc.).
+
+## Build from source
+
+If you prefer to build yourself:
+
+```bash
+git clone https://github.com/mandax/you.git && cd you
 docker build -t you:latest .
 ```
 
@@ -16,8 +28,6 @@ Source code is **not present** in the final image; only the compiled release is.
 
 ## Run
 
-### Minimal
-
 ```bash
 docker run -d \
   -e DATABASE_PATH=/data/you/prod.db \
@@ -25,7 +35,7 @@ docker run -d \
   -e PHX_HOST=you.example.com \
   -v you-data:/data/you \
   -p 4000:4000 \
-  you:latest
+  ghcr.io/mandax/you:latest
 ```
 
 ### All environment variables
