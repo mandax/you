@@ -71,6 +71,20 @@ defmodule YouWeb.LandingContent do
     ]
   end
 
+  def motivation do
+    %{
+      eyebrow: "03 · Why I built this",
+      heading: "One login to rule my own little fleet.",
+      body:
+        "I built this because every personal project needs authentication, and I kept " <>
+          "rewiring it from scratch or paying a monthly fee to hand someone else my " <>
+          "users data. What I wanted was a single place for all of it: one login, one " <>
+          "user store, no cost, running on my own hardware, flexible enough to support " <>
+          "different projects. You is that thing, extracted so it works for anyone " <>
+          "with the same itch."
+    }
+  end
+
   def security_items do
     [
       %{
