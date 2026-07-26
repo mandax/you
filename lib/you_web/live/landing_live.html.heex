@@ -18,7 +18,7 @@
         <.eyebrow>Self-hosted identity, standard OIDC</.eyebrow>
         <h1 class="text-balance text-4xl font-bold leading-[1.05] tracking-tight sm:text-5xl lg:text-[3.4rem]">
           One login for every service you run.
-          <span class="gradient-text">Your users' credentials stay on your hardware.</span>
+          <span class="gradient-text">Your users credentials stay on your hardware.</span>
         </h1>
         <p class="mt-5 max-w-xl text-lg leading-relaxed text-muted-foreground">
           <span class="you-badge">You</span> is a self-hosted identity and access management
@@ -39,10 +39,23 @@
     </div>
   </section>
 
+  <%!-- ── motivation ──────────────────────────────────────── --%>
+  <section class="border-b border-border/30 py-20">
+    <div class="mx-auto max-w-6xl px-5">
+      <.eyebrow>{YouWeb.LandingContent.motivation().eyebrow}</.eyebrow>
+      <h2 class="max-w-2xl text-3xl font-bold tracking-tight">
+        {YouWeb.LandingContent.motivation().heading}
+      </h2>
+      <p class="mt-3 max-w-2xl text-muted-foreground">
+        {YouWeb.LandingContent.motivation().body}
+      </p>
+    </div>
+  </section>
+
   <%!-- ── console / operations ────────────────────────────────── --%>
   <section id="console" class="border-b border-border/30 py-20">
     <div class="mx-auto max-w-6xl px-5">
-      <.eyebrow>01 · The console</.eyebrow>
+      <.eyebrow>The console</.eyebrow>
       <h2 class="max-w-2xl text-3xl font-bold tracking-tight">
         Identity you can actually operate.
       </h2>
@@ -51,6 +64,34 @@
         Register apps, manage users and orgs, watch the audit trail live, and tune the
         instance. No YAML, no restarts.
       </p>
+
+      <%!-- Screencast of the real console, framed as a small window. Silent,
+            so it carries no audio track and needs no captions. --%>
+      <figure class="mt-10 max-w-3xl">
+        <div class="overflow-hidden rounded-xl border border-border bg-card shadow-lg">
+          <div class="flex h-8 items-center gap-2 border-b border-border/60 bg-muted/40 px-3">
+            <span class="size-2.5 rounded-full bg-signal-down/70" />
+            <span class="size-2.5 rounded-full bg-signal-warn/70" />
+            <span class="size-2.5 rounded-full bg-signal-ok/70" />
+            <span class="ml-2 font-mono text-[11px] text-muted-foreground">
+              you · /console
+            </span>
+          </div>
+          <video
+            src={~p"/videos/console-tour.mp4"}
+            poster={~p"/images/console-tour-poster.jpg"}
+            controls
+            muted
+            loop
+            playsinline
+            preload="metadata"
+            class="block aspect-[8/5] w-full bg-background"
+          />
+        </div>
+        <figcaption class="mt-2 font-mono text-xs text-muted-foreground">
+          76s, no audio · users, apps, audit log, webhooks and settings on a seeded instance
+        </figcaption>
+      </figure>
 
       <div class="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <div
@@ -68,7 +109,7 @@
   <%!-- ── solo developers ───────────────────────────────────── --%>
   <section class="border-b border-border/30 py-20">
     <div class="mx-auto max-w-6xl px-5">
-      <.eyebrow>02 · Made for solo developers</.eyebrow>
+      <.eyebrow>Made for solo developers</.eyebrow>
       <h2 class="max-w-2xl text-3xl font-bold tracking-tight">
         Every user of every app you run, in one place.
       </h2>
@@ -86,23 +127,10 @@
     </div>
   </section>
 
-  <%!-- ── motivation ──────────────────────────────────────── --%>
-  <section class="border-b border-border/30 py-20">
-    <div class="mx-auto max-w-6xl px-5">
-      <.eyebrow>{YouWeb.LandingContent.motivation().eyebrow}</.eyebrow>
-      <h2 class="max-w-2xl text-3xl font-bold tracking-tight">
-        {YouWeb.LandingContent.motivation().heading}
-      </h2>
-      <p class="mt-3 max-w-2xl text-muted-foreground">
-        {YouWeb.LandingContent.motivation().body}
-      </p>
-    </div>
-  </section>
-
   <%!-- ── security pillars ───────────────────────────────────────── --%>
   <section id="security" class="border-b border-border/30 py-20">
     <div class="mx-auto max-w-6xl px-5">
-      <.eyebrow>04 · Built in, not bolted on</.eyebrow>
+      <.eyebrow>Built in, not bolted on</.eyebrow>
       <h2 class="max-w-2xl text-3xl font-bold tracking-tight">
         Every defense on by default, not a paid add-on.
       </h2>
@@ -122,7 +150,7 @@
   <%!-- ── when hosted auth is right ───────────────────────────────── --%>
   <section class="border-b border-border/30 py-20">
     <div class="mx-auto max-w-6xl px-5">
-      <.eyebrow>05 · When not to use <span class="you-badge">You</span></.eyebrow>
+      <.eyebrow>When not to use <span class="you-badge">You</span></.eyebrow>
       <h2 class="max-w-2xl text-3xl font-bold tracking-tight">
         Sometimes hosted auth is the right call.
       </h2>
@@ -202,7 +230,7 @@
   <%!-- ── comparison ──────────────────────────────────────────── --%>
   <section id="comparison" class="border-b border-border/30 py-20">
     <div class="mx-auto max-w-4xl px-5">
-      <.eyebrow>06 · Honest comparison</.eyebrow>
+      <.eyebrow>Honest comparison</.eyebrow>
       <h2 class="text-3xl font-bold tracking-tight">
         <span class="you-badge">You</span> vs the field.
       </h2>

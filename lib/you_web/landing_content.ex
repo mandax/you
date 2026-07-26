@@ -73,15 +73,15 @@ defmodule YouWeb.LandingContent do
 
   def motivation do
     %{
-      eyebrow: "03 · Why I built this",
-      heading: "One login to rule my own little fleet.",
+      eyebrow: "Why I built this",
+      heading: "Free, self-hosted, good enough.",
       body:
-        "I built this because every personal project needs authentication, and I kept " <>
-          "rewiring it from scratch or paying a monthly fee to hand someone else my " <>
-          "users data. What I wanted was a single place for all of it: one login, one " <>
-          "user store, no cost, running on my own hardware, flexible enough to support " <>
-          "different projects. You is that thing, extracted so it works for anyone " <>
-          "with the same itch."
+        "I needed a free, self-hosted identity service for my projects. " <>
+          "One login, one user store, no monthly bill. And I wanted it to " <>
+          "run as a BEAM node I could just drop into an Erlang/OTP cluster, " <>
+          "so trusted apps talk through TCP message passing instead of all " <>
+          "the HTTP bureaucracy. You is that service, built for my own use " <>
+          "and open for anyone who wants the same."
     }
   end
 
