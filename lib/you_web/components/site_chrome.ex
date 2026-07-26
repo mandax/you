@@ -89,7 +89,7 @@ defmodule YouWeb.Components.SiteChrome do
   defp footer_columns do
     [
       %{
-        heading: "Product",
+        heading: "Sections",
         links: [
           {"The console", "/#console"},
           {"Features", "/#security"},
