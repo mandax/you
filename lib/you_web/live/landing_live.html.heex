@@ -40,34 +40,33 @@
   </section>
 
   <%!-- ── motivation ──────────────────────────────────────── --%>
-  <section class="border-b border-border/30 py-20">
+  <section class="border-b border-border/30 py-20 text-center">
     <div class="mx-auto max-w-6xl px-5">
       <.eyebrow>{YouWeb.LandingContent.motivation().eyebrow}</.eyebrow>
-      <h2 class="max-w-2xl text-3xl font-bold tracking-tight">
+      <h2 class="mx-auto max-w-2xl text-3xl font-bold tracking-tight">
         {YouWeb.LandingContent.motivation().heading}
       </h2>
-      <p class="mt-3 max-w-2xl text-muted-foreground">
+      <p class="mx-auto mt-3 max-w-2xl text-muted-foreground">
         {YouWeb.LandingContent.motivation().body}
       </p>
     </div>
   </section>
 
   <%!-- ── console / operations ────────────────────────────────── --%>
-  <section id="console" class="border-b border-border/30 py-20">
+  <section id="console" class="border-b border-border/30 py-20 text-center">
     <div class="mx-auto max-w-6xl px-5">
       <.eyebrow>The console</.eyebrow>
-      <h2 class="max-w-2xl text-3xl font-bold tracking-tight">
+      <h2 class="mx-auto max-w-2xl text-3xl font-bold tracking-tight">
         Identity you can actually operate.
       </h2>
-      <p class="mt-3 max-w-2xl text-muted-foreground">
+      <p class="mx-auto mt-3 max-w-2xl text-muted-foreground">
         <span class="you-badge">You</span> ships with a management console out of the box.
         Register apps, manage users and orgs, watch the audit trail live, and tune the
         instance. No YAML, no restarts.
       </p>
 
-      <%!-- Screencast of the real console, framed as a small window. Silent,
-            so it carries no audio track and needs no captions. --%>
-      <figure class="mt-10 max-w-3xl">
+      <%!-- Screencast of the real console, framed as a small window. --%>
+      <div class="mx-auto mt-10 max-w-3xl">
         <div class="overflow-hidden rounded-xl border border-border bg-card shadow-lg">
           <div class="flex h-8 items-center gap-2 border-b border-border/60 bg-muted/40 px-3">
             <span class="size-2.5 rounded-full bg-signal-down/70" />
@@ -77,26 +76,27 @@
               you · /console
             </span>
           </div>
+          <%!-- No controls: it loops silently as a moving screenshot. Muted is
+                what makes autoplay allowed at all. --%>
           <video
             src={~p"/videos/console-tour.mp4"}
             poster={~p"/images/console-tour-poster.jpg"}
-            controls
+            autoplay
             muted
             loop
             playsinline
-            preload="metadata"
-            class="block aspect-[8/5] w-full bg-background"
+            disablepictureinpicture
+            preload="auto"
+            aria-label="Screencast of the You console"
+            class="pointer-events-none block aspect-[8/5] w-full bg-background"
           />
         </div>
-        <figcaption class="mt-2 font-mono text-xs text-muted-foreground">
-          76s, no audio · users, apps, audit log, webhooks and settings on a seeded instance
-        </figcaption>
-      </figure>
+      </div>
 
       <div class="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <div
           :for={feature <- YouWeb.LandingContent.console_features()}
-          class="rounded-xl border border-border bg-card p-5 transition-colors hover:border-primary/40"
+          class="flex flex-col items-center rounded-xl border border-border bg-card p-5 transition-colors hover:border-primary/40"
         >
           <span class={[feature.icon, "size-5 block text-magenta-brand"]} />
           <h3 class="mt-3 text-sm font-semibold">{feature.title}</h3>
@@ -107,17 +107,17 @@
   </section>
 
   <%!-- ── solo developers ───────────────────────────────────── --%>
-  <section class="border-b border-border/30 py-20">
+  <section class="border-b border-border/30 py-20 text-center">
     <div class="mx-auto max-w-6xl px-5">
       <.eyebrow>Made for solo developers</.eyebrow>
-      <h2 class="max-w-2xl text-3xl font-bold tracking-tight">
+      <h2 class="mx-auto max-w-2xl text-3xl font-bold tracking-tight">
         Every user of every app you run, in one place.
       </h2>
 
       <div class="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <div
           :for={feature <- YouWeb.LandingContent.solo_features()}
-          class="rounded-xl border border-border bg-card p-5 transition-colors hover:border-primary/40"
+          class="flex flex-col items-center rounded-xl border border-border bg-card p-5 transition-colors hover:border-primary/40"
         >
           <span class={[feature.icon, "size-5 block text-magenta-brand"]} />
           <h3 class="mt-3 text-sm font-semibold">{feature.title}</h3>
@@ -128,16 +128,16 @@
   </section>
 
   <%!-- ── security pillars ───────────────────────────────────────── --%>
-  <section id="security" class="border-b border-border/30 py-20">
+  <section id="security" class="border-b border-border/30 py-20 text-center">
     <div class="mx-auto max-w-6xl px-5">
       <.eyebrow>Built in, not bolted on</.eyebrow>
-      <h2 class="max-w-2xl text-3xl font-bold tracking-tight">
+      <h2 class="mx-auto max-w-2xl text-3xl font-bold tracking-tight">
         Every defense on by default, not a paid add-on.
       </h2>
       <div class="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <div
           :for={item <- YouWeb.LandingContent.security_items()}
-          class="rounded-xl border border-border bg-background p-5"
+          class="flex flex-col items-center rounded-xl border border-border bg-background p-5"
         >
           <span class="lucide-lock size-5 block text-azure-brand" />
           <h3 class="mt-3 text-sm font-semibold">{item.title}</h3>
@@ -148,13 +148,13 @@
   </section>
 
   <%!-- ── when hosted auth is right ───────────────────────────────── --%>
-  <section class="border-b border-border/30 py-20">
+  <section class="border-b border-border/30 py-20 text-center">
     <div class="mx-auto max-w-6xl px-5">
       <.eyebrow>When not to use <span class="you-badge">You</span></.eyebrow>
-      <h2 class="max-w-2xl text-3xl font-bold tracking-tight">
+      <h2 class="mx-auto max-w-2xl text-3xl font-bold tracking-tight">
         Sometimes hosted auth is the right call.
       </h2>
-      <p class="mt-3 max-w-2xl text-muted-foreground">
+      <p class="mx-auto mt-3 max-w-2xl text-muted-foreground">
         You exists for one reason: identity that lives inside your own BEAM cluster. If that's not
         your constraint, other tools are simpler. Here is the honest routing.
       </p>
@@ -162,7 +162,7 @@
         <div
           :for={alt <- YouWeb.LandingContent.alternatives()}
           class={[
-            "rounded-xl border bg-card p-6",
+            "flex flex-col items-center rounded-xl border bg-card p-6",
             if(alt.ours, do: "border-primary shadow-lg shadow-primary/10", else: "border-border")
           ]}
         >
@@ -189,9 +189,9 @@
   </section>
 
   <%!-- ── scale ───────────────────────────────────────────────── --%>
-  <section class="border-b border-border/30 py-16">
+  <section class="border-b border-border/30 py-16 text-center">
     <div class="mx-auto grid max-w-6xl gap-4 px-5 md:grid-cols-2 lg:grid-cols-3">
-      <div class="rounded-xl border border-border bg-background p-7">
+      <div class="flex flex-col items-center rounded-xl border border-border bg-background p-7">
         <span class="lucide-cloud-off size-5 block text-primary" />
         <h3 class="mt-4 text-xl font-bold tracking-tight">Built to be ignorable</h3>
         <p class="mt-2 text-sm text-muted-foreground">
@@ -200,7 +200,7 @@
           can go down and nobody notices.
         </p>
       </div>
-      <div class="rounded-xl border border-border bg-background p-7">
+      <div class="flex flex-col items-center rounded-xl border border-border bg-background p-7">
         <span class="lucide-network size-5 block text-primary" />
         <h3 class="mt-4 text-xl font-bold tracking-tight">
           Elixir apps skip HTTP entirely
@@ -212,7 +212,7 @@
           rotate. Everyone else uses standard OIDC.
         </p>
       </div>
-      <div class="rounded-xl border border-border bg-background p-7">
+      <div class="flex flex-col items-center rounded-xl border border-border bg-background p-7">
         <span class="lucide-plug size-5 block text-primary" />
         <h3 class="mt-4 text-xl font-bold tracking-tight">Add a consumer app in one row</h3>
         <p class="mt-2 text-sm text-muted-foreground">
@@ -228,13 +228,13 @@
   </section>
 
   <%!-- ── comparison ──────────────────────────────────────────── --%>
-  <section id="comparison" class="border-b border-border/30 py-20">
+  <section id="comparison" class="border-b border-border/30 py-20 text-center">
     <div class="mx-auto max-w-4xl px-5">
       <.eyebrow>Honest comparison</.eyebrow>
       <h2 class="text-3xl font-bold tracking-tight">
         <span class="you-badge">You</span> vs the field.
       </h2>
-      <p class="mt-3 text-muted-foreground">
+      <p class="mx-auto mt-3 max-w-2xl text-muted-foreground">
         Hosted providers and JVM-based IdPs are both solid choices.
         <span class="you-badge">You</span>
         is the free, self-hosted
@@ -243,7 +243,7 @@
       <div class="mt-8 overflow-x-auto rounded-xl border border-border">
         <table class="w-full text-sm">
           <thead>
-            <tr class="border-b border-border bg-muted/40 text-left">
+            <tr class="border-b border-border bg-muted/40 text-center">
               <th class="px-4 py-3 font-medium"></th>
               <th class="px-4 py-3 font-medium"><span class="you-badge">You</span></th>
               <th class="px-4 py-3 font-medium text-muted-foreground">Auth0</th>
@@ -257,8 +257,8 @@
             >
               <td class="px-4 py-3 text-muted-foreground">{row.label}</td>
               <td class="bg-primary/5 px-4 py-3 font-medium">{Phoenix.HTML.raw(row.you)}</td>
-              <td class="px-4 py-3 text-muted-foreground">{row.auth0}</td>
-              <td class="px-4 py-3 text-muted-foreground">{row.keycloak}</td>
+              <td class="px-4 py-3 text-muted-foreground">{Phoenix.HTML.raw(row.auth0)}</td>
+              <td class="px-4 py-3 text-muted-foreground">{Phoenix.HTML.raw(row.keycloak)}</td>
             </tr>
           </tbody>
         </table>
@@ -267,11 +267,11 @@
   </section>
 
   <%!-- ── get started ─────────────────────────────────────────── --%>
-  <section id="get-started" class="border-b border-border/30 py-20">
+  <section id="get-started" class="border-b border-border/30 py-20 text-center">
     <div class="mx-auto max-w-4xl px-5">
       <.eyebrow>07 · Get started</.eyebrow>
       <h2 class="text-3xl font-bold tracking-tight">Running in five minutes.</h2>
-      <p class="mt-3 max-w-2xl text-muted-foreground">
+      <p class="mx-auto mt-3 max-w-2xl text-muted-foreground">
         Free and open source under MIT. Build from source or pull the image, bootstrap
         the first admin, then point an app at it.
       </p>
@@ -281,14 +281,14 @@
           :for={{step, i} <- Enum.with_index(YouWeb.LandingContent.setup_steps(), 1)}
           class="rounded-xl border border-border bg-card p-6"
         >
-          <div class="flex items-baseline gap-3">
+          <div class="flex items-baseline justify-center gap-3">
             <span class="font-mono text-sm text-magenta-brand">0{i}</span>
             <h3 class="font-semibold">{step.title}</h3>
           </div>
           <p class="mt-1.5 text-sm text-muted-foreground">{Phoenix.HTML.raw(step.body)}</p>
           <pre
             :if={step.code}
-            class="mt-4 overflow-x-auto rounded-lg border border-border bg-background px-4 py-3 font-mono text-xs leading-relaxed text-foreground/90"
+            class="mt-4 overflow-x-auto rounded-lg border border-border bg-background px-4 py-3 text-left font-mono text-xs leading-relaxed text-foreground/90"
           >{step.code}</pre>
         </div>
       </div>
