@@ -6,17 +6,6 @@ defmodule YouWeb.LandingContent do
   without wading through markup, and so the LiveView stays about behavior.
   """
 
-  def trust_strip do
-    [
-      "password + TOTP 2FA",
-      "magic links",
-      "JWT + revocation",
-      "audit log",
-      "GDPR/LGPD data rights",
-      "runs on your BEAM"
-    ]
-  end
-
   def console_features do
     [
       %{

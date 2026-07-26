@@ -2,7 +2,7 @@
   <.site_nav current_scope={@current_scope} />
 
   <%!-- ── hero: animated discrete graph canvas, content left ── --%>
-  <section class="relative overflow-hidden border-b border-border">
+  <section class="relative overflow-hidden border-b border-border/30">
     <canvas
       id="graph-canvas"
       phx-hook="GraphCanvas"
@@ -39,17 +39,8 @@
     </div>
   </section>
 
-  <div class="border-y border-border bg-card/40">
-    <div class="mx-auto flex max-w-6xl flex-wrap items-center justify-center gap-x-6 gap-y-1 px-5 py-3 text-center font-mono text-sm text-muted-foreground">
-      <%= for {item, i} <- Enum.with_index(YouWeb.LandingContent.trust_strip()) do %>
-        <span :if={i > 0} class="text-border">·</span>
-        <span>{item}</span>
-      <% end %>
-    </div>
-  </div>
-
   <%!-- ── console / operations ────────────────────────────────── --%>
-  <section id="console" class="border-b border-border py-20">
+  <section id="console" class="border-b border-border/30 py-20">
     <div class="mx-auto max-w-6xl px-5">
       <.eyebrow>01 · The console</.eyebrow>
       <h2 class="max-w-2xl text-3xl font-bold tracking-tight">
@@ -75,7 +66,7 @@
   </section>
 
   <%!-- ── solo developers ───────────────────────────────────── --%>
-  <section class="border-b border-border py-20">
+  <section class="border-b border-border/30 py-20">
     <div class="mx-auto max-w-6xl px-5">
       <.eyebrow>02 · Made for solo developers</.eyebrow>
       <h2 class="max-w-2xl text-3xl font-bold tracking-tight">
@@ -96,7 +87,7 @@
   </section>
 
   <%!-- ── security pillars ───────────────────────────────────────── --%>
-  <section id="security" class="border-b border-border bg-card/30 py-20">
+  <section id="security" class="border-b border-border/30 py-20">
     <div class="mx-auto max-w-6xl px-5">
       <.eyebrow>03 · Built in, not bolted on</.eyebrow>
       <h2 class="max-w-2xl text-3xl font-bold tracking-tight">
@@ -116,7 +107,7 @@
   </section>
 
   <%!-- ── when hosted auth is right ───────────────────────────────── --%>
-  <section class="border-b border-border py-20">
+  <section class="border-b border-border/30 py-20">
     <div class="mx-auto max-w-6xl px-5">
       <.eyebrow>04 · When not to use <span class="text-magenta-brand">You</span></.eyebrow>
       <h2 class="max-w-2xl text-3xl font-bold tracking-tight">
@@ -157,7 +148,7 @@
   </section>
 
   <%!-- ── scale ───────────────────────────────────────────────── --%>
-  <section class="border-b border-border bg-card/30 py-16">
+  <section class="border-b border-border/30 py-16">
     <div class="mx-auto grid max-w-6xl gap-4 px-5 md:grid-cols-2 lg:grid-cols-3">
       <div class="rounded-xl border border-border bg-background p-7">
         <span class="lucide-cloud-off size-5 block text-primary" />
@@ -193,7 +184,7 @@
   </section>
 
   <%!-- ── comparison ──────────────────────────────────────────── --%>
-  <section id="comparison" class="border-b border-border bg-card/30 py-20">
+  <section id="comparison" class="border-b border-border/30 py-20">
     <div class="mx-auto max-w-4xl px-5">
       <.eyebrow>05 · Honest comparison</.eyebrow>
       <h2 class="text-3xl font-bold tracking-tight">
@@ -230,7 +221,7 @@
   </section>
 
   <%!-- ── get started ─────────────────────────────────────────── --%>
-  <section id="get-started" class="border-b border-border py-20">
+  <section id="get-started" class="border-b border-border/30 py-20">
     <div class="mx-auto max-w-4xl px-5">
       <.eyebrow>06 · Get started</.eyebrow>
       <h2 class="text-3xl font-bold tracking-tight">Running in five minutes.</h2>
@@ -273,7 +264,7 @@
   </section>
 
   <%!-- ── faq ─────────────────────────────────────────────────── --%>
-  <section id="faq" class="border-b border-border py-20">
+  <section id="faq" class="border-b border-border/30 py-20">
     <div class="mx-auto max-w-3xl px-5">
       <.eyebrow>06 · FAQ</.eyebrow>
       <h2 class="text-3xl font-bold tracking-tight">Questions, answered.</h2>
@@ -297,23 +288,6 @@
             {faq.a}
           </p>
         </div>
-      </div>
-    </div>
-  </section>
-
-  <%!-- ── final CTA ───────────────────────────────────────────── --%>
-  <section class="aurora border-b border-border py-20">
-    <div class="mx-auto max-w-3xl px-5 text-center">
-      <h2 class="text-3xl font-bold tracking-tight sm:text-4xl">
-        Own your users. <span class="gradient-text">Run your own identity.</span>
-      </h2>
-      <div class="mt-7 flex flex-col items-center justify-center gap-3 sm:flex-row">
-        <.button size="lg" href="#get-started">
-          Get started <span class="lucide-arrow-right size-4 block" />
-        </.button>
-        <.button size="lg" variant="outline" href="https://github.com/mandax/you">
-          Source on GitHub
-        </.button>
       </div>
     </div>
   </section>
