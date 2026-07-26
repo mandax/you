@@ -215,34 +215,4 @@ defmodule YouWeb.LandingContent do
       }
     ]
   end
-
-  def faqs do
-    [
-      %{
-        q: ~s(Is <span class="you-badge">You</span> open source?),
-        a:
-          "Yes. MIT-licensed, source on GitHub. You self-host it on your own cluster, so your users' data stays inside your infrastructure."
-      },
-      %{
-        q: "How do apps connect?",
-        a:
-          "Two steps. Your app redirects the user to <span class=\"you-badge\">You</span>'s /users/log-in with a callback_url and scope; after login <span class=\"you-badge\">You</span> redirects back with a single-use code. Your app then trades that code for a JWT over standard HTTP (OIDC, any language). Elixir apps you trust in your own cluster can skip HTTP entirely and call <span class=\"you-badge\">You</span> over Erlang distribution."
-      },
-      %{
-        q: "How is it secured?",
-        a:
-          "Bcrypt-hashed, rate-limited passwords; TOTP 2FA with recovery codes; single-use auth codes that expire in five minutes; JTI-tracked JWTs you can revoke individually; and a full audit trail of logins, grants and admin actions."
-      },
-      %{
-        q: "Does it help with GDPR and LGPD?",
-        a:
-          "The data rights tooling is built in. Users can export everything you hold about them, consent is recorded per app and scope, and anonymization wipes personal data while keeping referential integrity. Compliance is still your process, but the machinery for it ships with You."
-      },
-      %{
-        q: "How is it different from Auth0?",
-        a:
-          "Auth0 is a solid hosted IdP, but hosted means your users' credentials live on their infrastructure and you pay per user. <span class=\"you-badge\">You</span> gives you the same OIDC standard on your own node, plus a distribution-native shortcut for trusted Elixir apps. The real question is who holds your users."
-      }
-    ]
-  end
 end

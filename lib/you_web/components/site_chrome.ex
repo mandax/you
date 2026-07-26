@@ -12,13 +12,8 @@ defmodule YouWeb.Components.SiteChrome do
 
   def wordmark(assigns) do
     ~H"""
-    <.link navigate={~p"/"} class="flex items-center gap-2 font-semibold">
-      <span class="grid h-7 w-7 place-items-center rounded-md bg-primary text-primary-foreground">
-        <span class="lucide-key-round size-4 block" />
-      </span>
-      <span class="font-mono tracking-tight">
-        you <span class="text-azure-brand">//</span>
-      </span>
+    <.link navigate={~p"/"} class="flex items-center gap-2">
+      <span class="font-mono text-base font-bold tracking-tight text-primary">YOU</span>
     </.link>
     """
   end
@@ -36,7 +31,6 @@ defmodule YouWeb.Components.SiteChrome do
           <.link href="/#security" class="hover:text-foreground">Features</.link>
           <.link href="/#comparison" class="hover:text-foreground">Compare</.link>
           <.link href="/#get-started" class="hover:text-foreground">Get started</.link>
-          <.link href="/#faq" class="hover:text-foreground">FAQ</.link>
         </nav>
         <div class="flex items-center gap-2">
           <button

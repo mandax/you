@@ -416,12 +416,7 @@ defmodule YouWeb.ConsoleLive do
     <div class="flex h-screen overflow-hidden bg-background text-foreground">
       <aside class="flex w-56 shrink-0 flex-col border-r border-sidebar-border bg-sidebar">
         <div class="flex h-12 items-center gap-2 border-b border-sidebar-border px-4">
-          <span class="grid h-6 w-6 place-items-center rounded bg-primary text-primary-foreground">
-            <span class="text-[10px] font-bold">Y</span>
-          </span>
-          <span class="font-mono text-sm font-semibold">
-            you <span class="text-primary">//</span>
-          </span>
+          <span class="font-mono text-sm font-bold tracking-tight text-primary">YOU</span>
         </div>
 
         <nav class="flex-1 space-y-0.5 px-2 pt-2">

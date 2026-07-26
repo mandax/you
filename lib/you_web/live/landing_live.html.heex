@@ -28,8 +28,8 @@
         </p>
 
         <div class="mt-7 flex flex-col gap-3 sm:flex-row">
-          <.button size="lg" class="h-11" href="#get-started">
-            Get started <span class="lucide-arrow-right size-4 block" />
+          <.button size="lg" variant="outline" class="h-11" href="https://github.com/mandax/you">
+            GitHub repo <span class="lucide-arrow-right size-4 block" />
           </.button>
           <.button size="lg" variant="outline" class="h-11" href="#console">
             See the console
@@ -264,35 +264,6 @@
           </div>
           <span class="lucide-arrow-up-right size-4 block shrink-0 text-muted-foreground group-hover:text-primary" />
         </.link>
-      </div>
-    </div>
-  </section>
-
-  <%!-- ── faq ─────────────────────────────────────────────────── --%>
-  <section id="faq" class="border-b border-border/30 py-20">
-    <div class="mx-auto max-w-3xl px-5">
-      <.eyebrow>06 · FAQ</.eyebrow>
-      <h2 class="text-3xl font-bold tracking-tight">Questions, answered.</h2>
-      <div class="mt-8 divide-y divide-border rounded-xl border border-border">
-        <div :for={{faq, i} <- Enum.with_index(YouWeb.LandingContent.faqs())}>
-          <button
-            type="button"
-            phx-click="toggle_faq"
-            phx-value-index={i}
-            aria-expanded={to_string(@faq_open == i)}
-            aria-controls={"faq-#{i}"}
-            class="flex w-full items-center justify-between gap-4 px-5 py-4 text-left text-sm font-medium"
-          >
-            {Phoenix.HTML.raw(faq.q)}
-            <span class={[
-              "lucide-chevron-down size-4 block shrink-0 text-muted-foreground transition-transform",
-              @faq_open == i && "rotate-180"
-            ]} />
-          </button>
-          <p :if={@faq_open == i} id={"faq-#{i}"} class="px-5 pb-5 text-sm text-muted-foreground">
-            {Phoenix.HTML.raw(faq.a)}
-          </p>
-        </div>
       </div>
     </div>
   </section>
