@@ -44,7 +44,14 @@ defmodule YouWeb.Components.SiteChrome do
             <span class="lucide-sun hidden size-4 dark:block" />
           </button>
           <.button :if={@current_scope} size="sm" navigate={~p"/users/dashboard"}>Dashboard</.button>
-          <.button :if={!@current_scope} size="sm" href="/#get-started">Get started</.button>
+          <.button
+            :if={!@current_scope}
+            size="sm"
+            variant="outline"
+            href="https://github.com/mandax/you"
+          >
+            GitHub repo
+          </.button>
         </div>
       </div>
     </header>
