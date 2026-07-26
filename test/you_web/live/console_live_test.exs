@@ -3,7 +3,7 @@ defmodule YouWeb.ConsoleLiveTest do
 
   import Phoenix.LiveViewTest
 
-  alias You.{Admin, Organizations, Accounts, Settings}
+  alias You.{Admin, Accounts, Settings}
 
   setup %{conn: conn} do
     user = You.AccountsFixtures.user_fixture()
