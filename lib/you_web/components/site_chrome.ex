@@ -70,7 +70,7 @@ defmodule YouWeb.Components.SiteChrome do
             Self-hosted identity, standard OIDC. One login for every service you run.
           </p>
           <div class="mt-3 flex items-center gap-2 font-mono text-xs text-muted-foreground">
-            <span class="lucide-server size-3.5 block" /> free community image · v0.1.0
+            <span class="lucide-server size-3.5 block" /> free · v0.1.0
           </div>
         </div>
         <div :for={col <- @columns}>
