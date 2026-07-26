@@ -21,14 +21,15 @@
           <span class="gradient-text">Your users' credentials stay on your hardware.</span>
         </h1>
         <p class="mt-5 max-w-xl text-lg leading-relaxed text-muted-foreground">
-          Passwords, 2FA, magic links, audit. A self-hosted IAM with standard OIDC for any app
-          and Erlang distribution for the BEAM apps you trust. Your users, your data, your node.
+          <span class="you-badge">You</span> is a self-hosted identity and access management
+          service: login UI, 2FA, magic links, passkeys, per-app roles, a management console,
+          and an audit trail. Free and open source under MIT. Apps integrate over standard
+          OIDC, or directly over Erlang distribution when they are BEAM apps you trust.
         </p>
 
         <div class="mt-7 flex flex-col gap-3 sm:flex-row">
-          <.button size="lg" class="h-11" href="#pricing">
-            Self-host <span class="you-badge-invert">You</span>
-            <span class="lucide-arrow-right size-4 block" />
+          <.button size="lg" class="h-11" href="#get-started">
+            Get started <span class="lucide-arrow-right size-4 block" />
           </.button>
           <.button size="lg" variant="outline" class="h-11" href="#console">
             See the console
@@ -228,45 +229,45 @@
     </div>
   </section>
 
-  <%!-- ── pricing ─────────────────────────────────────────────── --%>
-  <section id="pricing" class="border-b border-border py-20">
-    <div class="mx-auto max-w-6xl px-5">
-      <div class="text-center">
-        <.eyebrow>06 · Self-host</.eyebrow>
-        <h2 class="text-3xl font-bold tracking-tight">Free to run. Yours to keep.</h2>
-        <p class="mt-3 text-muted-foreground">
-          MIT-licensed and open source. Clone the repo or pull the prebuilt Docker image.
-        </p>
-      </div>
-      <div class="mx-auto mt-10 max-w-md">
+  <%!-- ── get started ─────────────────────────────────────────── --%>
+  <section id="get-started" class="border-b border-border py-20">
+    <div class="mx-auto max-w-4xl px-5">
+      <.eyebrow>06 · Get started</.eyebrow>
+      <h2 class="text-3xl font-bold tracking-tight">Running in five minutes.</h2>
+      <p class="mt-3 max-w-2xl text-muted-foreground">
+        Free and open source under MIT. Build from source or pull the image, bootstrap
+        the first admin, then point an app at it.
+      </p>
+
+      <div class="mt-10 space-y-4">
         <div
-          :for={tier <- YouWeb.LandingContent.tiers()}
-          class={[
-            "relative rounded-2xl border bg-card p-6",
-            if(tier.popular,
-              do: "border-primary shadow-lg shadow-primary/10",
-              else: "border-border"
-            )
-          ]}
+          :for={{step, i} <- Enum.with_index(YouWeb.LandingContent.setup_steps(), 1)}
+          class="rounded-xl border border-border bg-card p-6"
         >
-          <span
-            :if={tier.popular}
-            class="absolute -top-2.5 left-6 rounded-full bg-primary px-2.5 py-0.5 text-[11px] font-semibold text-primary-foreground"
-          >
-            {tier.tag}
-          </span>
-          <h3 class="font-semibold">{tier.name}</h3>
-          <div class="mt-2 font-mono text-3xl font-bold">{tier.price}</div>
-          <p :if={!tier.popular} class="mt-1 text-xs text-muted-foreground">{tier.tag}</p>
-          <ul class="mt-5 space-y-2 text-sm text-muted-foreground">
-            <li :for={point <- tier.points} class="flex items-center gap-2">
-              <span class="lucide-check size-4 block text-signal-ok" />{point}
-            </li>
-          </ul>
-          <.button variant={if(tier.popular, do: "default", else: "outline")} class="mt-6 w-full">
-            {tier.cta}
-          </.button>
+          <div class="flex items-baseline gap-3">
+            <span class="font-mono text-sm text-magenta-brand">0{i}</span>
+            <h3 class="font-semibold">{step.title}</h3>
+          </div>
+          <p class="mt-1.5 text-sm text-muted-foreground">{step.body}</p>
+          <pre
+            :if={step.code}
+            class="mt-4 overflow-x-auto rounded-lg border border-border bg-background px-4 py-3 font-mono text-xs leading-relaxed text-foreground/90"
+          >{step.code}</pre>
         </div>
+      </div>
+
+      <div class="mt-10 grid gap-4 sm:grid-cols-2">
+        <.link
+          :for={doc <- YouWeb.LandingContent.doc_links()}
+          href={doc.href}
+          class="group flex items-center justify-between rounded-xl border border-border bg-card px-5 py-4 transition-colors hover:border-primary/40"
+        >
+          <div>
+            <div class="text-sm font-semibold group-hover:text-primary">{doc.title}</div>
+            <p class="mt-0.5 text-sm text-muted-foreground">{doc.body}</p>
+          </div>
+          <span class="lucide-arrow-up-right size-4 block shrink-0 text-muted-foreground group-hover:text-primary" />
+        </.link>
       </div>
     </div>
   </section>
@@ -274,7 +275,7 @@
   <%!-- ── faq ─────────────────────────────────────────────────── --%>
   <section id="faq" class="border-b border-border py-20">
     <div class="mx-auto max-w-3xl px-5">
-      <.eyebrow>07 · FAQ</.eyebrow>
+      <.eyebrow>06 · FAQ</.eyebrow>
       <h2 class="text-3xl font-bold tracking-tight">Questions, answered.</h2>
       <div class="mt-8 divide-y divide-border rounded-xl border border-border">
         <div :for={{faq, i} <- Enum.with_index(YouWeb.LandingContent.faqs())}>
@@ -307,10 +308,12 @@
         Own your users. <span class="gradient-text">Run your own identity.</span>
       </h2>
       <div class="mt-7 flex flex-col items-center justify-center gap-3 sm:flex-row">
-        <.button size="lg" href="#pricing">
-          Self-host You <span class="lucide-arrow-right size-4 block" />
+        <.button size="lg" href="#get-started">
+          Get started <span class="lucide-arrow-right size-4 block" />
         </.button>
-        <.button size="lg" variant="outline" href="#security">Read the security model</.button>
+        <.button size="lg" variant="outline" href="https://github.com/mandax/you">
+          Source on GitHub
+        </.button>
       </div>
     </div>
   </section>

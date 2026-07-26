@@ -35,7 +35,7 @@ defmodule YouWeb.Components.SiteChrome do
           <.link href="/#console" class="hover:text-foreground">Console</.link>
           <.link href="/#security" class="hover:text-foreground">Features</.link>
           <.link href="/#comparison" class="hover:text-foreground">Compare</.link>
-          <.link href="/#pricing" class="hover:text-foreground">Self-host</.link>
+          <.link href="/#get-started" class="hover:text-foreground">Get started</.link>
           <.link href="/#faq" class="hover:text-foreground">FAQ</.link>
         </nav>
         <div class="flex items-center gap-2">
@@ -50,7 +50,7 @@ defmodule YouWeb.Components.SiteChrome do
             <span class="lucide-sun hidden size-4 dark:block" />
           </button>
           <.button :if={@current_scope} size="sm" navigate={~p"/users/dashboard"}>Dashboard</.button>
-          <.button :if={!@current_scope} size="sm" href="/#pricing">Self-host You</.button>
+          <.button :if={!@current_scope} size="sm" href="/#get-started">Get started</.button>
         </div>
       </div>
     </header>
@@ -90,27 +90,26 @@ defmodule YouWeb.Components.SiteChrome do
       %{
         heading: "Product",
         links: [
-          {"Redirect + exchange", "/#security"},
-          {"2FA + recovery", "/#security"},
-          {"Self-host", "/#pricing"},
-          {"Pricing", "/#pricing"}
+          {"The console", "/#console"},
+          {"Features", "/#security"},
+          {"Compare", "/#comparison"},
+          {"Get started", "/#get-started"}
         ]
       },
       %{
-        heading: "Security",
+        heading: "Docs",
         links: [
-          {"Security model", "/#security"},
-          {"Audit log", "/#security"},
-          {"Revocation", "/#security"},
-          {"Compare", "/#comparison"}
+          {"Integration guide", "https://github.com/mandax/you/blob/main/docs/integration.md"},
+          {"Deployment", "https://github.com/mandax/you/blob/main/docs/ops/deploy.md"},
+          {"REST API", "https://github.com/mandax/you/blob/main/docs/api.md"},
+          {"Webhooks", "https://github.com/mandax/you/blob/main/docs/webhooks.md"}
         ]
       },
       %{
-        heading: "Developers",
+        heading: "Project",
         links: [
-          {"Docs", "#"},
-          {"Status", "#"},
-          {"Contact", "#"}
+          {"GitHub", "https://github.com/mandax/you"},
+          {"MIT License", "https://github.com/mandax/you/blob/main/LICENSE"}
         ]
       }
     ]

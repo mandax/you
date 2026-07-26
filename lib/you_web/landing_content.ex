@@ -166,20 +166,63 @@ defmodule YouWeb.LandingContent do
     ]
   end
 
-  def tiers do
+  def setup_steps do
     [
       %{
-        name: "Community",
-        price: "Free",
-        tag: "Self-host",
-        cta: "Self-host You",
-        popular: true,
-        points: [
-          "MIT-licensed source on GitHub",
-          "Prebuilt Docker image",
-          "Password + 2FA + audit",
-          "Unlimited consumer apps"
-        ]
+        title: "Build and run",
+        body: "One container with SQLite inside. No other services to run.",
+        code: """
+        git clone https://github.com/mandax/you.git && cd you
+        docker build -t you:latest .
+        docker run -d \\
+          -e DATABASE_PATH=/data/you/prod.db \\
+          -e SECRET_KEY_BASE=$(openssl rand -base64 48) \\
+          -e PHX_HOST=you.example.com \\
+          -v you-data:/data/you \\
+          -p 4000:4000 \\
+          you:latest\
+        """
+      },
+      %{
+        title: "Bootstrap the first admin",
+        body: "Creates the initial admin user; runs migrations first if needed.",
+        code: """
+        docker exec <container> bin/you eval \\
+          'You.Release.bootstrap_admin("admin@example.com", "your-password")'\
+        """
+      },
+      %{
+        title: "Integrate an app",
+        body:
+          "Register the app in the console, redirect its users to You, verify tokens locally against the JWKS. Any OIDC client library works.",
+        code: nil
+      }
+    ]
+  end
+
+  def doc_links do
+    repo = "https://github.com/mandax/you/blob/main/docs"
+
+    [
+      %{
+        title: "Integration guide",
+        body: "OIDC, JWKS verification, Erlang distribution",
+        href: "#{repo}/integration.md"
+      },
+      %{
+        title: "Deployment",
+        body: "Env vars, HTTPS, mail, backups",
+        href: "#{repo}/ops/deploy.md"
+      },
+      %{
+        title: "Management REST API",
+        body: "Automate users, apps, and roles",
+        href: "#{repo}/api.md"
+      },
+      %{
+        title: "Webhooks",
+        body: "Signed outbound events, Stripe recipe",
+        href: "#{repo}/webhooks.md"
       }
     ]
   end

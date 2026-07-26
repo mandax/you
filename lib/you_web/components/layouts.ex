@@ -42,10 +42,10 @@ defmodule YouWeb.Layouts do
                 Docs
               </.link>
               <.link
-                navigate="/#pricing"
+                navigate="/#get-started"
                 class="text-muted-foreground hover:text-foreground transition-colors"
               >
-                Pricing
+                Get started
               </.link>
             </span>
             <div class="flex items-center gap-3 ml-2">
