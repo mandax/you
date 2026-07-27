@@ -44,6 +44,46 @@ defmodule YouWeb.LandingContent do
     ]
   end
 
+  def dashboard_features do
+    [
+      %{
+        icon: "lucide-grid-2x2",
+        title: "Granted apps",
+        body:
+          "One card per app the user consented to, linking into it. Removing a card revokes the consent."
+      },
+      %{
+        icon: "lucide-monitor",
+        title: "Active sessions",
+        body:
+          "Each session with the time it signed in. The user can revoke one or sign out everywhere else."
+      },
+      %{
+        icon: "lucide-shield-check",
+        title: "Two-factor",
+        body:
+          "TOTP with recovery codes, or a code emailed at each password sign-in. The user turns both on and off."
+      },
+      %{
+        icon: "lucide-key-round",
+        title: "Passkeys",
+        body: "Register and remove passkeys: fingerprint, face unlock or a security key."
+      },
+      %{
+        icon: "lucide-link",
+        title: "Connected accounts",
+        body:
+          "External providers linked to the account, each shown with its email, and unlinkable."
+      },
+      %{
+        icon: "lucide-download",
+        title: "Data export",
+        body:
+          "A JSON dump of the account, its consents and their scopes, at /users/settings/access_data."
+      }
+    ]
+  end
+
   def solo_features do
     [
       %{

@@ -106,6 +106,58 @@
     </div>
   </section>
 
+  <%!-- ── user dashboard / account area ─────────────────────── --%>
+  <section id="dashboard" class="border-b border-border/30 py-20 text-center">
+    <div class="mx-auto max-w-6xl px-5">
+      <.eyebrow>The account area</.eyebrow>
+      <h2 class="mx-auto max-w-2xl text-3xl font-bold tracking-tight">
+        Every user gets an account page at /users/dashboard.
+      </h2>
+      <p class="mx-auto mt-3 max-w-2xl text-muted-foreground">
+        It lists the apps they granted access to, their active sessions, their passkeys,
+        their two-factor settings and any external accounts they linked. It comes with the
+        instance, so your app does not have to render any of it.
+      </p>
+
+      <%!-- Screencast of the real account area, framed as a small window. --%>
+      <div class="mx-auto mt-10 max-w-3xl">
+        <div class="overflow-hidden rounded-xl border border-border bg-card shadow-lg">
+          <div class="flex h-8 items-center gap-2 border-b border-border/60 bg-muted/40 px-3">
+            <span class="size-2.5 rounded-full bg-signal-down/70" />
+            <span class="size-2.5 rounded-full bg-signal-warn/70" />
+            <span class="size-2.5 rounded-full bg-signal-ok/70" />
+            <span class="ml-2 font-mono text-[11px] text-muted-foreground">
+              you · /users/dashboard
+            </span>
+          </div>
+          <video
+            src={~p"/videos/dashboard-tour.mp4"}
+            poster={~p"/images/dashboard-tour-poster.jpg"}
+            autoplay
+            muted
+            loop
+            playsinline
+            disablepictureinpicture
+            preload="auto"
+            aria-label="Screencast of the You account area"
+            class="pointer-events-none block aspect-[8/5] w-full bg-background"
+          />
+        </div>
+      </div>
+
+      <div class="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div
+          :for={feature <- YouWeb.LandingContent.dashboard_features()}
+          class="flex flex-col items-center rounded-xl border border-border bg-card p-5 transition-colors hover:border-primary/40"
+        >
+          <span class={[feature.icon, "size-5 block text-magenta-brand"]} />
+          <h3 class="mt-3 text-sm font-semibold">{feature.title}</h3>
+          <p class="mt-1.5 text-sm leading-relaxed text-muted-foreground">{feature.body}</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <%!-- ── solo developers ───────────────────────────────────── --%>
   <section class="border-b border-border/30 py-20 text-center">
     <div class="mx-auto max-w-6xl px-5">
@@ -279,9 +331,9 @@
       <div class="mt-10 space-y-4">
         <div
           :for={{step, i} <- Enum.with_index(YouWeb.LandingContent.setup_steps(), 1)}
-          class="rounded-xl border border-border bg-card p-6"
+          class="rounded-xl border border-border bg-card p-6 text-left"
         >
-          <div class="flex items-baseline justify-center gap-3">
+          <div class="flex items-baseline gap-3">
             <span class="font-mono text-sm text-magenta-brand">0{i}</span>
             <h3 class="font-semibold">{step.title}</h3>
           </div>

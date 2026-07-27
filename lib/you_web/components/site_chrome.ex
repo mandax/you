@@ -28,6 +28,7 @@ defmodule YouWeb.Components.SiteChrome do
         <.wordmark />
         <nav class="hidden items-center gap-6 text-sm text-muted-foreground md:flex">
           <.link href="/#console" class="hover:text-foreground">Console</.link>
+          <.link href="/#dashboard" class="hover:text-foreground">Account area</.link>
           <.link href="/#security" class="hover:text-foreground">Features</.link>
           <.link href="/#comparison" class="hover:text-foreground">Compare</.link>
           <.link href="/#get-started" class="hover:text-foreground">Get started</.link>
@@ -92,6 +93,7 @@ defmodule YouWeb.Components.SiteChrome do
         heading: "Sections",
         links: [
           {"The console", "/#console"},
+          {"The account area", "/#dashboard"},
           {"Features", "/#security"},
           {"Compare", "/#comparison"},
           {"Get started", "/#get-started"}
