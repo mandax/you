@@ -1,6 +1,6 @@
 {
   "name": "you",
-  "version": "1.0.0",
+  "version": "0.1.4",
   "description": "You is a self-hosted identity and access management (IAM) platform for BEAM/Elixir apps — every service delegates user management to You.",
   "main": "index.js",
   "directories": {

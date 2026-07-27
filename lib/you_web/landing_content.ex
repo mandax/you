@@ -84,29 +84,97 @@ defmodule YouWeb.LandingContent do
     ]
   end
 
-  def solo_features do
+  @doc """
+  Everything that is not the console or the account area, in one list.
+
+  Those two have their own sections above with a screencast each, so nothing
+  here repeats them. `audience` drives the icon colour only: `:user` for what
+  a person signing in gets, `:dev` for what an app or a script talks to.
+  """
+  def features do
     [
+      # ── what a person signing in gets ──
       %{
-        icon: "lucide-layout-dashboard",
-        title: "One console for everything",
-        body: "Every user of every app you run: apps, roles, orgs, sessions and audit."
+        icon: "lucide-shield-check",
+        audience: :user,
+        title: "Hardened login",
+        body: "Bcrypt hashing and rate limiting are on from the first request. Nothing to enable."
       },
       %{
-        icon: "lucide-palette",
-        title: "Per-app login pages",
+        icon: "lucide-fingerprint-pattern",
+        audience: :user,
+        title: "Two-factor and passkeys",
         body:
-          "Your app's name, logo and brand color on the login your users see. The default stays clean."
+          "TOTP with recovery codes, emailed codes, or a passkey instead of a password. Wired into the login flow, not bolted on after."
       },
       %{
-        icon: "lucide-plug",
-        title: "REST and RPC APIs",
+        icon: "lucide-mail",
+        audience: :user,
+        title: "Magic links",
         body:
-          "SCIM provisioning and OIDC over HTTP for any service. In-cluster RPC for your Elixir apps."
+          "Email a one-time sign-in link, without taking passwords away from the users who prefer them."
+      },
+      %{
+        icon: "lucide-building-2",
+        audience: :user,
+        title: "Organizations",
+        body: "Group users into orgs with per-member roles, separate from their per-app roles."
+      },
+      # ── what an app or a script talks to ──
+      %{
+        icon: "lucide-badge-check",
+        audience: :dev,
+        title: "Standard OIDC",
+        body:
+          "Authorization code with PKCE, discovery, JWKS, userinfo, introspection and revocation. Any OIDC client library works."
+      },
+      %{
+        icon: "lucide-key-round",
+        audience: :dev,
+        title: "Tokens verified locally",
+        body:
+          "Short-lived JWTs signed with Ed25519. Apps check them against the JWKS with no round trip, and single tokens are still revocable by JTI."
       },
       %{
         icon: "lucide-webhook",
-        title: "Webhooks for the real world",
-        body: "Signups and auth events, signed and retried, to Stripe or anywhere else."
+        audience: :dev,
+        title: "Signed webhooks",
+        body:
+          "Logins, token exchanges, consent changes and admin actions posted to your endpoint, signed and retried three times."
+      },
+      %{
+        icon: "lucide-refresh-cw",
+        audience: :dev,
+        title: "SCIM 2.0 provisioning",
+        body:
+          "Create, update and deprovision users from an upstream directory or a script, at /scim/v2 with a bearer token."
+      },
+      %{
+        icon: "lucide-square-terminal",
+        audience: :dev,
+        title: "Management REST API",
+        body: "Automate users, apps, roles and audit reads over /api/v1 instead of clicking."
+      },
+      %{
+        icon: "lucide-network",
+        audience: :dev,
+        title: "In-cluster RPC",
+        body:
+          "BEAM apps you trust skip HTTP entirely and call You.IAM.Server through You.SDK over Erlang distribution."
+      },
+      %{
+        icon: "lucide-palette",
+        audience: :dev,
+        title: "Per-app login pages",
+        body:
+          "Each app's name, logo and brand color on the login its users see. The default stays plain."
+      },
+      %{
+        icon: "lucide-scroll-text",
+        audience: :dev,
+        title: "Audit trail",
+        body:
+          "Every login, grant and admin action in one readable stream you can filter and forward."
       }
     ]
   end
@@ -125,27 +193,6 @@ defmodule YouWeb.LandingContent do
     }
   end
 
-  def security_items do
-    [
-      %{
-        title: "Hardened login",
-        body: "Bcrypt hashing and rate limiting are on from the first request. Nothing to enable."
-      },
-      %{
-        title: "2FA built in",
-        body: "TOTP with recovery codes, wired into the login flow rather than bolted on after."
-      },
-      %{
-        title: "Revocable sessions",
-        body: "Short-lived, JTI-tracked JWTs. Pull one token without touching the rest."
-      },
-      %{
-        title: "Audit everything",
-        body: "Every login, grant and admin action lands in an audit trail you can actually read."
-      }
-    ]
-  end
-
   def alternatives do
     [
       %{
@@ -156,55 +203,12 @@ defmodule YouWeb.LandingContent do
         ours: false
       },
       %{
-        icon: "lucide-server",
-        title: "You're a JVM shop already",
-        body: "Deep Java/Spring integration and an existing ops story around the JVM.",
-        pick: "Use Keycloak",
-        ours: false
-      },
-      %{
         icon: "lucide-shield",
-        title: "You run on the BEAM and want it in-cluster",
+        title: "You want identity inside your own infrastructure",
         body:
-          "Your login page never leaves your infrastructure: standard OIDC for any app, distribution-native RPC for the BEAM apps you trust.",
+          "Credentials and the login page stay on hardware you control, and any app speaks to it over standard OIDC. If those apps run on the BEAM, they can skip HTTP and talk over Erlang distribution instead.",
         pick: "Use You",
         ours: true
-      }
-    ]
-  end
-
-  def comparison do
-    [
-      %{
-        label: "Who holds user credentials",
-        you: ~s(<span class="you-badge">You</span> do),
-        auth0: "They do",
-        keycloak: ~s(<span class="you-badge">You</span> do)
-      },
-      %{label: "Protocol", you: "OIDC, JWKS, SCIM", auth0: "OIDC, SAML", keycloak: "OIDC, SAML"},
-      %{
-        label: "Runs on",
-        you: "One container, SQLite inside",
-        auth0: "Their cloud",
-        keycloak: "A JVM you operate"
-      },
-      %{
-        label: "Cost",
-        you: "Free, MIT",
-        auth0: "Per user per month",
-        keycloak: "Free, paid in ops"
-      },
-      %{
-        label: "Elixir integration",
-        you: "OIDC plus in-cluster RPC",
-        auth0: "HTTP only",
-        keycloak: "HTTP only"
-      },
-      %{
-        label: "2FA, passkeys, audit",
-        you: "Built in",
-        auth0: "Paid tiers",
-        keycloak: "Plugins and config"
       }
     ]
   end

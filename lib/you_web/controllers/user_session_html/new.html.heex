@@ -44,9 +44,7 @@
             </h1>
             <p class="mt-1 text-sm text-muted-foreground">secured by You</p>
           <% else %>
-            <div class="mx-auto mb-4 flex size-11 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-              <span class="font-display text-sm font-bold">Y</span>
-            </div>
+            <.wordmark size="lg" class="justify-center mb-4" />
             <h1 class="text-2xl font-bold tracking-tight">
               <%= if @current_scope do %>
                 Confirm your identity
@@ -165,7 +163,7 @@
             data-finish-url={~p"/users/log-in/passkey/finish"}
             class="inline-flex w-full items-center justify-center gap-2 rounded-md border border-input bg-background px-4 py-2 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
           >
-            <span class="lucide-fingerprint size-4" /> Sign in with a passkey
+            <span class="lucide-fingerprint-pattern size-4" /> Sign in with a passkey
           </button>
         </div>
       </div>

@@ -104,7 +104,7 @@
           :for={feature <- YouWeb.LandingContent.console_features()}
           class="flex flex-col items-center rounded-xl border border-border bg-card p-5 transition-colors hover:border-primary/40"
         >
-          <span class={[feature.icon, "size-5 block text-magenta-brand"]} />
+          <span class={[feature.icon, "size-5 block text-azure-brand"]} />
           <h3 class="mt-3 text-sm font-semibold">{feature.title}</h3>
           <p class="mt-1.5 text-sm leading-relaxed text-muted-foreground">{feature.body}</p>
         </div>
@@ -164,42 +164,30 @@
     </div>
   </section>
 
-  <%!-- ── solo developers ───────────────────────────────────── --%>
-  <section class="border-b border-border/30 py-20 text-center">
+  <%!-- ── features: everything but the console and the account area ── --%>
+  <section id="features" class="border-b border-border/30 py-20 text-center">
     <div class="mx-auto max-w-6xl px-5">
-      <.eyebrow>Made for solo developers</.eyebrow>
+      <.eyebrow>Everything else</.eyebrow>
       <h2 class="mx-auto max-w-2xl text-3xl font-bold tracking-tight">
-        Every user of every app you run, in one place.
+        What ships besides those two screens.
       </h2>
+      <p class="mx-auto mt-3 max-w-2xl text-muted-foreground">
+        Pink is what a person signing in gets. Blue is what your apps and scripts talk to.
+      </p>
 
-      <div class="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div class="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <div
-          :for={feature <- YouWeb.LandingContent.solo_features()}
+          :for={feature <- YouWeb.LandingContent.features()}
           class="flex flex-col items-center rounded-xl border border-border bg-card p-5 transition-colors hover:border-primary/40"
         >
-          <span class={[feature.icon, "size-5 block text-magenta-brand"]} />
+          <span class={[
+            feature.icon,
+            "size-5 block",
+            feature.audience == :user && "text-magenta-brand",
+            feature.audience == :dev && "text-azure-brand"
+          ]} />
           <h3 class="mt-3 text-sm font-semibold">{feature.title}</h3>
           <p class="mt-1.5 text-sm leading-relaxed text-muted-foreground">{feature.body}</p>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <%!-- ── security pillars ───────────────────────────────────────── --%>
-  <section id="security" class="border-b border-border/30 py-20 text-center">
-    <div class="mx-auto max-w-6xl px-5">
-      <.eyebrow>Built in, not bolted on</.eyebrow>
-      <h2 class="mx-auto max-w-2xl text-3xl font-bold tracking-tight">
-        Every defense on by default, not a paid add-on.
-      </h2>
-      <div class="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <div
-          :for={item <- YouWeb.LandingContent.security_items()}
-          class="flex flex-col items-center rounded-xl border border-border bg-background p-5"
-        >
-          <span class="lucide-lock size-5 block text-azure-brand" />
-          <h3 class="mt-3 text-sm font-semibold">{item.title}</h3>
-          <p class="mt-1.5 text-sm leading-relaxed text-muted-foreground">{item.body}</p>
         </div>
       </div>
     </div>
@@ -213,10 +201,11 @@
         Sometimes hosted auth is the right call.
       </h2>
       <p class="mx-auto mt-3 max-w-2xl text-muted-foreground">
-        You exists for one reason: identity that lives inside your own BEAM cluster. If that's not
-        your constraint, other tools are simpler. Here is the honest routing.
+        <span class="you-badge">You</span>
+        keeps identity on hardware you control, and any app talks to it over standard OIDC.
+        If you would rather not run identity yourself at all, a hosted provider is less work.
       </p>
-      <div class="mt-10 grid gap-4 md:grid-cols-3">
+      <div class="mx-auto mt-10 grid max-w-4xl gap-4 md:grid-cols-2">
         <div
           :for={alt <- YouWeb.LandingContent.alternatives()}
           class={[
@@ -242,84 +231,6 @@
             <% end %>
           </div>
         </div>
-      </div>
-    </div>
-  </section>
-
-  <%!-- ── scale ───────────────────────────────────────────────── --%>
-  <section class="border-b border-border/30 py-16 text-center">
-    <div class="mx-auto grid max-w-6xl gap-4 px-5 md:grid-cols-2 lg:grid-cols-3">
-      <div class="flex flex-col items-center rounded-xl border border-border bg-background p-7">
-        <span class="lucide-cloud-off size-5 block text-primary" />
-        <h3 class="mt-4 text-xl font-bold tracking-tight">Built to be ignorable</h3>
-        <p class="mt-2 text-sm text-muted-foreground">
-          Once a token is issued, apps verify it locally against your JWKS.
-          <span class="you-badge">You</span>
-          can go down and nobody notices.
-        </p>
-      </div>
-      <div class="flex flex-col items-center rounded-xl border border-border bg-background p-7">
-        <span class="lucide-network size-5 block text-primary" />
-        <h3 class="mt-4 text-xl font-bold tracking-tight">
-          Elixir apps skip HTTP entirely
-        </h3>
-        <p class="mt-2 text-sm text-muted-foreground">
-          Apps you trust call <span class="you-badge">You</span>
-          directly over Erlang distribution, in memory between
-          nodes in the same cluster. No extra network hop, no shared webhook secret to
-          rotate. Everyone else uses standard OIDC.
-        </p>
-      </div>
-      <div class="flex flex-col items-center rounded-xl border border-border bg-background p-7">
-        <span class="lucide-plug size-5 block text-primary" />
-        <h3 class="mt-4 text-xl font-bold tracking-tight">Add a consumer app in one row</h3>
-        <p class="mt-2 text-sm text-muted-foreground">
-          Register a callback URL and scope in the console and the app can redirect users to
-          <span class="you-badge">You</span>
-          immediately. No client libraries to install, no SDK to keep in sync.
-        </p>
-        <code class="mt-5 block rounded-lg border border-border bg-card px-3 py-2 font-mono text-sm text-azure-brand">
-          https://you.example.com/.well-known/jwks.json
-        </code>
-      </div>
-    </div>
-  </section>
-
-  <%!-- ── comparison ──────────────────────────────────────────── --%>
-  <section id="comparison" class="border-b border-border/30 py-20 text-center">
-    <div class="mx-auto max-w-4xl px-5">
-      <.eyebrow>Honest comparison</.eyebrow>
-      <h2 class="text-3xl font-bold tracking-tight">
-        <span class="you-badge">You</span> vs the field.
-      </h2>
-      <p class="mx-auto mt-3 max-w-2xl text-muted-foreground">
-        Hosted providers and JVM-based IdPs are both solid choices.
-        <span class="you-badge">You</span>
-        is the free, self-hosted
-        take for teams who want identity inside their own infrastructure.
-      </p>
-      <div class="mt-8 overflow-x-auto rounded-xl border border-border">
-        <table class="w-full text-sm">
-          <thead>
-            <tr class="border-b border-border bg-muted/40 text-center">
-              <th class="px-4 py-3 font-medium"></th>
-              <th class="px-4 py-3 font-medium"><span class="you-badge">You</span></th>
-              <th class="px-4 py-3 font-medium text-muted-foreground">Auth0</th>
-              <th class="px-4 py-3 font-medium text-muted-foreground">Keycloak</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              :for={{row, i} <- Enum.with_index(YouWeb.LandingContent.comparison())}
-              class={rem(i, 2) == 1 && "bg-muted/20"}
-            >
-              <td class="px-4 py-3 text-muted-foreground">{row.label}</td>
-              <td class="bg-primary/5 px-4 py-3 font-medium">{Phoenix.HTML.raw(row.you)}</td>
-              <td class="px-4 py-3 text-muted-foreground">{Phoenix.HTML.raw(row.auth0)}</td>
-              <td class="px-4 py-3 text-muted-foreground">{Phoenix.HTML.raw(row.keycloak)}</td>
-            </tr>
-          </tbody>
-        </table>
       </div>
     </div>
   </section>
@@ -355,7 +266,7 @@
         <.link
           :for={doc <- YouWeb.LandingContent.doc_links()}
           href={doc.href}
-          class="group flex items-center justify-between rounded-xl border border-border bg-card px-5 py-4 transition-colors hover:border-primary/40"
+          class="group flex items-center justify-between rounded-xl border border-border bg-card px-5 py-4 text-left transition-colors hover:border-primary/40"
         >
           <div>
             <div class="text-sm font-semibold group-hover:text-primary">{doc.title}</div>

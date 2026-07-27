@@ -104,7 +104,16 @@ defmodule YouWeb.Components.Base.Sheet do
           this.closeBtn = this.el.querySelector('[data-part="close"]')
 
           this.show = () => { if (!this.dialog.open) this.dialog.showModal() }
-          this.hide = () => { if (this.dialog.open) this.dialog.close() }
+
+          // `open` is set by showModal(), so it exists in the DOM but not in the
+          // server-rendered markup: a LiveView patch will strip it without ever
+          // calling close(), which leaves the dialog in the top layer with a
+          // live ::backdrop swallowing every click on the page behind it. Put
+          // the attribute back before closing so the close steps actually run.
+          this.hide = () => {
+            if (!this.dialog.open) this.dialog.setAttribute("open", "")
+            this.dialog.close()
+          }
 
           // Clicking the backdrop: the dialog is the click target only when the
           // pointer landed outside the panel's own box.

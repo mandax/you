@@ -3,17 +3,34 @@ defmodule YouWeb.Components.SiteChrome do
   Shared public-site chrome: the wordmark, the marketing nav, and the footer.
 
   Landing and Docs both render these, so they live in one place. Nav anchors are
-  absolute (`/#security`) so they resolve from any page, not just the landing.
+  absolute (`/#features`) so they resolve from any page, not just the landing.
   """
   use Phoenix.Component
   use YouWeb, :verified_routes
 
   import YouWeb.Components.Base.Button
 
+  @doc """
+  The product mark. One component so the console, the account area and the
+  public pages cannot drift into three different logos.
+
+  `size` picks the type scale; everything else about the mark is fixed.
+  """
+  attr :size, :string, default: "default", values: ~w(default sm lg)
+  attr :class, :any, default: nil, doc: "applied to the link, e.g. to center it"
+  attr :rest, :global
+
   def wordmark(assigns) do
     ~H"""
-    <.link navigate={~p"/"} class="flex items-center gap-2">
-      <span class="font-mono text-base font-bold tracking-tight text-primary">YOU</span>
+    <.link navigate={~p"/"} class={["flex items-center gap-2", @class]} {@rest}>
+      <span class={[
+        "font-mono font-bold tracking-tight text-primary",
+        @size == "sm" && "text-sm",
+        @size == "default" && "text-base",
+        @size == "lg" && "text-2xl"
+      ]}>
+        YOU
+      </span>
     </.link>
     """
   end
@@ -29,8 +46,7 @@ defmodule YouWeb.Components.SiteChrome do
         <nav class="hidden items-center gap-6 text-sm text-muted-foreground md:flex">
           <.link href="/#console" class="hover:text-foreground">Console</.link>
           <.link href="/#dashboard" class="hover:text-foreground">Account area</.link>
-          <.link href="/#security" class="hover:text-foreground">Features</.link>
-          <.link href="/#comparison" class="hover:text-foreground">Compare</.link>
+          <.link href="/#features" class="hover:text-foreground">Features</.link>
           <.link href="/#get-started" class="hover:text-foreground">Get started</.link>
         </nav>
         <div class="flex items-center gap-2">
@@ -59,8 +75,12 @@ defmodule YouWeb.Components.SiteChrome do
     """
   end
 
+  # Read from the built application rather than typed into the markup, which is
+  # how the footer ended up three releases behind the tag.
+  @version Mix.Project.config()[:version]
+
   def site_footer(assigns) do
-    assigns = assign(assigns, :columns, footer_columns())
+    assigns = assigns |> assign(:columns, footer_columns()) |> assign(:version, @version)
 
     ~H"""
     <footer class="border-t border-border py-14">
@@ -71,7 +91,7 @@ defmodule YouWeb.Components.SiteChrome do
             Self-hosted identity, standard OIDC. One login for every service you run.
           </p>
           <div class="mt-3 flex items-center gap-2 font-mono text-xs text-muted-foreground">
-            <span class="lucide-server size-3.5 block" /> free · v0.1.0
+            <span class="lucide-server size-3.5 block" /> free · v{@version}
           </div>
         </div>
         <div :for={col <- @columns}>
@@ -94,8 +114,7 @@ defmodule YouWeb.Components.SiteChrome do
         links: [
           {"The console", "/#console"},
           {"The account area", "/#dashboard"},
-          {"Features", "/#security"},
-          {"Compare", "/#comparison"},
+          {"Features", "/#features"},
           {"Get started", "/#get-started"}
         ]
       },

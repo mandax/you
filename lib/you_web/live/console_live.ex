@@ -419,7 +419,7 @@ defmodule YouWeb.ConsoleLive do
     <div class="flex h-screen overflow-hidden bg-background text-foreground">
       <aside class="flex w-56 shrink-0 flex-col border-r border-sidebar-border bg-sidebar">
         <div class="flex h-12 items-center gap-2 border-b border-sidebar-border px-4">
-          <span class="font-mono text-sm font-bold tracking-tight text-primary">YOU</span>
+          <.wordmark size="sm" />
         </div>
 
         <nav class="flex-1 space-y-0.5 px-2 pt-2">
@@ -615,28 +615,39 @@ defmodule YouWeb.ConsoleLive do
       </div>
 
       <.data_table cols={["Email", "Status", "You", "Access", ""]} empty={@filtered == []}>
+        <%!-- The row opens the detail sheet, but the binding sits on the data
+              cells rather than the <tr>: LiveView delegates clicks from the
+              document root, so stopping propagation around the action buttons
+              to keep them from also opening the sheet would swallow their own
+              phx-click on the way up. --%>
         <tr
           :for={row <- @filtered}
-          phx-click="edit_user"
-          phx-value-id={row.user.id}
-          class="cursor-pointer border-b border-border/60 transition-colors last:border-0 hover:bg-muted/40"
+          class="border-b border-border/60 transition-colors last:border-0 hover:bg-muted/40"
         >
-          <td class="px-3 py-2 font-mono text-xs text-foreground/90">{row.user.email}</td>
-          <td class="px-3 py-2">
+          <td
+            phx-click="edit_user"
+            phx-value-id={row.user.id}
+            class="cursor-pointer px-3 py-2 font-mono text-xs text-foreground/90"
+          >
+            {row.user.email}
+          </td>
+          <td phx-click="edit_user" phx-value-id={row.user.id} class="cursor-pointer px-3 py-2">
             <.status_badge status={if row.user.confirmed_at, do: "running", else: "idle"} />
           </td>
-          <td class={[
-            "px-3 py-2 font-mono text-xs",
-            if(row.user.is_admin, do: "text-primary", else: "text-muted-foreground")
-          ]}>
+          <td
+            phx-click="edit_user"
+            phx-value-id={row.user.id}
+            class={[
+              "cursor-pointer px-3 py-2 font-mono text-xs",
+              if(row.user.is_admin, do: "text-primary", else: "text-muted-foreground")
+            ]}
+          >
             {if row.user.is_admin, do: "admin", else: "user"}
           </td>
-          <td class="px-3 py-2">
+          <td phx-click="edit_user" phx-value-id={row.user.id} class="cursor-pointer px-3 py-2">
             <.access_summary access={access_summary(@assignments, @apps, row.user.id)} />
           </td>
-          <%!-- Actions live inside a clickable row, so their clicks must not
-                also open the detail sheet. --%>
-          <td class="px-3 py-2 text-right" onclick="event.stopPropagation()">
+          <td class="px-3 py-2 text-right">
             <div class="flex items-center justify-end gap-1">
               <button
                 type="button"

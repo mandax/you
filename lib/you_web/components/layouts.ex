@@ -20,12 +20,7 @@ defmodule YouWeb.Layouts do
       <header class="sticky top-0 z-40 border-b border-border bg-background/80 backdrop-blur-md">
         <div class="mx-auto max-w-6xl px-6 h-14 flex items-center justify-between">
           <div class="flex items-center gap-2">
-            <.link navigate={~p"/"} class="flex items-center gap-2 font-medium text-sm tracking-tight">
-              <div class="size-6 rounded-md bg-primary text-primary-foreground flex items-center justify-center">
-                <span class="text-[10px] font-bold">Y</span>
-              </div>
-              You
-            </.link>
+            <.wordmark />
           </div>
           <nav class="flex items-center gap-6 text-sm">
             <span class="hidden sm:flex items-center gap-6">
@@ -100,12 +95,7 @@ defmodule YouWeb.Layouts do
       <header class="h-12 shrink-0 border-b border-border bg-background/80 backdrop-blur-md flex items-center">
         <!-- Logo -->
         <div class="w-56 shrink-0 px-5 border-r border-border h-full flex items-center">
-          <.link navigate={~p"/"} class="flex items-center gap-2 font-medium text-sm tracking-tight">
-            <div class="size-6 rounded-md bg-primary text-primary-foreground flex items-center justify-center">
-              <span class="text-[10px] font-bold">Y</span>
-            </div>
-            You
-          </.link>
+          <.wordmark size="sm" />
         </div>
 
         <div class="px-4 text-sm font-medium text-muted-foreground">Account</div>
