@@ -98,6 +98,9 @@ defmodule YouWeb do
       import YouWeb.Components.Base.Dialog
       import YouWeb.Components.Base.DropdownMenu
       import YouWeb.Components.Base.Input
+      import YouWeb.Components.Base.Select
+      import YouWeb.Components.Base.Sheet
+      import YouWeb.Components.Base.Switch
 
       # Shared presentational pieces (eyebrow, status dot, sparkline, …)
       import YouWeb.Components.Bits
