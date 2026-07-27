@@ -5,6 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="csrf-token" content={get_csrf_token()} />
     <.live_title default="You" suffix=" · You" phx-no-format>{assigns[:page_title]}</.live_title>
+    <%!-- Both opt-in: a page that has nothing meaningful to say is better off
+          letting the crawler synthesize a snippet, and a canonical pointing at
+          the wrong URL is worse than none. --%>
+    <meta :if={assigns[:page_description]} name="description" content={@page_description} />
+    <link :if={assigns[:canonical_url]} rel="canonical" href={@canonical_url} />
     <link phx-track-static rel="stylesheet" href={~p"/assets/css/app.css"} />
     <script defer phx-track-static type="text/javascript" src={~p"/assets/js/app.js"}>
     </script>

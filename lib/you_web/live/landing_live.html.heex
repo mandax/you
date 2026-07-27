@@ -1,4 +1,10 @@
 <div class="min-h-screen bg-background text-foreground">
+  <%!-- Server-authored JSON, so raw/1 is not escaping user input. Curly-brace
+        interpolation is inert inside <script>, hence <%= %>. --%>
+  <script type="application/ld+json">
+    <%= Phoenix.HTML.raw(@structured_data) %>
+  </script>
+
   <.site_nav current_scope={@current_scope} />
 
   <%!-- ── hero: animated discrete graph canvas, content left ── --%>

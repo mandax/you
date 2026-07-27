@@ -63,6 +63,12 @@ defmodule YouWeb.Router do
     end
   end
 
+  # No pipeline: crawlers get no session cookie, and neither file needs one.
+  scope "/", YouWeb do
+    get "/robots.txt", SEOController, :robots
+    get "/sitemap.xml", SEOController, :sitemap
+  end
+
   scope "/console", YouWeb do
     pipe_through [:browser, :require_authenticated_user, :require_admin]
 

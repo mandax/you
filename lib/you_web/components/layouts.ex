@@ -35,8 +35,10 @@ defmodule YouWeb.Layouts do
               >
                 Home
               </.link>
+              <%!-- There is no /docs route: the docs live in the repo, which is
+                    where the landing footer already sends people. --%>
               <.link
-                navigate="/docs"
+                href="https://github.com/mandax/you/tree/main/docs"
                 class="text-muted-foreground hover:text-foreground transition-colors"
               >
                 Docs
