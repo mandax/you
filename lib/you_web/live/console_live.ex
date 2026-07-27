@@ -175,7 +175,8 @@ defmodule YouWeb.ConsoleLive do
     {:noreply, assign(socket, user_filters: filters)}
   end
 
-  def handle_event("set_you_role", %{"user_id" => user_id, "role" => role}, socket) do
+  def handle_event("set_you_role", %{"user_id" => user_id} = params, socket) do
+    role = params["value"] || params["role"]
     user = Admin.get_user!(user_id)
     self? = user.id == socket.assigns.current_scope.user.id
 
@@ -209,11 +210,13 @@ defmodule YouWeb.ConsoleLive do
     {:noreply, assign(socket, editing_user: nil)}
   end
 
+  # `value` is what <.select> pushes; `role` is kept for any caller that still
+  # names the field itself.
   def handle_event("save_app_role", params, socket) do
     app = Admin.get_app!(params["app_id"])
     user = Admin.get_user!(params["user_id"])
 
-    case Roles.set_role(app, user, params["role"]) do
+    case Roles.set_role(app, user, params["value"] || params["role"]) do
       {:ok, _} ->
         {:noreply, socket |> load_data() |> refresh_editing_user(params["user_id"])}
 
@@ -256,9 +259,9 @@ defmodule YouWeb.ConsoleLive do
     end
   end
 
-  def handle_event("update_role", %{"user_id" => uid, "role" => role}, socket) do
+  def handle_event("update_role", %{"user_id" => uid} = params, socket) do
     org = socket.assigns.selected_org
-    Organizations.update_member_role(org, Admin.get_user!(uid), role)
+    Organizations.update_member_role(org, Admin.get_user!(uid), params["value"] || params["role"])
     {:noreply, select_org(socket, org.id)}
   end
 
@@ -574,61 +577,49 @@ defmodule YouWeb.ConsoleLive do
               class="h-8 w-44 rounded-md border border-input bg-background px-3 font-mono text-xs placeholder:text-muted-foreground/60"
             />
           </form>
-          <.filter_dropdown id="filter-status" label={filter_label(@filters["status"], "all status")}>
-            <.menu_item phx-click="filter_users" phx-value-filter_key="status" phx-value-value="">
-              all status
-            </.menu_item>
-            <.menu_item
-              phx-click="filter_users"
-              phx-value-filter_key="status"
-              phx-value-value="confirmed"
-            >
-              confirmed
-            </.menu_item>
-            <.menu_item
-              phx-click="filter_users"
-              phx-value-filter_key="status"
-              phx-value-value="unconfirmed"
-            >
-              unconfirmed
-            </.menu_item>
-          </.filter_dropdown>
-          <.filter_dropdown id="filter-app" label={app_label(@filters["app"], @apps)}>
-            <.menu_item phx-click="filter_users" phx-value-filter_key="app" phx-value-value="">
-              all apps
-            </.menu_item>
-            <.menu_item
-              :for={app <- @apps}
-              phx-click="filter_users"
-              phx-value-filter_key="app"
-              phx-value-value={to_string(app.id)}
-            >
-              {app.name}
-            </.menu_item>
-          </.filter_dropdown>
-          <.filter_dropdown id="filter-role" label={filter_label(@filters["role"], "all roles")}>
-            <.menu_item phx-click="filter_users" phx-value-filter_key="role" phx-value-value="">
-              all roles
-            </.menu_item>
-            <.menu_item
-              :for={role <- all_roles(@apps)}
-              phx-click="filter_users"
-              phx-value-filter_key="role"
-              phx-value-value={role}
-            >
-              {role}
-            </.menu_item>
-          </.filter_dropdown>
+          <.select
+            id="filter-status"
+            value={@filters["status"]}
+            placeholder="all status"
+            options={[
+              %{value: "", label: "all status"},
+              %{value: "confirmed", label: "confirmed"},
+              %{value: "unconfirmed", label: "unconfirmed"}
+            ]}
+            on_change="filter_users"
+            params={%{"filter_key" => "status"}}
+          />
+          <.select
+            id="filter-app"
+            value={@filters["app"]}
+            placeholder="all apps"
+            options={
+              [%{value: "", label: "all apps"}] ++
+                Enum.map(@apps, &%{value: to_string(&1.id), label: &1.name})
+            }
+            on_change="filter_users"
+            params={%{"filter_key" => "app"}}
+          />
+          <.select
+            id="filter-role"
+            value={@filters["role"]}
+            placeholder="all roles"
+            options={
+              [%{value: "", label: "all roles"}] ++
+                Enum.map(all_roles(@apps), &%{value: &1, label: &1})
+            }
+            on_change="filter_users"
+            params={%{"filter_key" => "role"}}
+          />
         </div>
       </div>
 
-      <.data_table
-        cols={["Email", "Status", "You"] ++ Enum.map(@apps, & &1.name) ++ [""]}
-        empty={@filtered == []}
-      >
+      <.data_table cols={["Email", "Status", "You", "Access", ""]} empty={@filtered == []}>
         <tr
           :for={row <- @filtered}
-          class="border-b border-border/60 transition-colors last:border-0 hover:bg-muted/40"
+          phx-click="edit_user"
+          phx-value-id={row.user.id}
+          class="cursor-pointer border-b border-border/60 transition-colors last:border-0 hover:bg-muted/40"
         >
           <td class="px-3 py-2 font-mono text-xs text-foreground/90">{row.user.email}</td>
           <td class="px-3 py-2">
@@ -640,16 +631,12 @@ defmodule YouWeb.ConsoleLive do
           ]}>
             {if row.user.is_admin, do: "admin", else: "user"}
           </td>
-          <td
-            :for={app <- @apps}
-            class={[
-              "px-3 py-2 font-mono text-xs",
-              app_role(@assignments, row.user.id, app.id) != "user" && "text-primary"
-            ]}
-          >
-            {app_role(@assignments, row.user.id, app.id)}
+          <td class="px-3 py-2">
+            <.access_summary access={access_summary(@assignments, @apps, row.user.id)} />
           </td>
-          <td class="px-3 py-2 text-right">
+          <%!-- Actions live inside a clickable row, so their clicks must not
+                also open the detail sheet. --%>
+          <td class="px-3 py-2 text-right" onclick="event.stopPropagation()">
             <div class="flex items-center justify-end gap-1">
               <button
                 type="button"
@@ -684,97 +671,102 @@ defmodule YouWeb.ConsoleLive do
         </tr>
       </.data_table>
 
-      <.dialog id="edit-user" open={@editing_user != nil} on_close="cancel_edit_user">
+      <.sheet id="edit-user" open={@editing_user != nil} on_close="cancel_edit_user">
         <:title>{@editing_user && @editing_user.email}</:title>
-        <:description>Roles for this user on You and per app.</:description>
-        <div :if={@editing_user} class="space-y-4">
-          <div class="flex items-center justify-between gap-4 text-sm">
-            <span class="text-muted-foreground">You</span>
-            <.dropdown_menu id="edit-you-role" align="end">
-              <:trigger>
-                <span class="inline-flex h-8 items-center gap-1.5 rounded-md border border-input bg-background px-2.5 font-mono text-xs transition-colors hover:bg-accent">
-                  {if @editing_user.is_admin, do: "admin", else: "user"}
-                  <span class="lucide-chevron-down size-3 block" />
-                </span>
-              </:trigger>
-              <.menu_item
-                phx-click="set_you_role"
-                phx-value-user_id={@editing_user.id}
-                phx-value-role="user"
-              >
-                user
-              </.menu_item>
-              <.menu_item
-                phx-click="set_you_role"
-                phx-value-user_id={@editing_user.id}
-                phx-value-role="admin"
-              >
-                admin
-              </.menu_item>
-            </.dropdown_menu>
-          </div>
-          <div
-            :for={app <- @apps}
-            class="flex items-center justify-between gap-4 text-sm"
-          >
-            <span class="text-muted-foreground">{app.name}</span>
-            <.dropdown_menu id={"edit-app-role-#{app.id}"} align="end">
-              <:trigger>
-                <span class="inline-flex h-8 items-center gap-1.5 rounded-md border border-input bg-background px-2.5 font-mono text-xs transition-colors hover:bg-accent">
-                  {app_role(@assignments, @editing_user.id, app.id)}
-                  <span class="lucide-chevron-down size-3 block" />
-                </span>
-              </:trigger>
-              <.menu_item
-                :for={role <- app.allowed_roles || ["user", "admin"]}
-                phx-click="save_app_role"
-                phx-value-app_id={app.id}
-                phx-value-user_id={@editing_user.id}
-                phx-value-role={role}
-              >
-                {role}
-              </.menu_item>
-            </.dropdown_menu>
-          </div>
+        <:description>
+          Roles on You and on each app. Changes apply immediately.
+        </:description>
+        <div :if={@editing_user} class="space-y-5">
+          <section class="space-y-2">
+            <h3 class="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+              Instance
+            </h3>
+            <div class="flex items-center justify-between gap-4">
+              <span class="text-sm">You</span>
+              <.select
+                id="edit-you-role"
+                align="end"
+                value={if @editing_user.is_admin, do: "admin", else: "user"}
+                options={[%{value: "user", label: "user"}, %{value: "admin", label: "admin"}]}
+                on_change="set_you_role"
+                params={%{"user_id" => @editing_user.id}}
+              />
+            </div>
+          </section>
+
+          <section class="space-y-2">
+            <h3 class="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+              Apps
+            </h3>
+            <div
+              :for={app <- @apps}
+              class="flex items-center justify-between gap-4 border-b border-border/50 py-1.5 last:border-0"
+            >
+              <span class="min-w-0 truncate text-sm">{app.name}</span>
+              <.select
+                id={"edit-app-role-#{app.id}"}
+                align="end"
+                value={app_role(@assignments, @editing_user.id, app.id)}
+                options={Enum.map(app.allowed_roles || ["user", "admin"], &%{value: &1, label: &1})}
+                on_change="save_app_role"
+                params={%{"app_id" => app.id, "user_id" => @editing_user.id}}
+              />
+            </div>
+          </section>
         </div>
         <:footer>
           <.button variant="outline" phx-click="cancel_edit_user">Done</.button>
         </:footer>
-      </.dialog>
+      </.sheet>
     </div>
     """
   end
 
-  attr :id, :string, required: true
-  attr :label, :string, required: true
-  slot :inner_block, required: true
+  # Per-app roles for one user, condensed into a single cell.
+  #
+  # A column per app does not survive contact with a real instance: it grows
+  # without bound and nearly every cell reads "user". What an operator scans for
+  # is the exception, so elevated roles are shown by name and the rest collapses
+  # into a count.
+  attr :access, :map, required: true
 
-  defp filter_dropdown(assigns) do
+  defp access_summary(assigns) do
     ~H"""
-    <.dropdown_menu id={@id}>
-      <:trigger>
-        <span class="inline-flex h-8 items-center gap-1.5 rounded-md border border-input bg-background px-2.5 font-mono text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
-          {@label}
-          <span class="lucide-chevron-down size-3 block" />
+    <div :if={@access.total == 0} class="font-mono text-xs text-muted-foreground/60">—</div>
+    <%!-- One line, always: the badges truncate before the count does, so rows
+          keep an even height however long an app name is. --%>
+    <div :if={@access.total > 0} class="flex max-w-[22rem] items-center gap-1.5">
+      <div class="flex min-w-0 items-center gap-1.5 overflow-hidden">
+        <span
+          :for={{role, app} <- @access.elevated}
+          class="truncate rounded bg-primary/10 px-1.5 py-0.5 font-mono text-[11px] text-primary"
+          title={"#{role} on #{app}"}
+        >
+          {role}·{app}
         </span>
-      </:trigger>
-      {render_slot(@inner_block)}
-    </.dropdown_menu>
+      </div>
+      <span :if={@access.rest > 0} class="shrink-0 font-mono text-[11px] text-muted-foreground">
+        +{@access.rest} {if @access.rest == 1, do: "app", else: "apps"}
+      </span>
+    </div>
     """
   end
 
-  defp filter_label(nil, default), do: default
-  defp filter_label("", default), do: default
-  defp filter_label(value, _default), do: value
+  @elevated_shown 2
 
-  defp app_label(nil, _apps), do: "all apps"
-  defp app_label("", _apps), do: "all apps"
+  defp access_summary(assignments, apps, user_id) do
+    roles = Map.get(assignments, user_id, %{})
+    names = Map.new(apps, &{&1.id, &1.name})
 
-  defp app_label(id, apps) do
-    case Enum.find(apps, &(to_string(&1.id) == id)) do
-      nil -> "all apps"
-      app -> app.name
-    end
+    elevated =
+      for {app_id, role} <- roles,
+          role != "user",
+          Map.has_key?(names, app_id),
+          do: {role, names[app_id]}
+
+    shown = Enum.take(Enum.sort(elevated), @elevated_shown)
+
+    %{total: map_size(roles), elevated: shown, rest: map_size(roles) - length(shown)}
   end
 
   defp all_roles(apps) do
@@ -1050,13 +1042,17 @@ defmodule YouWeb.ConsoleLive do
           <div class="flex-1">
             <.input type="email" name="email" label="Add member by email" value="" required />
           </div>
-          <.input
-            type="select"
-            name="role"
-            label="Role"
-            value="member"
-            options={Enum.map(@roles, &{String.capitalize(&1), &1})}
-          />
+          <div class="space-y-1.5">
+            <span class="block font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+              Role
+            </span>
+            <.select
+              id="add-member-role"
+              name="role"
+              value="member"
+              options={Enum.map(@roles, &%{value: &1, label: String.capitalize(&1)})}
+            />
+          </div>
           <.button type="submit">Add</.button>
         </form>
 
@@ -1067,17 +1063,13 @@ defmodule YouWeb.ConsoleLive do
           >
             <td class="px-3 py-2 font-mono text-xs text-foreground/90">{user.email}</td>
             <td class="px-3 py-2">
-              <form phx-change="update_role" class="inline-flex">
-                <input type="hidden" name="user_id" value={user.id} />
-                <select
-                  name="role"
-                  class="h-7 rounded-md border border-input bg-background px-2 font-mono text-xs"
-                >
-                  <option :for={r <- @roles} value={r} selected={r == role}>
-                    {String.capitalize(r)}
-                  </option>
-                </select>
-              </form>
+              <.select
+                id={"member-role-#{user.id}"}
+                value={role}
+                options={Enum.map(@roles, &%{value: &1, label: String.capitalize(&1)})}
+                on_change="update_role"
+                params={%{"user_id" => user.id}}
+              />
             </td>
             <td class="px-3 py-2 text-right">
               <button
@@ -1165,6 +1157,10 @@ defmodule YouWeb.ConsoleLive do
   attr :webhook_secret, :string, default: nil
   attr :webhook_endpoint, :map, default: nil
 
+  # Event names are "login:attempt" or "user.registered": the part before the
+  # separator is the family the picker groups by.
+  defp event_group(%{value: event}), do: event |> String.split(~r/[:.]/) |> hd()
+
   defp webhooks_view(assigns) do
     ~H"""
     <div class="space-y-4">
@@ -1176,29 +1172,38 @@ defmodule YouWeb.ConsoleLive do
         <div class="flex items-center gap-2 text-sm font-medium">
           <span class="lucide-webhook size-4 block text-primary" /> Add endpoint
         </div>
-        <form phx-submit="create_webhook" class="mt-4 space-y-3">
-          <.base_input
-            type="url"
-            name="url"
-            placeholder="https://your-service.example/hooks/you"
-            required
-            class="h-8 font-mono text-xs"
-          />
-          <div class="flex flex-wrap gap-x-4 gap-y-2">
-            <label
-              :for={event <- @events}
-              class="flex items-center gap-1.5 font-mono text-xs text-muted-foreground"
-            >
-              <input
-                type="checkbox"
-                name={"events[#{event}]"}
-                value="true"
-                class="size-3.5 rounded border-input accent-[hsl(var(--primary))]"
-              />
-              {event}
-            </label>
+        <form
+          phx-submit="create_webhook"
+          class="mt-4 grid gap-3 sm:grid-cols-[1fr_16rem_auto] sm:items-end"
+        >
+          <label class="space-y-1.5">
+            <span class="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+              URL
+            </span>
+            <.base_input
+              type="url"
+              name="url"
+              placeholder="https://your-service.example/hooks/you"
+              required
+              class="h-8 font-mono text-xs"
+            />
+          </label>
+
+          <div class="space-y-1.5">
+            <span class="block font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+              Events
+            </span>
+            <.multi_select
+              id="webhook-events"
+              name="events"
+              options={Enum.map(@events, &%{value: &1, label: &1})}
+              group_by={&event_group/1}
+              placeholder="select events"
+              unit="events"
+            />
           </div>
-          <.button type="submit" class="mt-2">Create endpoint</.button>
+
+          <.button type="submit">Create endpoint</.button>
         </form>
       </div>
 
@@ -1221,20 +1226,12 @@ defmodule YouWeb.ConsoleLive do
             </div>
           </td>
           <td class="px-3 py-2">
-            <button
-              type="button"
+            <.switch
+              checked={endpoint.enabled}
+              label={if endpoint.enabled, do: "enabled", else: "disabled"}
               phx-click="toggle_webhook"
               phx-value-id={endpoint.id}
-              class={[
-                "rounded-full px-2 py-0.5 font-mono text-[11px] transition-colors",
-                if(endpoint.enabled,
-                  do: "bg-signal-ok/15 text-signal-ok",
-                  else: "bg-muted text-muted-foreground"
-                )
-              ]}
-            >
-              {if endpoint.enabled, do: "enabled", else: "disabled"}
-            </button>
+            />
           </td>
           <td class="px-3 py-2 text-right font-mono text-xs tabular-nums text-muted-foreground">
             {Calendar.strftime(endpoint.inserted_at, "%Y-%m-%d")}

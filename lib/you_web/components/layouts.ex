@@ -247,10 +247,10 @@ defmodule YouWeb.Layouts do
       id={@id}
       phx-hook="ThemeToggle"
       aria-label="Toggle theme"
-      class="size-8 rounded-lg border border-border flex items-center justify-center hover:bg-muted/50 transition-colors"
+      class="size-8 rounded-lg border border-border flex items-center justify-center text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-colors"
     >
-      <.icon name="moon" class="size-4 text-azure-brand block dark:hidden" />
-      <.icon name="sun" class="size-4 text-signal-warn hidden dark:block" />
+      <.icon name="moon" class="size-4 block dark:hidden" />
+      <.icon name="sun" class="size-4 hidden dark:block" />
     </button>
     """
   end
