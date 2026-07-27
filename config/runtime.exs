@@ -113,8 +113,14 @@ if config_env() == :prod do
   config :you, :api_token, System.get_env("API_TOKEN")
 
   # Plausible-compatible analytics. Both must be set, or nothing is emitted.
-  case {System.get_env("ANALYTICS_SRC"), System.get_env("ANALYTICS_DOMAIN")} do
-    {src, domain} when is_binary(src) and is_binary(domain) ->
+  # Blank counts as unset: compose substitutes an unset ${VAR} as an empty
+  # string, so the variables are always present in the container.
+  analytics_env =
+    ["ANALYTICS_SRC", "ANALYTICS_DOMAIN"]
+    |> Enum.map(&(System.get_env(&1, "") |> String.trim()))
+
+  case analytics_env do
+    [src, domain] when src != "" and domain != "" ->
       config :you, :analytics, src: src, domain: domain
 
     _ ->
