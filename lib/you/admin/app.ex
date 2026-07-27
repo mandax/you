@@ -28,6 +28,9 @@ defmodule You.Admin.App do
       :first_party
     ])
     |> validate_required([:slug, :name, :callback_url])
+    # An app with no allowed roles can never have a role assigned, so every
+    # assignment attempt would fail. Keep at least one.
+    |> validate_length(:allowed_roles, min: 1)
     |> validate_format(:brand_color, ~r/^#[0-9a-fA-F]{6}$/)
     |> validate_change(:logo_url, fn :logo_url, url ->
       case URI.parse(url) do

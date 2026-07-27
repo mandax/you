@@ -109,12 +109,14 @@ defmodule You.Admin do
     users = Repo.all(from u in User, order_by: [asc: u.email])
 
     passkey_counts =
-      Repo.all(from p in Passkey, group_by: p.user_id, select: {p.user_id, count(p.id)})
-      |> Map.new()
+      Map.new(Repo.all(from p in Passkey, group_by: p.user_id, select: {p.user_id, count(p.id)}))
 
     identity_counts =
-      Repo.all(from f in FederatedIdentity, group_by: f.user_id, select: {f.user_id, count(f.id)})
-      |> Map.new()
+      Map.new(
+        Repo.all(
+          from f in FederatedIdentity, group_by: f.user_id, select: {f.user_id, count(f.id)}
+        )
+      )
 
     Enum.map(users, fn u ->
       %{
@@ -172,6 +174,11 @@ defmodule You.Admin do
   def get_app!(id), do: Repo.get!(App, id)
 
   @doc """
+  Fetches a single app by slug (its client_id), raising if it does not exist.
+  """
+  def get_app_by_slug!(slug) when is_binary(slug), do: Repo.get_by!(App, slug: slug)
+
+  @doc """
   Updates an existing app's attributes.
 
   Returns `{:ok, app}` or `{:error, changeset}`.
@@ -188,6 +195,23 @@ defmodule You.Admin do
     })
 
     result
+  end
+
+  @doc """
+  Replaces the app's `allowed_roles`.
+
+  Refuses to drop a role that users are still assigned, since those users would
+  keep a role the app no longer recognises. Returns `{:ok, app}`,
+  `{:error, {:roles_in_use, roles}}`, or `{:error, changeset}`.
+  """
+  def update_allowed_roles(%App{} = app, roles) when is_list(roles) do
+    roles = roles |> Enum.map(&String.trim/1) |> Enum.reject(&(&1 == "")) |> Enum.uniq()
+    in_use = Map.keys(You.Roles.count_by_role(app))
+
+    case Enum.reject(in_use, &(&1 in roles)) do
+      [] -> update_app(app, %{"allowed_roles" => roles})
+      stranded -> {:error, {:roles_in_use, Enum.sort(stranded)}}
+    end
   end
 
   @doc """

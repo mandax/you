@@ -10,17 +10,12 @@ defmodule YouWeb.ConsoleLive do
   """
   use YouWeb, :live_view
 
+  import YouWeb.Components.ConsoleChrome
+
   alias You.{Admin, Organizations, Accounts, Settings, Webhooks, Roles}
   alias You.Audit.Streamer
 
-  @nav [
-    %{id: "overview", label: "Overview", icon: "lucide-layout-dashboard"},
-    %{id: "users", label: "Users", icon: "lucide-users"},
-    %{id: "apps", label: "Apps", icon: "lucide-boxes"},
-    %{id: "audit", label: "Audit Log", icon: "lucide-scroll-text"},
-    %{id: "webhooks", label: "Webhooks", icon: "lucide-webhook"},
-    %{id: "settings", label: "Settings", icon: "lucide-settings"}
-  ]
+  @nav YouWeb.Components.ConsoleChrome.nav()
 
   @roles ~w(owner admin member)
 
@@ -54,7 +49,6 @@ defmodule YouWeb.ConsoleLive do
        roles: @roles,
        new_secret: nil,
        secret_app: nil,
-       editing_app: nil,
        selected_org: nil,
        members: [],
        audit_filter: "",
@@ -117,14 +111,7 @@ defmodule YouWeb.ConsoleLive do
         {:noreply, socket |> load_data() |> assign(new_secret: secret, secret_app: app)}
 
       {:error, changeset} ->
-        {:noreply, put_flash(socket, :error, "Could not create app: #{errors(changeset)}")}
-    end
-  end
-
-  def handle_event("rotate_secret", %{"id" => id}, socket) do
-    case id |> Admin.get_app!() |> Admin.rotate_app_secret() do
-      {:ok, app, secret} -> {:noreply, assign(socket, new_secret: secret, secret_app: app)}
-      {:error, cs} -> {:noreply, put_flash(socket, :error, "Could not rotate: #{errors(cs)}")}
+        {:noreply, put_flash(socket, :error, "Could not create app: #{error_summary(changeset)}")}
     end
   end
 
@@ -133,37 +120,6 @@ defmodule YouWeb.ConsoleLive do
     Admin.delete_app(app)
     audit_admin(socket, "delete_app", app.slug)
     {:noreply, socket |> load_data() |> put_flash(:info, "App deleted.")}
-  end
-
-  def handle_event("edit_app", %{"id" => id}, socket) do
-    {:noreply, assign(socket, editing_app: Admin.get_app!(id))}
-  end
-
-  def handle_event("update_app", params, socket) do
-    app = socket.assigns.editing_app
-
-    case Admin.update_app(
-           app,
-           Map.take(params, [
-             "name",
-             "callback_url",
-             "launch_url",
-             "logo_url",
-             "brand_color",
-             "first_party"
-           ])
-         ) do
-      {:ok, _app} ->
-        {:noreply,
-         socket |> load_data() |> assign(editing_app: nil) |> put_flash(:info, "App updated.")}
-
-      {:error, changeset} ->
-        {:noreply, put_flash(socket, :error, "Could not update app: #{errors(changeset)}")}
-    end
-  end
-
-  def handle_event("cancel_edit_app", _params, socket) do
-    {:noreply, assign(socket, editing_app: nil)}
   end
 
   def handle_event("filter_users", %{"filter_key" => key, "value" => value}, socket) do
@@ -235,7 +191,7 @@ defmodule YouWeb.ConsoleLive do
         {:noreply, socket |> load_data() |> put_flash(:info, "Organization created.")}
 
       {:error, cs} ->
-        {:noreply, put_flash(socket, :error, "Could not create org: #{errors(cs)}")}
+        {:noreply, put_flash(socket, :error, "Could not create org: #{error_summary(cs)}")}
     end
   end
 
@@ -254,7 +210,7 @@ defmodule YouWeb.ConsoleLive do
             {:noreply, socket |> select_org(org.id) |> put_flash(:info, "Member added.")}
 
           {:error, cs} ->
-            {:noreply, put_flash(socket, :error, "Could not add: #{errors(cs)}")}
+            {:noreply, put_flash(socket, :error, "Could not add: #{error_summary(cs)}")}
         end
     end
   end
@@ -295,7 +251,8 @@ defmodule YouWeb.ConsoleLive do
          |> assign(webhook_secret: endpoint.secret, webhook_endpoint: endpoint)}
 
       {:error, changeset} ->
-        {:noreply, put_flash(socket, :error, "Could not create endpoint: #{errors(changeset)}")}
+        {:noreply,
+         put_flash(socket, :error, "Could not create endpoint: #{error_summary(changeset)}")}
     end
   end
 
@@ -342,15 +299,18 @@ defmodule YouWeb.ConsoleLive do
   end
 
   def handle_event("clear_setting", %{"key" => key}, socket) do
-    key = String.to_existing_atom(key)
+    # Resolve against the allowlist rather than converting first: an unknown key
+    # would raise in `String.to_existing_atom/1` before any membership check.
+    case Enum.find(@secret_settings, &(Atom.to_string(&1) == key)) do
+      nil ->
+        {:noreply, socket}
 
-    if key in @secret_settings do
-      Settings.set(key, "")
-      You.Accounts.CookieSync.apply_cookie()
-      You.Audit.Streamer.reload()
+      setting ->
+        Settings.set(setting, "")
+        You.Accounts.CookieSync.apply_cookie()
+        You.Audit.Streamer.reload()
+        {:noreply, load_settings(socket)}
     end
-
-    {:noreply, load_settings(socket)}
   end
 
   # ── data loading ──────────────────────────────────────────────
@@ -401,11 +361,6 @@ defmodule YouWeb.ConsoleLive do
     end
   end
 
-  defp errors(changeset) do
-    Ecto.Changeset.traverse_errors(changeset, fn {msg, _} -> msg end)
-    |> Enum.map_join("; ", fn {f, msgs} -> "#{f} #{Enum.join(msgs, ", ")}" end)
-  end
-
   defp parse_value(raw) do
     if raw =~ ~r/^\d+$/, do: String.to_integer(raw), else: raw
   end
@@ -416,101 +371,43 @@ defmodule YouWeb.ConsoleLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="flex h-screen overflow-hidden bg-background text-foreground">
-      <aside class="flex w-56 shrink-0 flex-col border-r border-sidebar-border bg-sidebar">
-        <div class="flex h-12 items-center gap-2 border-b border-sidebar-border px-4">
-          <.wordmark size="sm" />
-        </div>
+    <.console_shell nav={@nav} active={@view} title={nav_label(@view)} node_name={@node_name}>
+      <%= case @view do %>
+        <% "overview" -> %>
+          <.overview users={@users} apps={@apps} orgs={@orgs} events={@events} />
+        <% "users" -> %>
+          <.users_view
+            users={@users}
+            apps={@apps}
+            assignments={@assignments}
+            filters={@user_filters}
+            current_scope={@current_scope}
+            editing_user={@editing_user}
+          />
+        <% "apps" -> %>
+          <.apps_view apps={@apps} new_secret={@new_secret} secret_app={@secret_app} />
+        <% "orgs" -> %>
+          <.orgs_view orgs={@orgs} selected={@selected_org} members={@members} roles={@roles} />
+        <% "audit" -> %>
+          <.audit_view events={@events} audit_filter={@audit_filter} />
+        <% "webhooks" -> %>
+          <.webhooks_view
+            endpoints={@endpoints}
+            events={Webhooks.events()}
+            webhook_secret={@webhook_secret}
+            webhook_endpoint={@webhook_endpoint}
+          />
+        <% "settings" -> %>
+          <.settings_view
+            settings={@settings}
+            base_url={@base_url}
+            oidc_providers={@oidc_providers}
+            saved={@saved}
+          />
+      <% end %>
 
-        <nav class="flex-1 space-y-0.5 px-2 pt-2">
-          <.link
-            :for={n <- @nav}
-            patch={~p"/console?view=#{n.id}"}
-            class={[
-              "flex h-8 w-full items-center gap-2.5 rounded-md px-2.5 text-sm transition-colors",
-              if(@view == n.id,
-                do: "bg-sidebar-accent text-sidebar-accent-foreground",
-                else: "text-sidebar-foreground hover:bg-sidebar-muted hover:text-foreground"
-              )
-            ]}
-          >
-            <span class={[n.icon, "size-4 block shrink-0"]} /> {n.label}
-          </.link>
-        </nav>
-
-        <div class="space-y-1 border-t border-sidebar-border px-2 py-2">
-          <.link
-            navigate={~p"/users/settings"}
-            class="flex h-8 items-center gap-2.5 rounded-md px-2.5 text-sm text-sidebar-foreground transition-colors hover:bg-sidebar-muted hover:text-foreground"
-          >
-            <span class="lucide-user size-4 block shrink-0" /> My account
-          </.link>
-          <.link
-            href={~p"/users/log-out"}
-            method="delete"
-            class="flex h-8 items-center gap-2.5 rounded-md px-2.5 text-sm text-sidebar-foreground transition-colors hover:bg-sidebar-muted hover:text-foreground"
-          >
-            <span class="lucide-log-out size-4 block shrink-0" /> Sign out
-          </.link>
-        </div>
-      </aside>
-
-      <div class="flex min-w-0 flex-1 flex-col">
-        <header class="flex h-12 shrink-0 items-center gap-3 border-b border-border px-4">
-          <div class="text-sm font-medium">{nav_label(@view)}</div>
-          <div class="ml-auto flex items-center gap-3">
-            <span class="hidden items-center gap-1.5 font-mono text-xs text-muted-foreground sm:flex">
-              <span class="h-1.5 w-1.5 animate-pulse-live rounded-full bg-signal-live" />
-              connected · {@node_name}
-            </span>
-            <.theme_toggle id="console-theme" />
-          </div>
-        </header>
-
-        <main class="flex-1 overflow-y-auto p-6">
-          <%= case @view do %>
-            <% "overview" -> %>
-              <.overview users={@users} apps={@apps} orgs={@orgs} events={@events} />
-            <% "users" -> %>
-              <.users_view
-                users={@users}
-                apps={@apps}
-                assignments={@assignments}
-                filters={@user_filters}
-                current_scope={@current_scope}
-                editing_user={@editing_user}
-              />
-            <% "apps" -> %>
-              <.apps_view
-                apps={@apps}
-                new_secret={@new_secret}
-                secret_app={@secret_app}
-                editing_app={@editing_app}
-              />
-            <% "orgs" -> %>
-              <.orgs_view orgs={@orgs} selected={@selected_org} members={@members} roles={@roles} />
-            <% "audit" -> %>
-              <.audit_view events={@events} audit_filter={@audit_filter} />
-            <% "webhooks" -> %>
-              <.webhooks_view
-                endpoints={@endpoints}
-                events={Webhooks.events()}
-                webhook_secret={@webhook_secret}
-                webhook_endpoint={@webhook_endpoint}
-              />
-            <% "settings" -> %>
-              <.settings_view
-                settings={@settings}
-                base_url={@base_url}
-                oidc_providers={@oidc_providers}
-                saved={@saved}
-              />
-          <% end %>
-        </main>
-      </div>
-    </div>
-
-    <Layouts.flash_group flash={@flash} />
+      <Layouts.flash_group flash={@flash} />
+    </.console_shell>
     """
   end
 
@@ -837,7 +734,6 @@ defmodule YouWeb.ConsoleLive do
   attr :apps, :list, required: true
   attr :new_secret, :string, default: nil
   attr :secret_app, :map, default: nil
-  attr :editing_app, :map, default: nil
 
   defp apps_view(assigns) do
     ~H"""
@@ -895,22 +791,12 @@ defmodule YouWeb.ConsoleLive do
             <.status_badge status={if app.client_secret_hash, do: "running", else: "idle"} />
           </td>
           <td class="px-3 py-2 text-right whitespace-nowrap">
-            <button
-              type="button"
-              phx-click="edit_app"
-              phx-value-id={app.id}
+            <.link
+              navigate={~p"/console/apps/#{app.slug}"}
               class="rounded px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             >
-              Edit
-            </button>
-            <button
-              type="button"
-              phx-click="rotate_secret"
-              phx-value-id={app.id}
-              class="rounded px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-            >
-              Rotate
-            </button>
+              Manage
+            </.link>
             <button
               type="button"
               phx-click="delete_app"
@@ -923,51 +809,6 @@ defmodule YouWeb.ConsoleLive do
           </td>
         </tr>
       </.data_table>
-
-      <.dialog id="edit-app" open={@editing_app != nil} on_close="cancel_edit_app">
-        <:title>Edit app</:title>
-        <:description>Update the app's name, URLs, and first-party flag.</:description>
-        <form :if={@editing_app} phx-submit="update_app" class="space-y-4">
-          <.input type="text" name="name" label="Name" value={@editing_app.name} required />
-          <.input
-            type="url"
-            name="callback_url"
-            label="Callback URL"
-            value={@editing_app.callback_url}
-            required
-          />
-          <.input
-            type="url"
-            name="launch_url"
-            label="Launch URL (optional)"
-            value={@editing_app.launch_url}
-          />
-          <.input
-            type="url"
-            name="logo_url"
-            label="Logo URL (optional)"
-            value={@editing_app.logo_url}
-          />
-          <.input
-            type="text"
-            name="brand_color"
-            label="Brand color (optional)"
-            value={@editing_app.brand_color}
-            placeholder="#7c3aed"
-          />
-          <.input
-            type="checkbox"
-            name="first_party"
-            label="First-party app"
-            value="true"
-            checked={@editing_app.first_party}
-          />
-          <div class="flex justify-end gap-2">
-            <.button type="button" variant="outline" phx-click="cancel_edit_app">Cancel</.button>
-            <.button type="submit">Save</.button>
-          </div>
-        </form>
-      </.dialog>
 
       <.dialog id="app-secret" open={@new_secret != nil} on_close="dismiss_secret">
         <:title>Client secret</:title>
@@ -1403,37 +1244,6 @@ defmodule YouWeb.ConsoleLive do
   end
 
   # ── small shared pieces ───────────────────────────────────────
-  attr :cols, :list, required: true
-  attr :empty, :boolean, default: false
-  slot :inner_block, required: true
-
-  defp data_table(assigns) do
-    ~H"""
-    <div class="overflow-x-auto rounded-lg border border-border">
-      <table class="w-full text-sm">
-        <thead>
-          <tr class="border-b border-border bg-muted/40 text-left font-mono text-xs uppercase tracking-wide text-muted-foreground">
-            <th
-              :for={{c, i} <- Enum.with_index(@cols)}
-              class={["px-3 py-2 font-medium", i > 0 && c == "" && "text-right"]}
-            >
-              {c}
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {render_slot(@inner_block)}
-          <tr :if={@empty}>
-            <td colspan={length(@cols)} class="px-3 py-8 text-center text-sm text-muted-foreground">
-              Nothing here yet.
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-    """
-  end
-
   attr :title, :string, required: true
   slot :inner_block, required: true
 
@@ -1497,34 +1307,6 @@ defmodule YouWeb.ConsoleLive do
         </button>
       </div>
     </div>
-    """
-  end
-
-  attr :k, :string, required: true
-  attr :v, :string, required: true
-
-  defp kv(assigns) do
-    ~H"""
-    <div class="flex justify-between gap-4 border-b border-border/60 pb-1.5 last:border-0">
-      <dt class="text-muted-foreground">{@k}</dt>
-      <dd class="font-mono text-right break-all text-primary">{@v}</dd>
-    </div>
-    """
-  end
-
-  attr :id, :string, required: true
-
-  defp theme_toggle(assigns) do
-    ~H"""
-    <button
-      id={@id}
-      phx-hook="ThemeToggle"
-      aria-label="Toggle theme"
-      class="grid size-8 place-items-center rounded-md border border-border hover:bg-muted/50"
-    >
-      <.icon name="moon" class="size-4 text-brand-azure block dark:hidden" />
-      <.icon name="sun" class="size-4 text-signal-warn hidden dark:block" />
-    </button>
     """
   end
 

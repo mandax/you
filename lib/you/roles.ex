@@ -72,10 +72,27 @@ defmodule You.Roles do
   rendering per-user role matrices.
   """
   def all_assignments do
-    Repo.all(from a in Assignment, select: {a.user_id, a.app_id, a.role})
-    |> Enum.reduce(%{}, fn {user_id, app_id, role}, acc ->
+    query = from a in Assignment, select: {a.user_id, a.app_id, a.role}
+
+    Enum.reduce(Repo.all(query), %{}, fn {user_id, app_id, role}, acc ->
       Map.update(acc, user_id, %{app_id => role}, &Map.put(&1, app_id, role))
     end)
+  end
+
+  @doc """
+  Counts explicit assignments per role in the app, as `%{role => count}`.
+
+  Only assigned roles appear: users on the implicit `"user"` role are not
+  counted, since removing that role from `allowed_roles` cannot strand them.
+  """
+  def count_by_role(%App{} = app) do
+    query =
+      from a in Assignment,
+        where: a.app_id == ^app.id,
+        group_by: a.role,
+        select: {a.role, count(a.id)}
+
+    Map.new(Repo.all(query))
   end
 
   @doc """
@@ -101,8 +118,6 @@ defmodule You.Roles do
           order_by: u.email
       )
 
-    (Enum.map(assigned, fn {u, role} -> {u, role} end) ++
-       Enum.map(unassigned, &{&1, "user"}))
-    |> Enum.sort_by(fn {u, _} -> u.email end)
+    Enum.sort_by(assigned ++ Enum.map(unassigned, &{&1, "user"}), fn {u, _} -> u.email end)
   end
 end

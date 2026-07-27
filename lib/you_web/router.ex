@@ -74,6 +74,7 @@ defmodule YouWeb.Router do
 
     live_session :admin, on_mount: {YouWeb.UserAuth, :default} do
       live "/", ConsoleLive, :index
+      live "/apps/:slug", AppLive.Show, :show
     end
   end
 
