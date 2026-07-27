@@ -112,6 +112,15 @@ if config_env() == :prod do
   # Management REST API bearer token. Unset/empty disables the API (403).
   config :you, :api_token, System.get_env("API_TOKEN")
 
+  # Plausible-compatible analytics. Both must be set, or nothing is emitted.
+  case {System.get_env("ANALYTICS_SRC"), System.get_env("ANALYTICS_DOMAIN")} do
+    {src, domain} when is_binary(src) and is_binary(domain) ->
+      config :you, :analytics, src: src, domain: domain
+
+    _ ->
+      :ok
+  end
+
   config :wax_,
     origin: "https://#{host}",
     rp_id: :auto

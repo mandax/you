@@ -13,6 +13,13 @@
     <link phx-track-static rel="stylesheet" href={~p"/assets/css/app.css"} />
     <script defer phx-track-static type="text/javascript" src={~p"/assets/js/app.js"}>
     </script>
+    <script
+      :if={analytics = Application.get_env(:you, :analytics)}
+      defer
+      data-domain={analytics[:domain]}
+      src={analytics[:src]}
+    >
+    </script>
     <script>
       // Applies the theme before first paint to avoid a flash of the wrong one.
       // Same storage key and "system" semantics as the theme toggle hook.
