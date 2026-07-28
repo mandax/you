@@ -38,6 +38,62 @@ defmodule YouWeb.ConsoleLiveTest do
       assert Admin.list_apps() == []
     end
 
+    test "delete confirm surfaces real consent and role assignment counts", %{conn: conn} do
+      {:ok, app, _secret} =
+        Admin.create_app(%{
+          "name" => "Blast Radius",
+          "slug" => "blast-radius",
+          "callback_url" => "https://blast-radius.example.com/cb"
+        })
+
+      user1 = You.AccountsFixtures.user_fixture()
+      user2 = You.AccountsFixtures.user_fixture()
+      user3 = You.AccountsFixtures.user_fixture()
+
+      {:ok, _} = Accounts.record_consent(user1, app, ["profile"])
+      {:ok, _} = Accounts.record_consent(user2, app, ["profile"])
+      {:ok, _} = Accounts.record_consent(user3, app, ["profile"])
+
+      {:ok, _} = You.Roles.set_role(app, user1, "admin")
+      {:ok, _} = You.Roles.set_role(app, user2, "admin")
+
+      {:ok, _lv, html} = live(conn, "/console?view=apps")
+
+      assert html =~
+               "permanently deletes 3 consents and 2 role assignments. This cannot be undone."
+    end
+
+    test "delete confirm uses singular wording for a count of one", %{conn: conn} do
+      {:ok, app, _secret} =
+        Admin.create_app(%{
+          "name" => "Solo Impact",
+          "slug" => "solo-impact",
+          "callback_url" => "https://solo-impact.example.com/cb"
+        })
+
+      user = You.AccountsFixtures.user_fixture()
+      {:ok, _} = Accounts.record_consent(user, app, ["profile"])
+      {:ok, _} = You.Roles.set_role(app, user, "admin")
+
+      {:ok, _lv, html} = live(conn, "/console?view=apps")
+
+      assert html =~ "permanently deletes 1 consent and 1 role assignment. This cannot be undone."
+    end
+
+    test "delete confirm uses plural wording for zero counts", %{conn: conn} do
+      {:ok, _app, _secret} =
+        Admin.create_app(%{
+          "name" => "No Impact",
+          "slug" => "no-impact",
+          "callback_url" => "https://no-impact.example.com/cb"
+        })
+
+      {:ok, _lv, html} = live(conn, "/console?view=apps")
+
+      assert html =~
+               "permanently deletes 0 consents and 0 role assignments. This cannot be undone."
+    end
+
     test "create app with first_party true", %{conn: conn} do
       {:ok, lv, _} = live(conn, "/console?view=apps")
 
@@ -166,6 +222,77 @@ defmodule YouWeb.ConsoleLiveTest do
 
       assert render_change(lv, "filter_audit", %{"filter" => "needle"}) =~ "needle-xyz"
       refute render_change(lv, "filter_audit", %{"filter" => "no-such-event"}) =~ "needle-xyz"
+    end
+
+    test "app select is wired to filter_audit_app", %{conn: conn} do
+      {:ok, _lv, html} = live(conn, "/console?view=audit")
+
+      assert html =~ ~s(id="filter-audit-app")
+      assert html =~ ~s(data-on-change="filter_audit_app")
+    end
+
+    test "app filter narrows events to that app and resetting shows everything again", %{
+      conn: conn
+    } do
+      {:ok, app_a, _secret} =
+        Admin.create_app(%{
+          "name" => "Audit App A",
+          "slug" => "audit-app-a",
+          "callback_url" => "https://audit-app-a.example.com/cb"
+        })
+
+      {:ok, _app_b, _secret} =
+        Admin.create_app(%{
+          "name" => "Audit App B",
+          "slug" => "audit-app-b",
+          "callback_url" => "https://audit-app-b.example.com/cb"
+        })
+
+      # app-scoped events, one per app
+      {:ok, _} = Admin.update_app(app_a, %{"name" => "Audit App A Renamed"})
+
+      :telemetry.execute([:you, :audit, :admin, :action], %{}, %{
+        action: "update_app",
+        app_slug: "audit-app-b"
+      })
+
+      # event with no app_slug at all in its metadata
+      :telemetry.execute([:you, :audit, :admin, :action], %{}, %{
+        action: "promote_admin",
+        target_user_id: 999,
+        target_email: "noone@example.com"
+      })
+
+      _ = :sys.get_state(You.Audit.Streamer)
+      {:ok, lv, html} = live(conn, "/console?view=audit")
+
+      # sanity: all three events show up unfiltered. Assertions below key on
+      # `app_slug=&quot;...&quot;` (the metadata brief, HTML-escaped by HEEx)
+      # rather than a bare slug, since the bare slug also appears as a
+      # `data-value` on the (always fully populated) app select options —
+      # matching on that would pass even if the filter did nothing.
+      assert html =~ "action=&quot;update_app&quot;"
+      assert html =~ "action=&quot;promote_admin&quot;"
+
+      filtered_a =
+        render_click(lv, "filter_audit_app", %{"value" => "audit-app-a"})
+
+      assert filtered_a =~ "app_slug=&quot;audit-app-a&quot;"
+      refute filtered_a =~ "app_slug=&quot;audit-app-b&quot;"
+      refute filtered_a =~ "action=&quot;promote_admin&quot;"
+
+      filtered_b =
+        render_click(lv, "filter_audit_app", %{"value" => "audit-app-b"})
+
+      assert filtered_b =~ "app_slug=&quot;audit-app-b&quot;"
+      refute filtered_b =~ "app_slug=&quot;audit-app-a&quot;"
+      refute filtered_b =~ "action=&quot;promote_admin&quot;"
+
+      reset = render_click(lv, "filter_audit_app", %{"value" => ""})
+
+      assert reset =~ "app_slug=&quot;audit-app-a&quot;"
+      assert reset =~ "app_slug=&quot;audit-app-b&quot;"
+      assert reset =~ "action=&quot;promote_admin&quot;"
     end
   end
 

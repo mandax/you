@@ -2,6 +2,7 @@ defmodule You.AdminTest do
   use You.DataCase, async: false
 
   alias You.Admin
+  alias You.Accounts
   alias You.AccountsFixtures
 
   describe "promote_admin/1" do
@@ -180,6 +181,58 @@ defmodule You.AdminTest do
 
       assert :error =
                Admin.lookup_app_by_callback("https://myapp.example.com/auth/callback/sub")
+    end
+  end
+
+  describe "deletion_impact/1" do
+    test "counts consents and role assignments for an app with several of each" do
+      {:ok, app, _secret} =
+        Admin.create_app(%{
+          slug: "impacted",
+          name: "Impacted App",
+          callback_url: "https://impacted.example.com/cb"
+        })
+
+      for _ <- 1..3 do
+        user = AccountsFixtures.user_fixture()
+        {:ok, _consent} = Accounts.record_consent(user, app, ["profile"])
+        {:ok, _assignment} = You.Roles.set_role(app, user, "admin")
+      end
+
+      assert Admin.deletion_impact(app) == %{consents: 3, role_assignments: 3}
+    end
+
+    test "returns zero counts for an app with no consents or role assignments" do
+      {:ok, app, _secret} =
+        Admin.create_app(%{
+          slug: "untouched",
+          name: "Untouched App",
+          callback_url: "https://untouched.example.com/cb"
+        })
+
+      assert Admin.deletion_impact(app) == %{consents: 0, role_assignments: 0}
+    end
+
+    test "does not count another app's consents or role assignments" do
+      {:ok, app, _secret} =
+        Admin.create_app(%{
+          slug: "target-app",
+          name: "Target App",
+          callback_url: "https://target.example.com/cb"
+        })
+
+      {:ok, other_app, _secret} =
+        Admin.create_app(%{
+          slug: "other-app",
+          name: "Other App",
+          callback_url: "https://other.example.com/cb"
+        })
+
+      user = AccountsFixtures.user_fixture()
+      {:ok, _consent} = Accounts.record_consent(user, other_app, ["profile"])
+      {:ok, _assignment} = You.Roles.set_role(other_app, user, "admin")
+
+      assert Admin.deletion_impact(app) == %{consents: 0, role_assignments: 0}
     end
   end
 
