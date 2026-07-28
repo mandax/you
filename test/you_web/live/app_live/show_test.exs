@@ -310,6 +310,47 @@ defmodule YouWeb.AppLive.ShowTest do
     end
   end
 
+  describe "sign-in methods" do
+    test "every method is ticked by default", %{conn: conn, app: app} do
+      {:ok, _lv, html} = live(conn, ~p"/console/apps/#{app.slug}?tab=login")
+
+      assert html =~ ~s(phx-submit="update_methods")
+      assert html =~ "Magic link"
+    end
+
+    test "unticking one stores the remaining subset", %{conn: conn, app: app} do
+      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}?tab=login")
+
+      html =
+        lv
+        |> form("#app-methods-form", %{
+          "methods" => %{
+            "password" => "true",
+            "magic_link" => "false",
+            "passkey" => "true",
+            "social" => "false"
+          }
+        })
+        |> render_submit()
+
+      assert html =~ "Sign-in methods updated"
+      assert Admin.get_app!(app.id).enabled_methods == ["password", "passkey"]
+    end
+
+    # All ticked stores nil, so a method added to You later reaches this app
+    # instead of being excluded by a list frozen at save time.
+    test "ticking every method stores nil rather than the full list", %{conn: conn, app: app} do
+      {:ok, _app} = Admin.update_app(app, %{"enabled_methods" => ["passkey"]})
+
+      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}?tab=login")
+
+      all = Map.new(You.Admin.App.auth_methods(), &{&1, "true"})
+      lv |> form("#app-methods-form", %{"methods" => all}) |> render_submit()
+
+      assert Admin.get_app!(app.id).enabled_methods == nil
+    end
+  end
+
   describe "roles" do
     test "adds a role to allowed_roles", %{conn: conn, app: app} do
       {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}?tab=roles")

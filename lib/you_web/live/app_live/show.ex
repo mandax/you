@@ -82,6 +82,24 @@ defmodule YouWeb.AppLive.Show do
     |> reload(socket, "Consent screen updated.")
   end
 
+  def handle_event("update_methods", params, socket) do
+    ticked = for {method, "true"} <- Map.get(params, "methods", %{}), do: method
+
+    # Params arrive as a map, so the comprehension's order is arbitrary. Filter
+    # the canonical list instead, both to store a stable order and so the
+    # all-ticked comparison below can actually match.
+    checked = Enum.filter(You.Admin.App.auth_methods(), &(&1 in ticked))
+
+    # All ticked is stored as nil, not the full list: nil means "whatever the
+    # instance offers", so a method added later reaches this app instead of
+    # being excluded by a list frozen today.
+    methods = if checked == You.Admin.App.auth_methods(), do: nil, else: checked
+
+    socket.assigns.app
+    |> Admin.update_app(%{"enabled_methods" => methods})
+    |> reload(socket, "Sign-in methods updated.")
+  end
+
   # ── roles ─────────────────────────────────────────────────────
   def handle_event("add_role", %{"role" => role}, socket) do
     app = socket.assigns.app
@@ -211,6 +229,12 @@ defmodule YouWeb.AppLive.Show do
 
   defp allowed_roles(app), do: app.allowed_roles || ["user", "admin"]
 
+  defp enabled_methods(%{enabled_methods: nil}), do: You.Admin.App.auth_methods()
+  defp enabled_methods(%{enabled_methods: methods}), do: methods
+
+  defp method_label("magic_link"), do: "Magic link"
+  defp method_label(method), do: method |> String.capitalize()
+
   # ── render ────────────────────────────────────────────────────
   @impl true
   def render(assigns) do
@@ -329,6 +353,28 @@ defmodule YouWeb.AppLive.Show do
               value={@draft.subtitle}
               placeholder="secured by You"
             />
+            <div class="flex justify-end">
+              <.button type="submit">Save</.button>
+            </div>
+          </form>
+        </.panel>
+
+        <.panel
+          title="Sign-in methods"
+          description="Which methods this app's users may use. Disabling one hides its control and rejects it server-side."
+        >
+          <form id="app-methods-form" phx-submit="update_methods" class="space-y-3">
+            <.input
+              :for={method <- You.Admin.App.auth_methods()}
+              type="checkbox"
+              name={"methods[#{method}]"}
+              label={method_label(method)}
+              value="true"
+              checked={method in enabled_methods(@app)}
+            />
+            <p class="text-xs text-muted-foreground">
+              Leaving every box ticked keeps the app on "all methods", so one added later reaches it too.
+            </p>
             <div class="flex justify-end">
               <.button type="submit">Save</.button>
             </div>

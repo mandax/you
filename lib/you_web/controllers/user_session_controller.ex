@@ -53,7 +53,8 @@ defmodule YouWeb.UserSessionController do
         app_logo_url: app && app.logo_url,
         app_brand_color: app && app.brand_color,
         app_headline: app && app.headline,
-        app_subtitle: app && app.subtitle
+        app_subtitle: app && app.subtitle,
+        methods: enabled_methods(app)
       )
     end
   end
@@ -83,6 +84,25 @@ defmodule YouWeb.UserSessionController do
   defp provider_enabled_for_app?(_slug, nil), do: true
   defp provider_enabled_for_app?(_slug, %{enabled_providers: nil}), do: true
   defp provider_enabled_for_app?(slug, %{enabled_providers: enabled}), do: slug in enabled
+
+  # The auth methods the in-flight app allows. `nil` means every method, so an
+  # app registered before a method existed still gets it.
+  defp enabled_methods(nil), do: You.Admin.App.auth_methods()
+  defp enabled_methods(%{enabled_methods: nil}), do: You.Admin.App.auth_methods()
+  defp enabled_methods(%{enabled_methods: methods}), do: methods
+
+  # Rendering is not gating: the login page hides a disabled method's control,
+  # but anyone can POST to this action directly, so the method has to be
+  # rejected here too.
+  defp method_enabled?(conn, method) do
+    method in enabled_methods(app_for(conn))
+  end
+
+  defp reject_disabled_method(conn) do
+    conn
+    |> put_flash(:error, "That sign-in method is not available for this application.")
+    |> redirect(to: ~p"/users/log-in?#{oauth_link_params(conn)}")
+  end
 
   # The OAuth params stashed in the session, as a query map for embedding in
   # the magic-link URL. Omits blanks; none are secrets. The code_verifier
@@ -143,13 +163,31 @@ defmodule YouWeb.UserSessionController do
         |> render(:new,
           form: Phoenix.Component.to_form(%{}, as: "user"),
           callback_url: get_session(conn, :callback_url),
-          providers: oidc_providers(app_for(conn))
+          providers: oidc_providers(app_for(conn)),
+          methods: enabled_methods(app_for(conn))
         )
     end
   end
 
   # email + password login
   def create(conn, %{"user" => %{"email" => email, "password" => password} = user_params}) do
+    if not method_enabled?(conn, "password") do
+      reject_disabled_method(conn)
+    else
+      do_password_login(conn, email, password, user_params)
+    end
+  end
+
+  # magic link request
+  def create(conn, %{"user" => %{"email" => email}}) do
+    if not method_enabled?(conn, "magic_link") do
+      reject_disabled_method(conn)
+    else
+      do_magic_link_request(conn, email)
+    end
+  end
+
+  defp do_password_login(conn, email, password, user_params) do
     if user = Accounts.get_user_by_email_and_password(email, password) do
       :telemetry.execute([:you, :audit, :login, :attempt], %{}, %{
         user_id: user.id,
@@ -191,13 +229,13 @@ defmodule YouWeb.UserSessionController do
       |> render(:new,
         form: form,
         callback_url: get_session(conn, :callback_url),
-        providers: oidc_providers(app_for(conn))
+        providers: oidc_providers(app_for(conn)),
+        methods: enabled_methods(app_for(conn))
       )
     end
   end
 
-  # magic link request
-  def create(conn, %{"user" => %{"email" => email}}) do
+  defp do_magic_link_request(conn, email) do
     if user = Accounts.get_user_by_email(email) do
       # Carry the OAuth params in the magic-link URL, not just the session:
       # the link is usually opened in a different context (email client, other

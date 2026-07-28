@@ -67,7 +67,14 @@
           </div>
         </div>
 
-        <.form :let={f} for={@form} as={:user} id="login_form_password" action={~p"/users/log-in"}>
+        <.form
+          :let={f}
+          :if={"password" in @methods}
+          for={@form}
+          as={:user}
+          id="login_form_password"
+          action={~p"/users/log-in"}
+        >
           <div class="space-y-4">
             <.input
               readonly={!!@current_scope}
@@ -113,19 +120,29 @@
           </div>
         </.form>
 
-        <div class="flex items-center gap-3 text-sm text-muted-foreground">
+        <div
+          :if={"password" in @methods and "magic_link" in @methods}
+          class="flex items-center gap-3 text-sm text-muted-foreground"
+        >
           <span class="flex-1 border-t border-border" />
           <span>or</span>
           <span class="flex-1 border-t border-border" />
         </div>
 
-        <.form :let={f} for={@form} as={:user} id="login_form_magic" action={~p"/users/log-in"}>
+        <.form
+          :let={f}
+          :if={"magic_link" in @methods}
+          for={@form}
+          as={:user}
+          id="login_form_magic"
+          action={~p"/users/log-in"}
+        >
           <input type="hidden" name={f[:email].name} value={f[:email].value} />
           <.button type="submit" variant="outline" class="w-full">
             Email me a magic link <span class="lucide-mail block size-4" />
           </.button>
         </.form>
-        <script>
+        <script :if={"password" in @methods and "magic_link" in @methods}>
           // The magic-link form shares the email typed in the password form.
           document.getElementById("login_form_magic").addEventListener("submit", (e) => {
             const email = document.querySelector("#login_form_password input[name='user[email]']").value
@@ -133,9 +150,15 @@
           })
         </script>
 
-        <div :if={@providers != [] or !@current_scope} class="space-y-3">
+        <div
+          :if={
+            ("social" in @methods and @providers != []) or
+              ("passkey" in @methods and !@current_scope)
+          }
+          class="space-y-3"
+        >
           <.button
-            :for={provider <- @providers}
+            :for={provider <- if("social" in @methods, do: @providers, else: [])}
             href={~p"/auth/#{provider}"}
             variant="outline"
             class="w-full"
@@ -143,7 +166,7 @@
             Sign in with {String.capitalize(provider)}
           </.button>
           <button
-            :if={!@current_scope}
+            :if={"passkey" in @methods and !@current_scope}
             id="passkey-login"
             type="button"
             data-start-url={~p"/users/log-in/passkey/start"}

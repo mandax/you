@@ -220,6 +220,83 @@ defmodule YouWeb.UserSessionControllerTest do
     end
   end
 
+  describe "per-app auth method toggles" do
+    setup do
+      {:ok, app, _secret} =
+        You.Admin.create_app(%{
+          slug: "gated",
+          name: "Gated",
+          callback_url: "https://gated.example.com/cb",
+          enabled_methods: ["passkey"]
+        })
+
+      %{app: app}
+    end
+
+    defp start_flow(conn, app) do
+      get(conn, ~p"/users/log-in?callback_url=#{app.callback_url}")
+    end
+
+    test "the login page omits controls for disabled methods", %{conn: conn, app: app} do
+      html = conn |> start_flow(app) |> html_response(200)
+
+      refute html =~ ~s(id="login_form_password")
+      refute html =~ ~s(id="login_form_magic")
+      assert html =~ ~s(id="passkey-login")
+    end
+
+    # Hiding the form is not the feature. Anyone can POST directly, so the
+    # rejection below is what actually disables the method.
+    test "a password POST is rejected for an app that disabled it", %{conn: conn, app: app} do
+      user = You.AccountsFixtures.user_fixture()
+
+      conn =
+        conn
+        |> start_flow(app)
+        |> post(~p"/users/log-in", %{
+          "user" => %{"email" => user.email, "password" => "hello world!"}
+        })
+
+      assert redirected_to(conn) =~ "/users/log-in"
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "not available"
+      refute get_session(conn, :user_token)
+    end
+
+    test "a magic-link request is rejected for an app that disabled it", %{conn: conn, app: app} do
+      user = You.AccountsFixtures.user_fixture()
+
+      conn =
+        conn
+        |> start_flow(app)
+        |> post(~p"/users/log-in", %{"user" => %{"email" => user.email}})
+
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "not available"
+    end
+
+    test "nil enabled_methods leaves every method working", %{conn: conn} do
+      {:ok, open_app, _} =
+        You.Admin.create_app(%{
+          slug: "open",
+          name: "Open",
+          callback_url: "https://open.example.com/cb"
+        })
+
+      assert open_app.enabled_methods == nil
+
+      html = conn |> start_flow(open_app) |> html_response(200)
+
+      assert html =~ ~s(id="login_form_password")
+      assert html =~ ~s(id="login_form_magic")
+    end
+
+    test "a plain login with no app in flight keeps every method", %{conn: conn} do
+      html = conn |> get(~p"/users/log-in") |> html_response(200)
+
+      assert html =~ ~s(id="login_form_password")
+      assert html =~ ~s(id="login_form_magic")
+    end
+  end
+
   describe "GET /users/log-in/:token" do
     test "renders confirmation page for unconfirmed user", %{conn: conn, unconfirmed_user: user} do
       token =
