@@ -121,6 +121,64 @@ defmodule YouWeb.AppLive.ShowTest do
       assert cleared.logo_url == nil
       assert cleared.brand_color == "#0ea5e9"
     end
+
+    test "sets and clears headline and subtitle through the branding form", %{
+      conn: conn,
+      app: app
+    } do
+      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}?tab=login")
+
+      html =
+        lv
+        |> form("#app-branding-form", %{
+          "headline" => "Welcome to Edit Me",
+          "subtitle" => "sign in to keep going"
+        })
+        |> render_submit()
+
+      assert html =~ "Branding updated"
+
+      updated = Admin.get_app!(app.id)
+      assert updated.headline == "Welcome to Edit Me"
+      assert updated.subtitle == "sign in to keep going"
+
+      lv
+      |> form("#app-branding-form", %{"headline" => "", "subtitle" => ""})
+      |> render_submit()
+
+      cleared = Admin.get_app!(app.id)
+      assert cleared.headline == nil
+      assert cleared.subtitle == nil
+    end
+
+    test "sets and clears tos_url and privacy_url through the consent screen form", %{
+      conn: conn,
+      app: app
+    } do
+      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}?tab=login")
+
+      html =
+        lv
+        |> form("#app-consent-form", %{
+          "tos_url" => "https://edit.example.com/tos",
+          "privacy_url" => "https://edit.example.com/privacy"
+        })
+        |> render_submit()
+
+      assert html =~ "Consent screen updated"
+
+      updated = Admin.get_app!(app.id)
+      assert updated.tos_url == "https://edit.example.com/tos"
+      assert updated.privacy_url == "https://edit.example.com/privacy"
+
+      lv
+      |> form("#app-consent-form", %{"tos_url" => "", "privacy_url" => ""})
+      |> render_submit()
+
+      cleared = Admin.get_app!(app.id)
+      assert cleared.tos_url == nil
+      assert cleared.privacy_url == nil
+    end
   end
 
   describe "login preview" do
@@ -183,6 +241,72 @@ defmodule YouWeb.AppLive.ShowTest do
     test "links out to the real login page for this app", %{conn: conn, app: app} do
       {:ok, _lv, html} = live(conn, ~p"/console/apps/#{app.slug}?tab=login")
       assert html =~ "/users/log-in?callback_url="
+    end
+
+    test "reflects unsaved headline and subtitle without persisting them", %{
+      conn: conn,
+      app: app
+    } do
+      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}?tab=login")
+
+      html =
+        lv
+        |> form("#app-branding-form", %{
+          "headline" => "Draft headline",
+          "subtitle" => "draft subtitle"
+        })
+        |> render_change()
+
+      assert html =~ "Draft headline"
+      assert html =~ "draft subtitle"
+
+      # Preview only — nothing written until the form is submitted.
+      assert Admin.get_app!(app.id).headline == nil
+      assert Admin.get_app!(app.id).subtitle == nil
+    end
+
+    test "an over-long headline is dropped from the preview, mirroring the changeset cap", %{
+      conn: conn,
+      app: app
+    } do
+      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}?tab=login")
+
+      too_long = String.duplicate("a", 201)
+
+      html =
+        lv
+        |> form("#app-branding-form", %{"headline" => too_long, "subtitle" => ""})
+        |> render_change()
+
+      refute html =~ too_long
+      # Falls back to the default copy instead of showing the rejected draft.
+      assert html =~ "Sign in to continue to"
+      assert Admin.get_app!(app.id).headline == nil
+    end
+  end
+
+  describe "preview theme toggle" do
+    test "toggling flips the dark class on the preview container only", %{conn: conn, app: app} do
+      {:ok, lv, html} = live(conn, ~p"/console/apps/#{app.slug}?tab=login")
+
+      assert html =~ ~s(phx-click="toggle_preview_theme")
+
+      refute html =~
+               ~s(class="mt-2 rounded-lg border border-border bg-background px-5 py-8 text-center dark")
+
+      html = render_click(lv, "toggle_preview_theme", %{})
+
+      assert html =~
+               ~s(class="mt-2 rounded-lg border border-border bg-background px-5 py-8 text-center dark")
+
+      # Toggling the preview theme must not flip the console's own document-wide theme.
+      refute html =~ ~s(<html class="dark")
+      refute html =~ ~s(<body class="dark")
+
+      html = render_click(lv, "toggle_preview_theme", %{})
+
+      refute html =~
+               ~s(class="mt-2 rounded-lg border border-border bg-background px-5 py-8 text-center dark")
     end
   end
 
@@ -386,6 +510,18 @@ defmodule YouWeb.AppLive.ShowTest do
       assert html =~ "Client secret"
 
       assert render_click(lv, "dismiss_secret", %{}) =~ "Rotate secret"
+    end
+
+    test "the OIDC snippet shows the discovery URL, client_id, and supported scopes", %{
+      conn: conn,
+      app: app
+    } do
+      {:ok, _lv, html} = live(conn, ~p"/console/apps/#{app.slug}?tab=credentials")
+
+      assert html =~ "OIDC snippet"
+      assert html =~ "#{YouWeb.Endpoint.url()}/.well-known/openid-configuration"
+      assert html =~ "client_id: #{app.slug}"
+      assert html =~ "scopes: email profile roles"
     end
   end
 end

@@ -92,6 +92,96 @@ defmodule YouWeb.UserSessionControllerTest do
       assert html =~ "lucide-lock"
       refute html =~ "<img"
     end
+
+    test "shows a custom headline and subtitle for an app's OAuth login", %{conn: conn} do
+      {:ok, _app, _secret} =
+        You.Admin.create_app(%{
+          slug: "custom-copy",
+          name: "Custom Copy",
+          callback_url: "https://custom-copy.example.com/cb",
+          headline: "Welcome back to Custom Copy",
+          subtitle: "please sign in to continue"
+        })
+
+      html =
+        conn
+        |> get(~p"/users/log-in?callback_url=https://custom-copy.example.com/cb")
+        |> html_response(200)
+
+      assert html =~ "Welcome back to Custom Copy"
+      assert html =~ "please sign in to continue"
+      refute html =~ "Sign in to continue to"
+      refute html =~ "secured by You"
+    end
+
+    test "falls back to the default copy when headline/subtitle are unset", %{conn: conn} do
+      {:ok, _app, _secret} =
+        You.Admin.create_app(%{
+          slug: "default-copy",
+          name: "Default Copy",
+          callback_url: "https://default-copy.example.com/cb"
+        })
+
+      html =
+        conn
+        |> get(~p"/users/log-in?callback_url=https://default-copy.example.com/cb")
+        |> html_response(200)
+
+      assert html =~ "Sign in to continue to"
+      assert html =~ ~s(<span class="text-primary">Default Copy</span>)
+      assert html =~ "secured by You"
+    end
+  end
+
+  describe "GET /users/log-in - authorize (consent screen)" do
+    test "shows Terms of Service and Privacy Policy links when the app configures them", %{
+      conn: conn,
+      user: user
+    } do
+      {:ok, _app, _secret} =
+        You.Admin.create_app(%{
+          slug: "consenting",
+          name: "Consenting App",
+          callback_url: "https://consenting.example.com/cb",
+          tos_url: "https://consenting.example.com/tos",
+          privacy_url: "https://consenting.example.com/privacy"
+        })
+
+      html =
+        conn
+        |> log_in_user(user)
+        |> get(~p"/users/log-in?callback_url=https://consenting.example.com/cb&scope=email")
+        |> html_response(200)
+
+      assert html =~ "Authorize"
+      assert html =~ ~s(href="https://consenting.example.com/tos")
+      assert html =~ "Terms of Service"
+      assert html =~ ~s(href="https://consenting.example.com/privacy")
+      assert html =~ "Privacy Policy"
+    end
+
+    test "omits the consent links entirely when the app does not configure them", %{
+      conn: conn,
+      user: user
+    } do
+      {:ok, _app, _secret} =
+        You.Admin.create_app(%{
+          slug: "unconsenting",
+          name: "Unconsenting App",
+          callback_url: "https://unconsenting.example.com/cb"
+        })
+
+      html =
+        conn
+        |> log_in_user(user)
+        |> get(~p"/users/log-in?callback_url=https://unconsenting.example.com/cb&scope=email")
+        |> html_response(200)
+
+      assert html =~ "Authorize"
+      refute html =~ "Terms of Service"
+      refute html =~ "Privacy Policy"
+      refute html =~ "By continuing, you agree to"
+    end
   end
 
   describe "GET /users/log-in/:token" do
