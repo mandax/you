@@ -3,7 +3,7 @@ defmodule YouWeb.ConsoleLiveTest do
 
   import Phoenix.LiveViewTest
 
-  alias You.{Admin, Accounts, Settings}
+  alias You.{Admin, Accounts, Settings, IdentityProviders}
 
   setup %{conn: conn} do
     user = You.AccountsFixtures.user_fixture()
@@ -12,7 +12,7 @@ defmodule YouWeb.ConsoleLiveTest do
   end
 
   test "every view mounts", %{conn: conn} do
-    for view <- ~w(overview users apps orgs audit webhooks settings) do
+    for view <- ~w(overview users apps providers orgs audit webhooks settings) do
       {:ok, _lv, html} = live(conn, "/console?view=#{view}")
       assert html =~ "you"
     end
@@ -335,6 +335,250 @@ defmodule YouWeb.ConsoleLiveTest do
 
       render_click(lv, "clear_setting", %{"key" => "erlang_cookie"})
       assert Settings.get(:erlang_cookie) == ""
+    end
+  end
+
+  describe "providers" do
+    test "the nav links to the providers view", %{conn: conn} do
+      {:ok, _lv, html} = live(conn, "/console?view=overview")
+      assert html =~ ~s(href="/console?view=providers")
+      assert html =~ "Providers"
+    end
+
+    test "create from a preset expands the preset's endpoints", %{conn: conn} do
+      {:ok, lv, _} = live(conn, "/console?view=providers")
+
+      # Selecting the preset through the real select event first, matching how
+      # a browser would: `form/3` refuses to override a hidden input to a
+      # value the DOM doesn't already carry.
+      render_click(lv, "select_new_provider_preset", %{"value" => "google"})
+
+      html =
+        lv
+        |> form("#new-provider-form", %{
+          "slug" => "google",
+          "client_id" => "gid",
+          "client_secret" => "gsecret"
+        })
+        |> render_submit()
+
+      assert [provider] = IdentityProviders.list_providers()
+      assert provider.slug == "google"
+      assert provider.kind == "google"
+      assert provider.display_name == "Google"
+      assert provider.issuer == "https://accounts.google.com"
+      assert provider.client_id == "gid"
+      assert html =~ "google"
+    end
+
+    test "create a generic provider with hand-entered endpoints", %{conn: conn} do
+      {:ok, lv, _} = live(conn, "/console?view=providers")
+
+      lv
+      |> form("#new-provider-form", %{
+        "preset" => "generic",
+        "slug" => "okta",
+        "display_name" => "Okta",
+        "client_id" => "cid",
+        "client_secret" => "csecret",
+        "issuer" => "https://example.okta.com",
+        "authorize_url" => "https://example.okta.com/authorize",
+        "token_url" => "https://example.okta.com/token",
+        "userinfo_url" => "https://example.okta.com/userinfo",
+        "scopes" => "openid email profile"
+      })
+      |> render_submit()
+
+      assert [provider] = IdentityProviders.list_providers()
+      assert provider.slug == "okta"
+      assert provider.kind == "generic"
+      assert provider.issuer == "https://example.okta.com"
+    end
+
+    test "the preset select is wired to select_new_provider_preset", %{conn: conn} do
+      {:ok, _lv, html} = live(conn, "/console?view=providers")
+
+      assert html =~ ~s(id="new-provider-preset")
+      assert html =~ ~s(data-on-change="select_new_provider_preset")
+    end
+
+    test "picking a named preset hides the endpoint fields the generic preset shows",
+         %{conn: conn} do
+      {:ok, lv, html} = live(conn, "/console?view=providers")
+      # "generic" is the default preset, so the endpoint fields start visible.
+      assert html =~ ~s(name="authorize_url")
+
+      html = render_click(lv, "select_new_provider_preset", %{"value" => "google"})
+      refute html =~ ~s(name="authorize_url")
+
+      html = render_click(lv, "select_new_provider_preset", %{"value" => "generic"})
+      assert html =~ ~s(name="authorize_url")
+    end
+
+    test "edit updates display name and endpoints", %{conn: conn} do
+      {:ok, provider} =
+        IdentityProviders.create_provider(%{
+          "slug" => "okta",
+          "display_name" => "Okta",
+          "kind" => "generic",
+          "client_id" => "cid",
+          "client_secret" => "csecret"
+        })
+
+      {:ok, lv, _} = live(conn, "/console?view=providers")
+
+      render_click(lv, "edit_provider", %{"id" => provider.id})
+
+      lv
+      |> form("#edit-provider-form", %{
+        "display_name" => "Okta (renamed)",
+        "client_id" => "new-cid",
+        "issuer" => "https://renamed.okta.com"
+      })
+      |> render_submit()
+
+      updated = IdentityProviders.get_provider!(provider.id)
+      assert updated.display_name == "Okta (renamed)"
+      assert updated.client_id == "new-cid"
+      assert updated.issuer == "https://renamed.okta.com"
+    end
+
+    test "the edit sheet is wired to open on edit_provider and close on cancel_edit_provider", %{
+      conn: conn
+    } do
+      {:ok, provider} =
+        IdentityProviders.create_provider(%{
+          "slug" => "okta",
+          "display_name" => "Okta",
+          "kind" => "generic"
+        })
+
+      {:ok, lv, html} = live(conn, "/console?view=providers")
+      refute html =~ ~s(id="edit-provider-form")
+
+      html = render_click(lv, "edit_provider", %{"id" => provider.id})
+      assert html =~ ~s(id="edit-provider-form")
+      assert html =~ ~s(phx-submit="update_provider")
+
+      html = render_click(lv, "cancel_edit_provider", %{})
+      refute html =~ ~s(id="edit-provider-form")
+    end
+
+    test "the client secret never appears in rendered HTML, and a blank secret on save preserves the stored one",
+         %{conn: conn} do
+      {:ok, provider} =
+        IdentityProviders.create_provider(%{
+          "slug" => "okta",
+          "display_name" => "Okta",
+          "kind" => "generic",
+          "client_id" => "cid",
+          "client_secret" => "super-secret-value"
+        })
+
+      {:ok, lv, html} = live(conn, "/console?view=providers")
+      refute html =~ "super-secret-value"
+
+      html = render_click(lv, "edit_provider", %{"id" => provider.id})
+      refute html =~ "super-secret-value"
+
+      lv
+      |> form("#edit-provider-form", %{
+        "display_name" => "Okta",
+        "client_secret" => ""
+      })
+      |> render_submit()
+
+      updated = IdentityProviders.get_provider!(provider.id)
+      assert IdentityProviders.decrypt_secret(updated) == "super-secret-value"
+
+      # Saving closes the edit sheet, so it has to be reopened before the form
+      # can be found again for the second submission.
+      render_click(lv, "edit_provider", %{"id" => provider.id})
+
+      lv
+      |> form("#edit-provider-form", %{
+        "display_name" => "Okta",
+        "client_secret" => "rotated-secret"
+      })
+      |> render_submit()
+
+      rotated = IdentityProviders.get_provider!(provider.id)
+      assert IdentityProviders.decrypt_secret(rotated) == "rotated-secret"
+    end
+
+    test "toggling enabled is wired to a real switch control", %{conn: conn} do
+      {:ok, provider} =
+        IdentityProviders.create_provider(%{
+          "slug" => "okta",
+          "display_name" => "Okta",
+          "kind" => "generic"
+        })
+
+      {:ok, lv, html} = live(conn, "/console?view=providers")
+      assert html =~ ~s(phx-click="toggle_provider")
+      assert html =~ ~s(phx-value-id="#{provider.id}")
+
+      render_click(lv, "toggle_provider", %{"id" => provider.id})
+      refute IdentityProviders.get_provider!(provider.id).enabled
+
+      render_click(lv, "toggle_provider", %{"id" => provider.id})
+      assert IdentityProviders.get_provider!(provider.id).enabled
+    end
+
+    test "delete is confirmed before it fires", %{conn: conn} do
+      {:ok, provider} =
+        IdentityProviders.create_provider(%{
+          "slug" => "okta",
+          "display_name" => "Okta",
+          "kind" => "generic"
+        })
+
+      {:ok, lv, html} = live(conn, "/console?view=providers")
+
+      # Confirm the same `<button>` carries `phx-click="delete_provider"`,
+      # `phx-value-id`, and `data-confirm` together — not merely that each
+      # string appears somewhere in the page.
+      [_, button_markup] =
+        Regex.run(~r/(<button[^>]*phx-click="delete_provider"[^>]*>)/, html)
+
+      assert button_markup =~ ~s(phx-value-id="#{provider.id}")
+      assert button_markup =~ "data-confirm="
+
+      render_click(lv, "delete_provider", %{"id" => provider.id})
+      assert IdentityProviders.list_providers() == []
+    end
+
+    test "discover autofills the generic form from the issuer", %{conn: conn} do
+      port = 45_950
+
+      plug = fn conn, _opts ->
+        body =
+          Jason.encode!(%{
+            "issuer" => "https://idp.example.com",
+            "authorization_endpoint" => "https://idp.example.com/authorize",
+            "token_endpoint" => "https://idp.example.com/token",
+            "userinfo_endpoint" => "https://idp.example.com/userinfo",
+            "scopes_supported" => ["openid", "email"]
+          })
+
+        conn
+        |> Plug.Conn.put_resp_content_type("application/json")
+        |> Plug.Conn.send_resp(200, body)
+      end
+
+      server = start_supervised!({Bandit, plug: plug, port: port, ip: :loopback})
+      on_exit(fn -> Process.unlink(server) end)
+
+      {:ok, lv, _html} = live(conn, "/console?view=providers")
+      render_click(lv, "select_new_provider_preset", %{"value" => "generic"})
+
+      html =
+        lv
+        |> form("form[phx-submit=discover_provider]", %{"issuer" => "http://localhost:#{port}"})
+        |> render_submit()
+
+      assert html =~ "https://idp.example.com/authorize"
+      assert html =~ "https://idp.example.com/token"
     end
   end
 end

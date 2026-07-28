@@ -17,6 +17,7 @@ defmodule YouWeb.Components.ConsoleChrome do
     %{id: "overview", label: "Overview", icon: "lucide-layout-dashboard"},
     %{id: "users", label: "Users", icon: "lucide-users"},
     %{id: "apps", label: "Apps", icon: "lucide-boxes"},
+    %{id: "providers", label: "Providers", icon: "lucide-key-round"},
     %{id: "audit", label: "Audit Log", icon: "lucide-scroll-text"},
     %{id: "webhooks", label: "Webhooks", icon: "lucide-webhook"},
     %{id: "settings", label: "Settings", icon: "lucide-settings"}
