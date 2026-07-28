@@ -82,8 +82,18 @@ defmodule You.Admin do
     |> Ecto.Changeset.change(client_secret_hash: hashed)
     |> Repo.update()
     |> case do
-      {:ok, app} -> {:ok, app, secret}
-      {:error, changeset} -> {:error, changeset}
+      {:ok, app} ->
+        # Rotation invalidates the live secret immediately, so it needs a trail
+        # of its own rather than inheriting `update_app`'s.
+        :telemetry.execute([:you, :audit, :admin, :action], %{}, %{
+          action: "rotate_app_secret",
+          app_slug: app.slug
+        })
+
+        {:ok, app, secret}
+
+      {:error, changeset} ->
+        {:error, changeset}
     end
   end
 
@@ -189,10 +199,14 @@ defmodule You.Admin do
       |> App.changeset(attrs)
       |> Repo.update()
 
-    :telemetry.execute([:you, :audit, :admin, :action], %{}, %{
-      action: "update_app",
-      app_slug: app.slug
-    })
+    # Only on success: a rejected changeset that still emitted would put a
+    # change into the audit trail that never happened.
+    with {:ok, _} <- result do
+      :telemetry.execute([:you, :audit, :admin, :action], %{}, %{
+        action: "update_app",
+        app_slug: app.slug
+      })
+    end
 
     result
   end
@@ -207,9 +221,22 @@ defmodule You.Admin do
   def update_allowed_roles(%App{} = app, roles) when is_list(roles) do
     roles = roles |> Enum.map(&String.trim/1) |> Enum.reject(&(&1 == "")) |> Enum.uniq()
     in_use = Map.keys(You.Roles.count_by_role(app))
+    current = app.allowed_roles || []
 
-    case Enum.reject(in_use, &(&1 in roles)) do
-      [] -> update_app(app, %{"allowed_roles" => roles})
+    with [] <- Enum.reject(in_use, &(&1 in roles)),
+         {:ok, updated} <- update_app(app, %{"allowed_roles" => roles}) do
+      # Which roles moved, not just that the app changed: the generic
+      # `update_app` event cannot say what was granted or taken away.
+      :telemetry.execute([:you, :audit, :admin, :action], %{}, %{
+        action: "update_allowed_roles",
+        app_slug: app.slug,
+        added: roles -- current,
+        removed: current -- roles
+      })
+
+      {:ok, updated}
+    else
+      {:error, changeset} -> {:error, changeset}
       stranded -> {:error, {:roles_in_use, Enum.sort(stranded)}}
     end
   end

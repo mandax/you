@@ -55,8 +55,8 @@ defmodule YouWeb.AppLive.Show do
     {:noreply,
      assign(socket,
        draft: %{
-         logo_url: params["logo_url"],
-         brand_color: params["brand_color"]
+         logo_url: safe_logo_url(params["logo_url"]),
+         brand_color: safe_brand_color(params["brand_color"])
        }
      )}
   end
@@ -129,7 +129,7 @@ defmodule YouWeb.AppLive.Show do
     app = socket.assigns.app
     user_ids = MapSet.to_list(socket.assigns.selected)
 
-    case Roles.set_roles(app, user_ids, params["value"] || params["role"]) do
+    case Roles.set_roles(app, user_ids, params["role"] || params["value"]) do
       {:ok, count} ->
         {:noreply,
          socket
@@ -139,6 +139,10 @@ defmodule YouWeb.AppLive.Show do
 
       {:error, :invalid_role} ->
         {:noreply, put_flash(socket, :error, "Role is not allowed for this app.")}
+
+      {:error, :invalid_user} ->
+        {:noreply,
+         put_flash(socket, :error, "That selection is no longer valid. Reload the page.")}
     end
   end
 
@@ -323,6 +327,25 @@ defmodule YouWeb.AppLive.Show do
   defp presence(""), do: nil
   defp presence(value), do: value
 
+  # The preview renders straight from form params, so it never passes through
+  # `App.changeset/2`. Apply the same two guards here: HEEx escaping stops the
+  # value breaking out of the attribute, but not CSS-property injection like
+  # `red; background: url(...)` inside an otherwise-valid style.
+  defp safe_brand_color(value) when is_binary(value) do
+    if value =~ ~r/^#[0-9a-fA-F]{6}$/, do: value, else: nil
+  end
+
+  defp safe_brand_color(_), do: nil
+
+  defp safe_logo_url(value) when is_binary(value) do
+    case URI.parse(value) do
+      %URI{scheme: scheme} when scheme in ["http", "https"] -> value
+      _ -> nil
+    end
+  end
+
+  defp safe_logo_url(_), do: nil
+
   attr :app, :map, required: true
   attr :roles, :list, required: true
   attr :counts, :map, required: true
@@ -332,7 +355,7 @@ defmodule YouWeb.AppLive.Show do
     ~H"""
     <.panel
       title="Allowed roles"
-      description="Tokens issued for this app carry one of these. Unassigned users are implicitly “user”."
+      description="Tokens issued for this app carry one of these. Users with no explicit assignment get the default role below."
     >
       <div class="max-w-xl space-y-4">
         <ul class="space-y-1.5">
@@ -409,16 +432,25 @@ defmodule YouWeb.AppLive.Show do
         <span class="font-mono text-xs text-muted-foreground">
           {MapSet.size(@selected)} selected
         </span>
-        <div class="ml-auto">
+        <%!-- A form, not an on_change select: re-roling many users at once
+              needs the same confirmation the other wide-blast-radius actions
+              get, and data-confirm needs a real phx- binding to attach to. --%>
+        <form
+          id="bulk-role-form"
+          phx-submit="bulk_set_role"
+          data-confirm="Apply this role to every selected user?"
+          class="ml-auto flex items-center gap-2"
+        >
           <.select
             id="bulk-role"
+            name="role"
             value=""
             placeholder="Set role to…"
             options={Enum.map(@roles, &%{value: &1, label: &1})}
-            on_change="bulk_set_role"
             align="end"
           />
-        </div>
+          <.button type="submit" size="sm">Apply</.button>
+        </form>
       </div>
 
       <.data_table cols={["", "User", "Role"]} empty={@members == []}>

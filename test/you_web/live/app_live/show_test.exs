@@ -36,6 +36,22 @@ defmodule YouWeb.AppLive.ShowTest do
     assert_raise Ecto.NoResultsError, fn -> live(conn, ~p"/console/apps/nope") end
   end
 
+  # `require_admin` 404s rather than redirecting, so the page does not confirm
+  # its own existence to a non-admin.
+  test "a non-admin cannot reach the page", %{app: app} do
+    conn =
+      build_conn()
+      |> log_in_user(You.AccountsFixtures.user_fixture())
+      |> get(~p"/console/apps/#{app.slug}")
+
+    assert conn.status == 404
+  end
+
+  test "an anonymous visitor cannot reach the page", %{app: app} do
+    assert {:error, {:redirect, %{to: to}}} = live(build_conn(), ~p"/console/apps/#{app.slug}")
+    assert to =~ "/users/log-in"
+  end
+
   describe "overview" do
     test "changes name and toggles first_party", %{conn: conn, app: app} do
       refute app.first_party
@@ -292,14 +308,29 @@ defmodule YouWeb.AppLive.ShowTest do
       {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}?tab=members")
 
       refute render(lv) =~ "1 selected"
-      render_click(lv, "toggle_member", %{"user_id" => to_string(user.id)})
-      assert render(lv) =~ "1 selected"
+      html = render_click(lv, "toggle_member", %{"user_id" => to_string(user.id)})
+      assert html =~ "1 selected"
 
-      html = render_click(lv, "bulk_set_role", %{"value" => "admin"})
+      # Assert the wiring, not only the handler: the action bar is a form, and
+      # a missing phx-submit or data-confirm would not show up in a direct push.
+      assert html =~ ~s(phx-submit="bulk_set_role")
+      assert html =~ "data-confirm"
+
+      html = render_submit(lv, "bulk_set_role", %{"role" => "admin"})
 
       assert html =~ "Updated 1 user"
       assert Roles.role_for(app.slug, user.id) == "admin"
       refute html =~ "1 selected"
+    end
+
+    test "rejects a selection carrying a non-numeric id", %{conn: conn, app: app} do
+      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}?tab=members")
+
+      # A client can push any payload it likes over the socket.
+      render_click(lv, "toggle_member", %{"user_id" => "not-an-id"})
+      html = render_submit(lv, "bulk_set_role", %{"role" => "admin"})
+
+      assert html =~ "no longer valid"
     end
 
     test "select-all toggles every row on and off", %{conn: conn, app: app} do

@@ -107,14 +107,15 @@ defmodule You.Roles do
   Returns `{:ok, count}` or `{:error, :invalid_role}`.
   """
   def set_roles(%App{} = app, user_ids, role) when is_list(user_ids) and is_binary(role) do
-    if role in (app.allowed_roles || ["user", "admin"]) do
+    with true <- role in (app.allowed_roles || ["user", "admin"]),
+         {:ok, ids} <- parse_ids(user_ids) do
       now = DateTime.utc_now() |> DateTime.truncate(:second)
 
       entries =
-        Enum.map(user_ids, fn user_id ->
+        Enum.map(ids, fn user_id ->
           %{
             app_id: app.id,
-            user_id: to_integer(user_id),
+            user_id: user_id,
             role: role,
             inserted_at: now,
             updated_at: now
@@ -127,21 +128,40 @@ defmodule You.Roles do
           conflict_target: [:app_id, :user_id]
         )
 
+      # The ids, not just the count: a mass role change is worth as much
+      # forensically as the per-user events `set_role/3` emits.
       :telemetry.execute([:you, :audit, :admin, :action], %{}, %{
         action: "set_roles",
         target: app.slug,
         role: role,
+        user_ids: ids,
         count: count
       })
 
       {:ok, count}
     else
-      {:error, :invalid_role}
+      false -> {:error, :invalid_role}
+      :error -> {:error, :invalid_user}
     end
   end
 
-  defp to_integer(value) when is_integer(value), do: value
-  defp to_integer(value) when is_binary(value), do: String.to_integer(value)
+  # Ids arrive as strings from the client, which can push any payload it likes
+  # over the socket. Reject junk rather than raising out of the LiveView.
+  defp parse_ids(user_ids) do
+    Enum.reduce_while(user_ids, {:ok, []}, fn
+      id, {:ok, acc} when is_integer(id) ->
+        {:cont, {:ok, [id | acc]}}
+
+      id, {:ok, acc} when is_binary(id) ->
+        case Integer.parse(id) do
+          {parsed, ""} -> {:cont, {:ok, [parsed | acc]}}
+          _ -> {:halt, :error}
+        end
+
+      _, _ ->
+        {:halt, :error}
+    end)
+  end
 
   @doc """
   Lists all users with their role in the app, sorted by email. Every user
