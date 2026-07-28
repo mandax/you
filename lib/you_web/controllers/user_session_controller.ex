@@ -30,16 +30,15 @@ defmodule YouWeb.UserSessionController do
 
     if conn.assigns[:current_scope] && conn.assigns.current_scope.user &&
          get_session(conn, :callback_url) do
-      app_name =
-        case You.Admin.lookup_app_by_callback(get_session(conn, :callback_url)) do
-          {:ok, app} -> app.name
-          :error -> get_session(conn, :callback_url)
-        end
+      app = app_for(conn)
+      app_name = if app, do: app.name, else: get_session(conn, :callback_url)
 
       render(conn, :authorize,
         app_name: app_name,
         user_email: conn.assigns.current_scope.user.email,
-        scopes: get_session(conn, :scopes) || ["email"]
+        scopes: get_session(conn, :scopes) || ["email"],
+        tos_url: app && app.tos_url,
+        privacy_url: app && app.privacy_url
       )
     else
       email = get_in(conn.assigns, [:current_scope, Access.key(:user), Access.key(:email)])
@@ -52,7 +51,9 @@ defmodule YouWeb.UserSessionController do
         providers: oidc_providers(),
         app_name: app && app.name,
         app_logo_url: app && app.logo_url,
-        app_brand_color: app && app.brand_color
+        app_brand_color: app && app.brand_color,
+        app_headline: app && app.headline,
+        app_subtitle: app && app.subtitle
       )
     end
   end

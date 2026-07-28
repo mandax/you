@@ -9,6 +9,10 @@ defmodule You.Admin.App do
     field :launch_url, :string
     field :logo_url, :string
     field :brand_color, :string
+    field :headline, :string
+    field :subtitle, :string
+    field :tos_url, :string
+    field :privacy_url, :string
     field :allowed_roles, {:array, :string}, default: ["user", "admin"]
     field :default_role, :string, default: "user"
     field :first_party, :boolean, default: false
@@ -25,6 +29,10 @@ defmodule You.Admin.App do
       :launch_url,
       :logo_url,
       :brand_color,
+      :headline,
+      :subtitle,
+      :tos_url,
+      :privacy_url,
       :allowed_roles,
       :default_role,
       :first_party
@@ -35,13 +43,19 @@ defmodule You.Admin.App do
     |> validate_length(:allowed_roles, min: 1)
     |> validate_default_role()
     |> validate_format(:brand_color, ~r/^#[0-9a-fA-F]{6}$/)
-    |> validate_change(:logo_url, fn :logo_url, url ->
-      case URI.parse(url) do
-        %URI{scheme: scheme} when scheme in ["http", "https"] -> []
-        _ -> [logo_url: "must be an http(s) URL"]
-      end
-    end)
+    |> validate_length(:headline, max: 200)
+    |> validate_length(:subtitle, max: 200)
+    |> validate_change(:logo_url, &validate_http_url/2)
+    |> validate_change(:tos_url, &validate_http_url/2)
+    |> validate_change(:privacy_url, &validate_http_url/2)
     |> unique_constraint(:slug)
+  end
+
+  defp validate_http_url(field, url) do
+    case URI.parse(url) do
+      %URI{scheme: scheme} when scheme in ["http", "https"] -> []
+      _ -> [{field, "must be an http(s) URL"}]
+    end
   end
 
   # Unassigned users resolve to `default_role`, so a default outside

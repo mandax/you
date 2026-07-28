@@ -30,7 +30,8 @@ defmodule YouWeb.AppLive.Show do
        tabs: @tabs,
        tab: "overview",
        new_secret: nil,
-       selected: MapSet.new()
+       selected: MapSet.new(),
+       preview_theme: "light"
      )
      |> assign_app(Admin.get_app_by_slug!(slug))}
   end
@@ -56,15 +57,29 @@ defmodule YouWeb.AppLive.Show do
      assign(socket,
        draft: %{
          logo_url: safe_logo_url(params["logo_url"]),
-         brand_color: safe_brand_color(params["brand_color"])
+         brand_color: safe_brand_color(params["brand_color"]),
+         headline: safe_copy(params["headline"]),
+         subtitle: safe_copy(params["subtitle"])
        }
      )}
   end
 
   def handle_event("update_branding", params, socket) do
     socket.assigns.app
-    |> Admin.update_app(Map.take(params, ["logo_url", "brand_color"]))
+    |> Admin.update_app(Map.take(params, ["logo_url", "brand_color", "headline", "subtitle"]))
     |> reload(socket, "Branding updated.")
+  end
+
+  def handle_event("toggle_preview_theme", _params, socket) do
+    theme = if socket.assigns.preview_theme == "dark", do: "light", else: "dark"
+    {:noreply, assign(socket, preview_theme: theme)}
+  end
+
+  # ── consent screen ────────────────────────────────────────────
+  def handle_event("update_consent_urls", params, socket) do
+    socket.assigns.app
+    |> Admin.update_app(Map.take(params, ["tos_url", "privacy_url"]))
+    |> reload(socket, "Consent screen updated.")
   end
 
   # ── roles ─────────────────────────────────────────────────────
@@ -166,7 +181,12 @@ defmodule YouWeb.AppLive.Show do
     assign(socket,
       app: app,
       page_title: app.name,
-      draft: %{logo_url: app.logo_url, brand_color: app.brand_color},
+      draft: %{
+        logo_url: app.logo_url,
+        brand_color: app.brand_color,
+        headline: app.headline,
+        subtitle: app.subtitle
+      },
       members: Roles.list_for_app(app),
       role_counts: Roles.count_by_role(app)
     )
@@ -214,7 +234,7 @@ defmodule YouWeb.AppLive.Show do
           <% "overview" -> %>
             <.overview_tab app={@app} />
           <% "login" -> %>
-            <.login_tab app={@app} draft={@draft} />
+            <.login_tab app={@app} draft={@draft} preview_theme={@preview_theme} />
           <% "roles" -> %>
             <.roles_tab
               app={@app}
@@ -271,40 +291,96 @@ defmodule YouWeb.AppLive.Show do
 
   attr :app, :map, required: true
   attr :draft, :map, required: true
+  attr :preview_theme, :string, required: true
 
   defp login_tab(assigns) do
     ~H"""
     <div class="grid gap-5 lg:grid-cols-2">
-      <.panel
-        title="Branding"
-        description="Shown on You's login page when users arrive from this app."
-      >
-        <form
-          id="app-branding-form"
-          phx-change="preview_branding"
-          phx-submit="update_branding"
-          class="space-y-4"
+      <div class="space-y-5">
+        <.panel
+          title="Branding"
+          description="Shown on You's login page when users arrive from this app."
         >
-          <.input type="url" name="logo_url" label="Logo URL (optional)" value={@draft.logo_url} />
-          <.input
-            type="text"
-            name="brand_color"
-            label="Brand color (optional)"
-            value={@draft.brand_color}
-            placeholder="#7c3aed"
-          />
-          <div class="flex justify-end">
-            <.button type="submit">Save</.button>
-          </div>
-        </form>
-      </.panel>
+          <form
+            id="app-branding-form"
+            phx-change="preview_branding"
+            phx-submit="update_branding"
+            class="space-y-4"
+          >
+            <.input type="url" name="logo_url" label="Logo URL (optional)" value={@draft.logo_url} />
+            <.input
+              type="text"
+              name="brand_color"
+              label="Brand color (optional)"
+              value={@draft.brand_color}
+              placeholder="#7c3aed"
+            />
+            <.input
+              type="text"
+              name="headline"
+              label="Headline (optional)"
+              value={@draft.headline}
+              placeholder={"Sign in to continue to #{@app.name}"}
+            />
+            <.input
+              type="text"
+              name="subtitle"
+              label="Subtitle (optional)"
+              value={@draft.subtitle}
+              placeholder="secured by You"
+            />
+            <div class="flex justify-end">
+              <.button type="submit">Save</.button>
+            </div>
+          </form>
+        </.panel>
+
+        <.panel
+          title="Consent screen"
+          description="Linked below the authorization prompt users see before granting access."
+        >
+          <form id="app-consent-form" phx-submit="update_consent_urls" class="space-y-4">
+            <.input
+              type="url"
+              name="tos_url"
+              label="Terms of Service URL (optional)"
+              value={@app.tos_url}
+            />
+            <.input
+              type="url"
+              name="privacy_url"
+              label="Privacy Policy URL (optional)"
+              value={@app.privacy_url}
+            />
+            <div class="flex justify-end">
+              <.button type="submit">Save</.button>
+            </div>
+          </form>
+        </.panel>
+      </div>
 
       <.panel title="Preview" description="The real login header, with unsaved values applied.">
-        <div class="rounded-lg border border-border bg-background px-5 py-8 text-center">
+        <div class="flex items-center justify-end">
+          <button
+            type="button"
+            phx-click="toggle_preview_theme"
+            aria-label="Toggle preview theme"
+            class="grid size-8 place-items-center rounded-md border border-border hover:bg-muted/50"
+          >
+            <span :if={@preview_theme == "light"} class="lucide-moon block size-4" />
+            <span :if={@preview_theme == "dark"} class="lucide-sun block size-4" />
+          </button>
+        </div>
+        <div class={[
+          "mt-2 rounded-lg border border-border bg-background px-5 py-8 text-center",
+          @preview_theme == "dark" && "dark"
+        ]}>
           <.login_header
             app_name={@app.name}
             logo_url={presence(@draft.logo_url)}
             brand_color={presence(@draft.brand_color)}
+            headline={presence(@draft.headline)}
+            subtitle={presence(@draft.subtitle)}
           />
         </div>
         <p class="mt-3 text-xs text-muted-foreground">
@@ -345,6 +421,14 @@ defmodule YouWeb.AppLive.Show do
   end
 
   defp safe_logo_url(_), do: nil
+
+  # Mirrors the changeset's `validate_length(:headline/:subtitle, max: 200)`,
+  # so the preview never shows copy a save would reject.
+  defp safe_copy(value) when is_binary(value) do
+    if String.length(value) <= 200, do: value, else: nil
+  end
+
+  defp safe_copy(_), do: nil
 
   attr :app, :map, required: true
   attr :roles, :list, required: true
@@ -487,7 +571,13 @@ defmodule YouWeb.AppLive.Show do
   attr :app, :map, required: true
   attr :new_secret, :string, default: nil
 
+  # The scopes an OIDC consumer can request — kept in sync with
+  # `YouWeb.OIDCController.discovery/2`'s `scopes_supported`.
+  @oidc_scopes ~w(email profile roles)
+
   defp credentials_tab(assigns) do
+    assigns = assign(assigns, :oidc_snippet, oidc_snippet(assigns.app))
+
     ~H"""
     <.panel title="Client credentials" description="Used for the token endpoint and headless login.">
       <dl class="max-w-xl space-y-1.5 text-xs">
@@ -523,6 +613,24 @@ defmodule YouWeb.AppLive.Show do
         </:footer>
       </.dialog>
     </.panel>
+
+    <.panel
+      title="OIDC snippet"
+      description="Discovery URL, client_id, and supported scopes for an OIDC-compliant SDK."
+    >
+      <div class="flex items-start justify-between gap-3">
+        <pre class="max-w-xl overflow-x-auto rounded-md border border-border bg-background px-3 py-2 font-mono text-xs whitespace-pre-wrap break-all"><code>{@oidc_snippet}</code></pre>
+        <.copy_button id="copy-oidc-snippet" value={@oidc_snippet} label="Copy snippet" />
+      </div>
+    </.panel>
+    """
+  end
+
+  defp oidc_snippet(app) do
+    """
+    discovery_url: #{YouWeb.Endpoint.url()}/.well-known/openid-configuration
+    client_id: #{app.slug}
+    scopes: #{Enum.join(@oidc_scopes, " ")}
     """
   end
 
