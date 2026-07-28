@@ -159,4 +159,75 @@ defmodule YouWeb.FederatedAuthControllerTest do
       assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "state mismatch"
     end
   end
+
+  describe "github provider dispatch" do
+    setup do
+      original = Application.get_env(:you, :github_api_base_url)
+      on_exit(fn -> Application.put_env(:you, :github_api_base_url, original) end)
+      :ok
+    end
+
+    # GitHub has no userinfo endpoint and no `sub` claim, so a github-kind
+    # provider must go through the adapter rather than the generic OIDC fetch.
+    # The adapter's own behaviour is covered in identity_providers/github_test.
+    test "a github-kind provider routes through the adapter, not the OIDC userinfo fetch",
+         %{conn: conn} do
+      test_pid = self()
+      port = 45_961
+
+      plug = fn c, _opts ->
+        send(test_pid, {:hit, c.request_path})
+
+        body =
+          case c.request_path do
+            "/login/oauth/access_token" ->
+              Jason.encode!(%{"access_token" => "gho_x"})
+
+            "/user" ->
+              Jason.encode!(%{"id" => 4242, "login" => "octo"})
+
+            "/user/emails" ->
+              Jason.encode!([
+                %{"email" => "octo@example.com", "primary" => true, "verified" => true}
+              ])
+          end
+
+        c
+        |> Plug.Conn.put_resp_content_type("application/json")
+        |> Plug.Conn.send_resp(200, body)
+      end
+
+      server = start_supervised!({Bandit, plug: plug, port: port, ip: :loopback}, id: make_ref())
+      on_exit(fn -> Process.unlink(server) end)
+      base = "http://localhost:#{port}"
+      Application.put_env(:you, :github_api_base_url, base)
+
+      {:ok, _provider} =
+        You.IdentityProviders.create_provider(%{
+          "slug" => "github",
+          "display_name" => "GitHub",
+          "kind" => "github",
+          "client_id" => "cid",
+          "client_secret" => "secret",
+          "authorize_url" => base <> "/login/oauth/authorize",
+          "token_url" => base <> "/login/oauth/access_token",
+          "userinfo_url" => "",
+          "scopes" => "read:user user:email",
+          "enabled" => true
+        })
+
+      conn =
+        conn
+        |> init_test_session(oidc_state: "st", oidc_provider: "github")
+        |> get(~p"/auth/github/callback", %{"code" => "c", "state" => "st"})
+
+      assert_received {:hit, "/login/oauth/access_token"}
+      assert_received {:hit, "/user"}
+      assert_received {:hit, "/user/emails"}
+
+      user = You.Repo.get_by(You.Accounts.User, email: "octo@example.com")
+      assert user
+      assert redirected_to(conn)
+    end
+  end
 end

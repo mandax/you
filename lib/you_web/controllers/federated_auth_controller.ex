@@ -173,6 +173,9 @@ defmodule YouWeb.FederatedAuthController do
     end
   end
 
+  defp access_token(tokens) when is_binary(tokens), do: tokens
+  defp access_token(tokens) when is_map(tokens), do: tokens["access_token"]
+
   defp redirect_uri(_conn, provider) do
     url(~p"/auth/#{provider}/callback")
   end
@@ -186,7 +189,11 @@ defmodule YouWeb.FederatedAuthController do
       client_secret: IdentityProviders.decrypt_secret(config)
     }
 
-    case Req.post(config.token_url, form: body) do
+    # GitHub returns a form-encoded body unless asked for JSON; every OIDC
+    # provider ignores the header, so it is unconditional.
+    headers = [{"accept", "application/json"}]
+
+    case Req.post(config.token_url, form: body, headers: headers) do
       {:ok, %{status: status, body: body}} when status in 200..299 ->
         {:ok, body}
 
@@ -198,14 +205,15 @@ defmodule YouWeb.FederatedAuthController do
     end
   end
 
-  defp fetch_userinfo(config, tokens) do
-    access_token =
-      cond do
-        is_binary(tokens) -> tokens
-        is_map(tokens) -> tokens["access_token"]
-      end
+  # GitHub is not OIDC: it has no userinfo endpoint and no `sub` claim, so a
+  # github-kind provider goes through its own adapter rather than the generic
+  # OIDC fetch.
+  defp fetch_userinfo(%{kind: "github"}, tokens) do
+    tokens |> access_token() |> You.IdentityProviders.Github.fetch_identity()
+  end
 
-    headers = [{"authorization", "Bearer #{access_token}"}]
+  defp fetch_userinfo(config, tokens) do
+    headers = [{"authorization", "Bearer #{access_token(tokens)}"}]
 
     case Req.get(config.userinfo_url, headers: headers) do
       {:ok, %{status: status, body: body}} when status in 200..299 ->
