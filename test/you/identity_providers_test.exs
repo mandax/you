@@ -264,4 +264,59 @@ defmodule You.IdentityProvidersTest do
       assert [] = IdentityProviders.list_providers()
     end
   end
+
+  describe "IdentityProviders.Seeder" do
+    setup do
+      original = Application.get_env(:you, :oidc_providers, %{})
+      on_exit(fn -> Application.put_env(:you, :oidc_providers, original) end)
+      :ok
+    end
+
+    defp start_and_await(opts \\ []) do
+      pid = start_supervised!({IdentityProviders.Seeder, opts}, id: make_ref())
+      ref = Process.monitor(pid)
+      assert_receive {:DOWN, ^ref, :process, ^pid, :normal}
+    end
+
+    test "seeds from config on boot" do
+      Application.put_env(:you, :oidc_providers, %{
+        "github" => %{
+          "display_name" => "GitHub",
+          "kind" => "generic",
+          "client_id" => "cid",
+          "client_secret" => "csecret"
+        }
+      })
+
+      assert [] = IdentityProviders.list_providers()
+
+      start_and_await()
+
+      assert [provider] = IdentityProviders.list_providers()
+      assert provider.slug == "github"
+    end
+
+    test "is idempotent across restarts" do
+      Application.put_env(:you, :oidc_providers, %{
+        "github" => %{
+          "display_name" => "GitHub",
+          "kind" => "generic",
+          "client_id" => "cid",
+          "client_secret" => "csecret"
+        }
+      })
+
+      start_and_await()
+      assert [_provider] = IdentityProviders.list_providers()
+
+      {:ok, existing} = IdentityProviders.get_provider_by_slug("github")
+      {:ok, _updated} = IdentityProviders.update_provider(existing, %{"display_name" => "Edited"})
+
+      # Simulate a restart: the seeder runs again but must not clobber the edit.
+      start_and_await()
+
+      assert [only] = IdentityProviders.list_providers()
+      assert only.display_name == "Edited"
+    end
+  end
 end

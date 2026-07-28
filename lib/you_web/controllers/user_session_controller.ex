@@ -48,7 +48,7 @@ defmodule YouWeb.UserSessionController do
       render(conn, :new,
         form: form,
         callback_url: get_session(conn, :callback_url),
-        providers: oidc_providers(),
+        providers: oidc_providers(app),
         app_name: app && app.name,
         app_logo_url: app && app.logo_url,
         app_brand_color: app && app.brand_color,
@@ -70,10 +70,19 @@ defmodule YouWeb.UserSessionController do
     end
   end
 
-  # Configured upstream OIDC providers, as a sorted list of ids ("google", …).
-  defp oidc_providers do
-    Application.get_env(:you, :oidc_providers, %{}) |> Map.keys() |> Enum.sort()
+  # Enabled upstream OIDC providers, as a sorted list of slugs ("google", …),
+  # filtered to the ones the in-flight `app` allows. Hiding the button here is
+  # a UX nicety only — `FederatedAuthController` is what actually gates access.
+  defp oidc_providers(app) do
+    You.IdentityProviders.list_enabled_providers()
+    |> Enum.map(& &1.slug)
+    |> Enum.filter(&provider_enabled_for_app?(&1, app))
+    |> Enum.sort()
   end
+
+  defp provider_enabled_for_app?(_slug, nil), do: true
+  defp provider_enabled_for_app?(_slug, %{enabled_providers: nil}), do: true
+  defp provider_enabled_for_app?(slug, %{enabled_providers: enabled}), do: slug in enabled
 
   # The OAuth params stashed in the session, as a query map for embedding in
   # the magic-link URL. Omits blanks; none are secrets. The code_verifier
@@ -134,7 +143,7 @@ defmodule YouWeb.UserSessionController do
         |> render(:new,
           form: Phoenix.Component.to_form(%{}, as: "user"),
           callback_url: get_session(conn, :callback_url),
-          providers: oidc_providers()
+          providers: oidc_providers(app_for(conn))
         )
     end
   end
@@ -182,7 +191,7 @@ defmodule YouWeb.UserSessionController do
       |> render(:new,
         form: form,
         callback_url: get_session(conn, :callback_url),
-        providers: oidc_providers()
+        providers: oidc_providers(app_for(conn))
       )
     end
   end

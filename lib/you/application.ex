@@ -10,6 +10,7 @@ defmodule You.Application do
     children = [
       YouWeb.Telemetry,
       You.Repo,
+      You.IdentityProviders.Seeder,
       {DNSCluster, query: Application.get_env(:you, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: You.PubSub},
       You.Accounts.CookieSync,

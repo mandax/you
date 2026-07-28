@@ -23,12 +23,48 @@ defmodule YouWeb.UserSessionControllerTest do
     test "shows a federated provider button only when configured", %{conn: conn} do
       refute get(conn, ~p"/users/log-in") |> html_response(200) =~ "Sign in with Google"
 
-      Application.put_env(:you, :oidc_providers, %{"google" => %{}})
-      on_exit(fn -> Application.put_env(:you, :oidc_providers, %{}) end)
+      {:ok, _provider} =
+        You.IdentityProviders.create_provider(%{
+          "slug" => "google",
+          "display_name" => "Google",
+          "kind" => "google"
+        })
 
       html = get(conn, ~p"/users/log-in") |> html_response(200)
       assert html =~ "Sign in with Google"
       assert html =~ ~p"/auth/google"
+    end
+
+    test "omits a provider disabled for the in-flight app", %{conn: conn} do
+      {:ok, _google} =
+        You.IdentityProviders.create_provider(%{
+          "slug" => "google",
+          "display_name" => "Google",
+          "kind" => "google"
+        })
+
+      {:ok, _github} =
+        You.IdentityProviders.create_provider(%{
+          "slug" => "github",
+          "display_name" => "GitHub",
+          "kind" => "generic"
+        })
+
+      {:ok, _app, _secret} =
+        You.Admin.create_app(%{
+          slug: "google-only",
+          name: "Google Only",
+          callback_url: "https://google-only.example.com/cb",
+          enabled_providers: ["google"]
+        })
+
+      html =
+        conn
+        |> get(~p"/users/log-in?callback_url=https://google-only.example.com/cb")
+        |> html_response(200)
+
+      assert html =~ "Sign in with Google"
+      refute html =~ "Sign in with Github"
     end
 
     test "renders login page with email filled in (sudo mode)", %{conn: conn, user: user} do
