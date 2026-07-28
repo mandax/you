@@ -31,7 +31,8 @@ defmodule YouWeb.AppLive.Show do
        tab: "overview",
        new_secret: nil,
        selected: MapSet.new(),
-       preview_theme: "light"
+       preview_theme: "light",
+       providers: You.IdentityProviders.list_enabled_providers()
      )
      |> assign_app(Admin.get_app_by_slug!(slug))}
   end
@@ -58,6 +59,8 @@ defmodule YouWeb.AppLive.Show do
        draft: %{
          logo_url: safe_logo_url(params["logo_url"]),
          brand_color: safe_brand_color(params["brand_color"]),
+         accent_color: safe_brand_color(params["accent_color"]),
+         background_image_url: safe_logo_url(params["background_image_url"]),
          headline: safe_copy(params["headline"]),
          subtitle: safe_copy(params["subtitle"])
        }
@@ -66,7 +69,16 @@ defmodule YouWeb.AppLive.Show do
 
   def handle_event("update_branding", params, socket) do
     socket.assigns.app
-    |> Admin.update_app(Map.take(params, ["logo_url", "brand_color", "headline", "subtitle"]))
+    |> Admin.update_app(
+      Map.take(params, [
+        "accent_color",
+        "background_image_url",
+        "logo_url",
+        "brand_color",
+        "headline",
+        "subtitle"
+      ])
+    )
     |> reload(socket, "Branding updated.")
   end
 
@@ -80,6 +92,20 @@ defmodule YouWeb.AppLive.Show do
     socket.assigns.app
     |> Admin.update_app(Map.take(params, ["tos_url", "privacy_url", "email_from_name"]))
     |> reload(socket, "Consent screen updated.")
+  end
+
+  def handle_event("update_providers", params, socket) do
+    ticked = for {slug, "true"} <- Map.get(params, "providers", %{}), do: slug
+    all = Enum.map(socket.assigns.providers, & &1.slug)
+    checked = Enum.filter(all, &(&1 in ticked))
+
+    # All ticked stores nil, so a provider added later reaches this app rather
+    # than being excluded by a list frozen today.
+    providers = if checked == all, do: nil, else: checked
+
+    socket.assigns.app
+    |> Admin.update_app(%{"enabled_providers" => providers})
+    |> reload(socket, "Identity providers updated.")
   end
 
   def handle_event("update_methods", params, socket) do
@@ -202,6 +228,8 @@ defmodule YouWeb.AppLive.Show do
       draft: %{
         logo_url: app.logo_url,
         brand_color: app.brand_color,
+        accent_color: app.accent_color,
+        background_image_url: app.background_image_url,
         headline: app.headline,
         subtitle: app.subtitle
       },
@@ -228,6 +256,9 @@ defmodule YouWeb.AppLive.Show do
   end
 
   defp allowed_roles(app), do: app.allowed_roles || ["user", "admin"]
+
+  defp enabled_providers(%{enabled_providers: nil}, all), do: Enum.map(all, & &1.slug)
+  defp enabled_providers(%{enabled_providers: slugs}, _all), do: slugs
 
   defp enabled_methods(%{enabled_methods: nil}), do: You.Admin.App.auth_methods()
   defp enabled_methods(%{enabled_methods: methods}), do: methods
@@ -258,7 +289,12 @@ defmodule YouWeb.AppLive.Show do
           <% "overview" -> %>
             <.overview_tab app={@app} />
           <% "login" -> %>
-            <.login_tab app={@app} draft={@draft} preview_theme={@preview_theme} />
+            <.login_tab
+              app={@app}
+              draft={@draft}
+              preview_theme={@preview_theme}
+              providers={@providers}
+            />
           <% "roles" -> %>
             <.roles_tab
               app={@app}
@@ -316,6 +352,7 @@ defmodule YouWeb.AppLive.Show do
   attr :app, :map, required: true
   attr :draft, :map, required: true
   attr :preview_theme, :string, required: true
+  attr :providers, :list, required: true
 
   defp login_tab(assigns) do
     ~H"""
@@ -353,7 +390,42 @@ defmodule YouWeb.AppLive.Show do
               value={@draft.subtitle}
               placeholder="secured by You"
             />
+            <.input
+              type="text"
+              name="accent_color"
+              label="Accent color (optional)"
+              value={@draft.accent_color}
+              placeholder="#0ea5e9"
+            />
+            <.input
+              type="url"
+              name="background_image_url"
+              label="Background image URL (optional)"
+              value={@draft.background_image_url}
+            />
             <div class="flex justify-end">
+              <.button type="submit">Save</.button>
+            </div>
+          </form>
+        </.panel>
+
+        <.panel
+          title="Identity providers"
+          description="Which upstream providers this app offers. Enforced server-side, not only hidden here."
+        >
+          <form id="app-providers-form" phx-submit="update_providers" class="space-y-3">
+            <p :if={@providers == []} class="text-xs text-muted-foreground">
+              No providers configured yet. Add one under Providers in the console.
+            </p>
+            <.input
+              :for={provider <- @providers}
+              type="checkbox"
+              name={"providers[#{provider.slug}]"}
+              label={provider.display_name || provider.slug}
+              value="true"
+              checked={provider.slug in enabled_providers(@app, @providers)}
+            />
+            <div :if={@providers != []} class="flex justify-end">
               <.button type="submit">Save</.button>
             </div>
           </form>
@@ -424,14 +496,21 @@ defmodule YouWeb.AppLive.Show do
             <span :if={@preview_theme == "dark"} class="lucide-sun block size-4" />
           </button>
         </div>
-        <div class={[
-          "mt-2 rounded-lg border border-border bg-background px-5 py-8 text-center",
-          @preview_theme == "dark" && "dark"
-        ]}>
+        <div
+          class={[
+            "mt-2 rounded-lg border border-border bg-background bg-cover bg-center px-5 py-8 text-center",
+            @preview_theme == "dark" && "dark"
+          ]}
+          style={
+            presence(@draft.background_image_url) &&
+              "background-image: url(#{presence(@draft.background_image_url)})"
+          }
+        >
           <.login_header
             app_name={@app.name}
             logo_url={presence(@draft.logo_url)}
             brand_color={presence(@draft.brand_color)}
+            accent_color={presence(@draft.accent_color)}
             headline={presence(@draft.headline)}
             subtitle={presence(@draft.subtitle)}
           />

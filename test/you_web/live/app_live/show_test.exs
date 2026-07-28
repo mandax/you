@@ -292,12 +292,12 @@ defmodule YouWeb.AppLive.ShowTest do
       assert html =~ ~s(phx-click="toggle_preview_theme")
 
       refute html =~
-               ~s(class="mt-2 rounded-lg border border-border bg-background px-5 py-8 text-center dark")
+               ~s(class="mt-2 rounded-lg border border-border bg-background bg-cover bg-center px-5 py-8 text-center dark")
 
       html = render_click(lv, "toggle_preview_theme", %{})
 
       assert html =~
-               ~s(class="mt-2 rounded-lg border border-border bg-background px-5 py-8 text-center dark")
+               ~s(class="mt-2 rounded-lg border border-border bg-background bg-cover bg-center px-5 py-8 text-center dark")
 
       # Toggling the preview theme must not flip the console's own document-wide theme.
       refute html =~ ~s(<html class="dark")
@@ -306,7 +306,111 @@ defmodule YouWeb.AppLive.ShowTest do
       html = render_click(lv, "toggle_preview_theme", %{})
 
       refute html =~
-               ~s(class="mt-2 rounded-lg border border-border bg-background px-5 py-8 text-center dark")
+               ~s(class="mt-2 rounded-lg border border-border bg-background bg-cover bg-center px-5 py-8 text-center dark")
+    end
+  end
+
+  describe "identity provider toggles" do
+    setup do
+      {:ok, provider} =
+        You.IdentityProviders.create_provider(%{
+          "slug" => "google",
+          "display_name" => "Google",
+          "kind" => "generic",
+          "client_id" => "cid",
+          "client_secret" => "sec",
+          "authorize_url" => "https://accounts.example.com/auth",
+          "token_url" => "https://accounts.example.com/token",
+          "userinfo_url" => "https://accounts.example.com/me",
+          "scopes" => "openid email",
+          "enabled" => true
+        })
+
+      %{provider: provider}
+    end
+
+    test "all providers are ticked by default", %{conn: conn, app: app} do
+      {:ok, _lv, html} = live(conn, ~p"/console/apps/#{app.slug}?tab=login")
+
+      assert html =~ ~s(phx-submit="update_providers")
+      assert html =~ "Google"
+    end
+
+    test "unticking one stores the remaining subset", %{conn: conn, app: app} do
+      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}?tab=login")
+
+      html =
+        lv
+        |> form("#app-providers-form", %{"providers" => %{"google" => "false"}})
+        |> render_submit()
+
+      assert html =~ "Identity providers updated"
+      assert Admin.get_app!(app.id).enabled_providers == []
+    end
+
+    test "ticking every provider stores nil rather than the list", %{conn: conn, app: app} do
+      {:ok, _app} = Admin.update_app(app, %{"enabled_providers" => []})
+
+      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}?tab=login")
+
+      lv
+      |> form("#app-providers-form", %{"providers" => %{"google" => "true"}})
+      |> render_submit()
+
+      assert Admin.get_app!(app.id).enabled_providers == nil
+    end
+  end
+
+  describe "background and accent" do
+    test "previews unsaved values without persisting", %{conn: conn, app: app} do
+      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}?tab=login")
+
+      html =
+        lv
+        |> form("#app-branding-form", %{
+          "accent_color" => "#0ea5e9",
+          "background_image_url" => "https://cdn.example.com/bg.png"
+        })
+        |> render_change()
+
+      assert html =~ "color: #0ea5e9"
+      assert html =~ "background-image: url(https://cdn.example.com/bg.png)"
+
+      assert Admin.get_app!(app.id).accent_color == nil
+      assert Admin.get_app!(app.id).background_image_url == nil
+    end
+
+    # The preview never passes through App.changeset/2, so it needs its own
+    # guards: HEEx escapes markup but not CSS-property or javascript: injection.
+    test "the preview drops an invalid accent color and a javascript background",
+         %{conn: conn, app: app} do
+      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}?tab=login")
+
+      html =
+        lv
+        |> form("#app-branding-form", %{
+          "accent_color" => "red; background: url(https://attacker.example/x)",
+          "background_image_url" => "javascript:alert(1)"
+        })
+        |> render_change()
+
+      refute html =~ "attacker.example"
+      refute html =~ "javascript:alert"
+    end
+
+    test "saving persists both", %{conn: conn, app: app} do
+      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}?tab=login")
+
+      lv
+      |> form("#app-branding-form", %{
+        "accent_color" => "#0ea5e9",
+        "background_image_url" => "https://cdn.example.com/bg.png"
+      })
+      |> render_submit()
+
+      saved = Admin.get_app!(app.id)
+      assert saved.accent_color == "#0ea5e9"
+      assert saved.background_image_url == "https://cdn.example.com/bg.png"
     end
   end
 

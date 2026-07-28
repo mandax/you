@@ -24,6 +24,7 @@ defmodule YouWeb.Components.LoginChrome do
   attr :brand_color, :string, default: nil
   attr :headline, :string, default: nil
   attr :subtitle, :string, default: nil
+  attr :accent_color, :string, default: nil
 
   def login_header(assigns) do
     ~H"""
@@ -49,7 +50,12 @@ defmodule YouWeb.Components.LoginChrome do
           <span :if={!@brand_color} class="text-primary">{@app_name}</span>
         <% end %>
       </h1>
-      <p class="mt-1 text-sm text-muted-foreground">{@subtitle || "secured by You"}</p>
+      <p
+        class="mt-1 text-sm text-muted-foreground"
+        style={@accent_color && "color: #{@accent_color}"}
+      >
+        {@subtitle || "secured by You"}
+      </p>
     </div>
     """
   end
