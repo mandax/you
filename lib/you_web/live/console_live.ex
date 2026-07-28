@@ -52,6 +52,7 @@ defmodule YouWeb.ConsoleLive do
        selected_org: nil,
        members: [],
        audit_filter: "",
+       audit_app_filter: "",
        webhook_secret: nil,
        webhook_endpoint: nil,
        user_filters: %{},
@@ -232,6 +233,10 @@ defmodule YouWeb.ConsoleLive do
     {:noreply, assign(socket, :audit_filter, filter)}
   end
 
+  def handle_event("filter_audit_app", %{"value" => app_slug}, socket) do
+    {:noreply, assign(socket, :audit_app_filter, app_slug)}
+  end
+
   # ── webhooks ──────────────────────────────────────────────────
   def handle_event("create_webhook", params, socket) do
     events = Map.get(params, "events", %{})
@@ -389,7 +394,12 @@ defmodule YouWeb.ConsoleLive do
         <% "orgs" -> %>
           <.orgs_view orgs={@orgs} selected={@selected_org} members={@members} roles={@roles} />
         <% "audit" -> %>
-          <.audit_view events={@events} audit_filter={@audit_filter} />
+          <.audit_view
+            events={@events}
+            apps={@apps}
+            audit_filter={@audit_filter}
+            audit_app_filter={@audit_app_filter}
+          />
         <% "webhooks" -> %>
           <.webhooks_view
             endpoints={@endpoints}
@@ -801,7 +811,7 @@ defmodule YouWeb.ConsoleLive do
               type="button"
               phx-click="delete_app"
               phx-value-id={app.id}
-              data-confirm={"Delete app “#{app.name}”? This cannot be undone."}
+              data-confirm={delete_app_confirm(app)}
               class="rounded px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-destructive hover:text-destructive-foreground"
             >
               Delete
@@ -831,6 +841,18 @@ defmodule YouWeb.ConsoleLive do
     </div>
     """
   end
+
+  # Computed at render time rather than carried as an assign: app counts are a
+  # handful of rows in an admin console, and staleness here would understate
+  # exactly the number an operator is relying on to decide.
+  defp delete_app_confirm(app) do
+    %{consents: consents, role_assignments: roles} = Admin.deletion_impact(app)
+
+    "Delete app “#{app.name}”? This permanently deletes #{consents} #{pluralize(consents, "consent", "consents")} and #{roles} #{pluralize(roles, "role assignment", "role assignments")}. This cannot be undone."
+  end
+
+  defp pluralize(1, singular, _plural), do: singular
+  defp pluralize(_count, _singular, plural), do: plural
 
   # ── section: orgs ─────────────────────────────────────────────
   attr :orgs, :list, required: true
@@ -949,16 +971,17 @@ defmodule YouWeb.ConsoleLive do
 
   # ── section: audit ────────────────────────────────────────────
   attr :events, :list, required: true
+  attr :apps, :list, required: true
   attr :audit_filter, :string, required: true
+  attr :audit_app_filter, :string, required: true
 
   defp audit_view(assigns) do
     assigns =
       assign(assigns,
         filtered:
-          if(assigns.audit_filter == "",
-            do: assigns.events,
-            else: Enum.filter(assigns.events, &audit_matches?(&1, assigns.audit_filter))
-          )
+          assigns.events
+          |> Enum.filter(&audit_matches?(&1, assigns.audit_filter))
+          |> Enum.filter(&audit_app_matches?(&1, assigns.audit_app_filter))
       )
 
     ~H"""
@@ -970,15 +993,28 @@ defmodule YouWeb.ConsoleLive do
             add a webhook for durable retention
           </.link>
         </p>
-        <form phx-change="filter_audit" class="shrink-0">
-          <input
-            type="text"
-            name="filter"
-            value={@audit_filter}
-            placeholder="filter events"
-            class="h-8 w-48 rounded-md border border-input bg-background px-3 font-mono text-xs placeholder:text-muted-foreground/60"
+        <div class="flex shrink-0 items-center gap-2">
+          <.select
+            id="filter-audit-app"
+            value={@audit_app_filter}
+            placeholder="all apps"
+            options={
+              [%{value: "", label: "all apps"}] ++
+                Enum.map(@apps, &%{value: &1.slug, label: &1.name})
+            }
+            on_change="filter_audit_app"
+            params={%{}}
           />
-        </form>
+          <form phx-change="filter_audit">
+            <input
+              type="text"
+              name="filter"
+              value={@audit_filter}
+              placeholder="filter events"
+              class="h-8 w-48 rounded-md border border-input bg-background px-3 font-mono text-xs placeholder:text-muted-foreground/60"
+            />
+          </form>
+        </div>
       </div>
       <.data_table cols={~w(Event Details At)} empty={@filtered == []}>
         <tr
@@ -1002,6 +1038,11 @@ defmodule YouWeb.ConsoleLive do
     haystack = String.downcase("#{event.event} #{brief(event.metadata)}")
     String.contains?(haystack, String.downcase(filter))
   end
+
+  defp audit_app_matches?(_event, ""), do: true
+
+  defp audit_app_matches?(event, app_slug),
+    do: to_string(event.metadata[:app_slug]) == app_slug
 
   # ── section: webhooks ─────────────────────────────────────────
   attr :endpoints, :list, required: true

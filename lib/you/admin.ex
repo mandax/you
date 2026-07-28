@@ -5,8 +5,9 @@ defmodule You.Admin do
 
   import Ecto.Query, warn: false
   alias You.Repo
-  alias You.Accounts.{User, Passkey, FederatedIdentity}
+  alias You.Accounts.{User, Passkey, FederatedIdentity, Consent}
   alias You.Admin.App
+  alias You.Roles.Assignment
 
   require Bcrypt
 
@@ -261,6 +262,19 @@ defmodule You.Admin do
     end
 
     result
+  end
+
+  @doc """
+  Counts the rows that cascade-delete along with the app: consents and role
+  assignments. Surfaced in the delete confirmation so an operator sees the
+  blast radius before confirming, since both tables `on_delete: :delete_all`
+  silently.
+  """
+  def deletion_impact(%App{} = app) do
+    %{
+      consents: Repo.aggregate(from(c in Consent, where: c.app_id == ^app.id), :count),
+      role_assignments: Repo.aggregate(from(a in Assignment, where: a.app_id == ^app.id), :count)
+    }
   end
 
   @doc """
