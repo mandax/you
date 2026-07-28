@@ -12,7 +12,7 @@ defmodule YouWeb.ConsoleLive do
 
   import YouWeb.Components.ConsoleChrome
 
-  alias You.{Admin, Organizations, Accounts, Settings, Webhooks, Roles}
+  alias You.{Admin, Organizations, Accounts, Settings, Webhooks, Roles, IdentityProviders}
   alias You.Audit.Streamer
 
   @nav YouWeb.Components.ConsoleChrome.nav()
@@ -57,6 +57,10 @@ defmodule YouWeb.ConsoleLive do
        webhook_endpoint: nil,
        user_filters: %{},
        editing_user: nil,
+       editing_provider: nil,
+       new_provider_open: false,
+       new_provider_preset: "generic",
+       discovery: nil,
        base_url: YouWeb.Endpoint.url(),
        oidc_providers:
          Application.get_env(:you, :oidc_providers, %{}) |> Map.keys() |> Enum.sort(),
@@ -121,6 +125,103 @@ defmodule YouWeb.ConsoleLive do
     Admin.delete_app(app)
     audit_admin(socket, "delete_app", app.slug)
     {:noreply, socket |> load_data() |> put_flash(:info, "App deleted.")}
+  end
+
+  # ── identity providers ───────────────────────────────────────
+  def handle_event("new_provider", _params, socket) do
+    {:noreply,
+     assign(socket, new_provider_open: true, new_provider_preset: "generic", discovery: nil)}
+  end
+
+  def handle_event("cancel_new_provider", _params, socket) do
+    {:noreply, assign(socket, new_provider_open: false, discovery: nil)}
+  end
+
+  def handle_event("select_new_provider_preset", %{"value" => preset}, socket) do
+    {:noreply, assign(socket, new_provider_preset: preset, discovery: nil)}
+  end
+
+  def handle_event("discover_provider", %{"issuer" => issuer}, socket) do
+    socket =
+      case IdentityProviders.discover(issuer) do
+        {:ok, attrs} -> assign(socket, discovery: {:ok, attrs})
+        {:error, reason} -> assign(socket, discovery: {:error, reason})
+      end
+
+    {:noreply, socket}
+  end
+
+  def handle_event("create_provider", params, socket) do
+    preset = params["preset"] || "generic"
+    attrs = provider_create_attrs(params)
+
+    case IdentityProviders.create_provider_from_preset(preset, attrs) do
+      {:ok, provider} ->
+        audit_admin(socket, "create_provider", provider.slug)
+
+        {:noreply,
+         socket
+         |> load_data()
+         |> assign(new_provider_open: false, discovery: nil)
+         |> put_flash(:info, "Provider created.")}
+
+      {:error, %Ecto.Changeset{} = changeset} ->
+        {:noreply,
+         put_flash(socket, :error, "Could not create provider: #{error_summary(changeset)}")}
+
+      {:error, :unknown_preset} ->
+        {:noreply, put_flash(socket, :error, "Unknown preset.")}
+    end
+  end
+
+  def handle_event("edit_provider", %{"id" => id}, socket) do
+    {:noreply, assign(socket, editing_provider: IdentityProviders.get_provider!(id))}
+  end
+
+  def handle_event("cancel_edit_provider", _params, socket) do
+    {:noreply, assign(socket, editing_provider: nil)}
+  end
+
+  def handle_event("update_provider", params, socket) do
+    provider = IdentityProviders.get_provider!(params["provider_id"])
+    attrs = provider_update_attrs(params)
+
+    case IdentityProviders.update_provider(provider, attrs) do
+      {:ok, provider} ->
+        audit_admin(socket, "update_provider", provider.slug)
+
+        {:noreply,
+         socket
+         |> load_data()
+         |> assign(editing_provider: nil)
+         |> put_flash(:info, "Provider updated.")}
+
+      {:error, changeset} ->
+        {:noreply,
+         put_flash(socket, :error, "Could not update provider: #{error_summary(changeset)}")}
+    end
+  end
+
+  def handle_event("toggle_provider", %{"id" => id}, socket) do
+    provider = IdentityProviders.get_provider!(id)
+
+    {:ok, updated} =
+      IdentityProviders.update_provider(provider, %{"enabled" => !provider.enabled})
+
+    audit_admin(
+      socket,
+      if(updated.enabled, do: "enable_provider", else: "disable_provider"),
+      updated.slug
+    )
+
+    {:noreply, load_data(socket)}
+  end
+
+  def handle_event("delete_provider", %{"id" => id}, socket) do
+    provider = IdentityProviders.get_provider!(id)
+    {:ok, _} = IdentityProviders.delete_provider(provider)
+    audit_admin(socket, "delete_provider", provider.slug)
+    {:noreply, socket |> load_data() |> put_flash(:info, "Provider deleted.")}
   end
 
   def handle_event("filter_users", %{"filter_key" => key, "value" => value}, socket) do
@@ -351,10 +452,35 @@ defmodule YouWeb.ConsoleLive do
       orgs: Organizations.list_organizations_with_counts(),
       events: Streamer.recent(),
       endpoints: Webhooks.list_endpoints(),
-      assignments: Roles.all_assignments()
+      assignments: Roles.all_assignments(),
+      providers: IdentityProviders.list_providers()
     )
     |> assign(members: if(org, do: Organizations.list_members(org), else: []))
   end
+
+  # Drops blank/missing keys so a preset's endpoint template (or, on edit, the
+  # provider's own stored values) is left in place rather than clobbered by an
+  # empty form field. `create_provider_from_preset/2` merges these attrs over
+  # the preset, so a key's absence here is what makes the preset default win.
+  defp provider_create_attrs(params) do
+    ~w(slug display_name client_id client_secret issuer authorize_url token_url userinfo_url scopes)
+    |> Enum.reduce(%{}, fn key, attrs ->
+      case params[key] do
+        value when is_binary(value) and value != "" -> Map.put(attrs, key, value)
+        _ -> attrs
+      end
+    end)
+  end
+
+  defp provider_update_attrs(params) do
+    Map.take(params, ~w(
+      display_name client_id client_secret issuer authorize_url token_url userinfo_url scopes
+      sort_order
+    ))
+  end
+
+  defp discovery_value({:ok, attrs}, key), do: Map.get(attrs, key)
+  defp discovery_value(_discovery, _key), do: nil
 
   defp load_settings(socket),
     do: assign(socket, settings: Settings.all())
@@ -391,6 +517,14 @@ defmodule YouWeb.ConsoleLive do
           />
         <% "apps" -> %>
           <.apps_view apps={@apps} new_secret={@new_secret} secret_app={@secret_app} />
+        <% "providers" -> %>
+          <.providers_view
+            providers={@providers}
+            editing_provider={@editing_provider}
+            new_provider_open={@new_provider_open}
+            new_provider_preset={@new_provider_preset}
+            discovery={@discovery}
+          />
         <% "orgs" -> %>
           <.orgs_view orgs={@orgs} selected={@selected_org} members={@members} roles={@roles} />
         <% "audit" -> %>
@@ -853,6 +987,227 @@ defmodule YouWeb.ConsoleLive do
 
   defp pluralize(1, singular, _plural), do: singular
   defp pluralize(_count, _singular, plural), do: plural
+
+  # ── section: providers ────────────────────────────────────────
+  attr :providers, :list, required: true
+  attr :editing_provider, :any, default: nil
+  attr :new_provider_open, :boolean, required: true
+  attr :new_provider_preset, :string, required: true
+  attr :discovery, :any, default: nil
+
+  defp providers_view(assigns) do
+    ~H"""
+    <div class="space-y-4">
+      <div class="flex items-center justify-between">
+        <span class="font-mono text-xs text-muted-foreground">
+          {length(@providers)} providers
+        </span>
+        <.button size="sm" phx-click="new_provider">
+          <span class="lucide-plus size-4 block" /> New provider
+        </.button>
+      </div>
+
+      <.data_table
+        cols={~w(Slug Kind Display Client-ID Enabled Order) ++ [""]}
+        empty={@providers == []}
+      >
+        <tr
+          :for={p <- @providers}
+          class="border-b border-border/60 transition-colors last:border-0 hover:bg-muted/40"
+        >
+          <td class="px-3 py-2 font-mono text-xs text-foreground/90">{p.slug}</td>
+          <td class="px-3 py-2 font-mono text-xs text-muted-foreground">{p.kind}</td>
+          <td class="px-3 py-2 text-xs">{p.display_name}</td>
+          <td class="px-3 py-2 font-mono text-xs text-muted-foreground">{p.client_id || "—"}</td>
+          <td class="px-3 py-2">
+            <.switch checked={p.enabled} phx-click="toggle_provider" phx-value-id={p.id} />
+          </td>
+          <td class="px-3 py-2 font-mono text-xs text-muted-foreground">{p.sort_order}</td>
+          <td class="px-3 py-2 text-right whitespace-nowrap">
+            <button
+              type="button"
+              phx-click="edit_provider"
+              phx-value-id={p.id}
+              class="rounded px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            >
+              Edit
+            </button>
+            <button
+              type="button"
+              phx-click="delete_provider"
+              phx-value-id={p.id}
+              data-confirm={"Delete provider “#{p.display_name}”? Logins via this provider will stop working immediately."}
+              class="rounded px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-destructive hover:text-destructive-foreground"
+            >
+              Delete
+            </button>
+          </td>
+        </tr>
+      </.data_table>
+
+      <.dialog id="new-provider" open={@new_provider_open} on_close="cancel_new_provider">
+        <:title>New provider</:title>
+        <:description>Create from a preset, or configure a generic OIDC provider.</:description>
+
+        <div class="space-y-4">
+          <div class="space-y-1.5">
+            <span class="block font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+              Preset
+            </span>
+            <.select
+              id="new-provider-preset"
+              value={@new_provider_preset}
+              options={
+                Enum.map(
+                  IdentityProviders.Presets.names(),
+                  &%{value: &1, label: String.capitalize(&1)}
+                )
+              }
+              on_change="select_new_provider_preset"
+              params={%{}}
+            />
+          </div>
+
+          <div
+            :if={@new_provider_preset == "generic"}
+            class="space-y-3 rounded-md border border-border bg-muted/30 p-3"
+          >
+            <form phx-submit="discover_provider" class="flex items-end gap-2">
+              <div class="flex-1">
+                <.input
+                  type="url"
+                  name="issuer"
+                  label="Discover from issuer URL"
+                  value={discovery_value(@discovery, :issuer)}
+                  placeholder="https://issuer.example.com"
+                />
+              </div>
+              <.button type="submit" variant="outline" size="sm">Discover</.button>
+            </form>
+            <p :if={match?({:error, _}, @discovery)} class="font-mono text-[11px] text-signal-down">
+              Discovery failed: {elem(@discovery, 1)}
+            </p>
+            <p :if={match?({:ok, _}, @discovery)} class="font-mono text-[11px] text-signal-ok">
+              Discovered endpoints below — review before creating.
+            </p>
+          </div>
+
+          <form id="new-provider-form" phx-submit="create_provider" class="space-y-3">
+            <input type="hidden" name="preset" value={@new_provider_preset} />
+            <.input type="text" name="slug" label="Slug" value="" required />
+            <.input type="text" name="display_name" label="Display name (optional)" value="" />
+            <.input type="text" name="client_id" label="Client ID" value="" />
+            <.input
+              type="password"
+              name="client_secret"
+              label="Client secret"
+              value=""
+              autocomplete="off"
+            />
+
+            <div :if={@new_provider_preset == "generic"} class="space-y-3">
+              <.input
+                type="url"
+                name="issuer"
+                label="Issuer"
+                value={discovery_value(@discovery, :issuer)}
+              />
+              <.input
+                type="url"
+                name="authorize_url"
+                label="Authorize URL"
+                value={discovery_value(@discovery, :authorize_url)}
+              />
+              <.input
+                type="url"
+                name="token_url"
+                label="Token URL"
+                value={discovery_value(@discovery, :token_url)}
+              />
+              <.input
+                type="url"
+                name="userinfo_url"
+                label="Userinfo URL"
+                value={discovery_value(@discovery, :userinfo_url)}
+              />
+              <.input
+                type="text"
+                name="scopes"
+                label="Scopes"
+                value={discovery_value(@discovery, :scopes)}
+              />
+            </div>
+
+            <div class="flex justify-end gap-2">
+              <.button type="button" variant="outline" phx-click="cancel_new_provider">
+                Cancel
+              </.button>
+              <.button type="submit">Create</.button>
+            </div>
+          </form>
+        </div>
+      </.dialog>
+
+      <.sheet id="edit-provider" open={@editing_provider != nil} on_close="cancel_edit_provider">
+        <:title>{@editing_provider && @editing_provider.display_name}</:title>
+        <:description>
+          {@editing_provider && @editing_provider.slug} · {@editing_provider && @editing_provider.kind}
+        </:description>
+        <form
+          :if={@editing_provider}
+          id="edit-provider-form"
+          phx-submit="update_provider"
+          class="space-y-3"
+        >
+          <input type="hidden" name="provider_id" value={@editing_provider.id} />
+          <.input
+            type="text"
+            name="display_name"
+            label="Display name"
+            value={@editing_provider.display_name}
+            required
+          />
+          <.input type="text" name="client_id" label="Client ID" value={@editing_provider.client_id} />
+          <.input
+            type="password"
+            name="client_secret"
+            label="Client secret"
+            value=""
+            placeholder="unchanged — enter to replace"
+            autocomplete="off"
+          />
+          <.input type="url" name="issuer" label="Issuer" value={@editing_provider.issuer} />
+          <.input
+            type="url"
+            name="authorize_url"
+            label="Authorize URL"
+            value={@editing_provider.authorize_url}
+          />
+          <.input type="url" name="token_url" label="Token URL" value={@editing_provider.token_url} />
+          <.input
+            type="url"
+            name="userinfo_url"
+            label="Userinfo URL"
+            value={@editing_provider.userinfo_url}
+          />
+          <.input type="text" name="scopes" label="Scopes" value={@editing_provider.scopes} />
+          <.input
+            type="number"
+            name="sort_order"
+            label="Sort order"
+            value={@editing_provider.sort_order}
+          />
+          <div class="flex justify-end gap-2">
+            <.button type="button" variant="outline" phx-click="cancel_edit_provider">
+              Cancel
+            </.button>
+            <.button type="submit">Save</.button>
+          </div>
+        </form>
+      </.sheet>
+    </div>
+    """
+  end
 
   # ── section: orgs ─────────────────────────────────────────────
   attr :orgs, :list, required: true

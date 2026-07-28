@@ -158,12 +158,15 @@
           class="space-y-3"
         >
           <.button
-            :for={provider <- if("social" in @methods, do: @providers, else: [])}
-            href={~p"/auth/#{provider}"}
+            :for={
+              provider <- if("social" in @methods, do: ordered_providers(@providers), else: [])
+            }
+            href={~p"/auth/#{provider.slug}"}
             variant="outline"
             class="w-full"
           >
-            Sign in with {String.capitalize(provider)}
+            <span :if={provider.icon} class={["lucide-#{provider.icon}", "size-4 block"]} />
+            Sign in with {provider.display_name}
           </.button>
           <button
             :if={"passkey" in @methods and !@current_scope}
