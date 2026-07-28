@@ -98,6 +98,62 @@ defmodule You.AdminTest do
     end
   end
 
+  describe "app customisation columns" do
+    setup do
+      {:ok, app, _secret} =
+        Admin.create_app(%{
+          slug: "custom",
+          name: "Custom",
+          callback_url: "https://custom.example.com/cb"
+        })
+
+      %{app: app}
+    end
+
+    test "enabled_providers and enabled_methods default to nil, meaning all", %{app: app} do
+      assert app.enabled_providers == nil
+      assert app.enabled_methods == nil
+    end
+
+    test "stores enabled providers and methods", %{app: app} do
+      {:ok, app} =
+        Admin.update_app(app, %{
+          "enabled_providers" => ["google"],
+          "enabled_methods" => ["password", "passkey"]
+        })
+
+      assert app.enabled_providers == ["google"]
+      assert app.enabled_methods == ["password", "passkey"]
+    end
+
+    test "rejects an auth method the instance does not offer", %{app: app} do
+      assert {:error, changeset} = Admin.update_app(app, %{"enabled_methods" => ["telepathy"]})
+      assert "has an invalid entry" in errors_on(changeset).enabled_methods
+    end
+
+    test "accent_color must be a 6-digit hex color", %{app: app} do
+      assert {:error, changeset} = Admin.update_app(app, %{"accent_color" => "red"})
+      assert "has invalid format" in errors_on(changeset).accent_color
+
+      assert {:ok, app} = Admin.update_app(app, %{"accent_color" => "#0ea5e9"})
+      assert app.accent_color == "#0ea5e9"
+    end
+
+    test "background_image_url must be an http(s) URL", %{app: app} do
+      assert {:error, changeset} =
+               Admin.update_app(app, %{"background_image_url" => "javascript:alert(1)"})
+
+      assert "must be an http(s) URL" in errors_on(changeset).background_image_url
+    end
+
+    test "email_from_name is capped", %{app: app} do
+      assert {:error, changeset} =
+               Admin.update_app(app, %{"email_from_name" => String.duplicate("a", 101)})
+
+      assert "should be at most 100 character(s)" in errors_on(changeset).email_from_name
+    end
+  end
+
   describe "login copy and consent urls" do
     alias You.Admin.App
 

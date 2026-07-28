@@ -13,12 +13,24 @@ defmodule You.Admin.App do
     field :subtitle, :string
     field :tos_url, :string
     field :privacy_url, :string
+    field :background_image_url, :string
+    field :accent_color, :string
+    field :email_from_name, :string
+    # nil means "everything the instance offers", so a provider or method added
+    # later reaches existing apps instead of being silently skipped.
+    field :enabled_providers, {:array, :string}
+    field :enabled_methods, {:array, :string}
     field :allowed_roles, {:array, :string}, default: ["user", "admin"]
     field :default_role, :string, default: "user"
     field :first_party, :boolean, default: false
     field :client_secret_hash, :binary
     timestamps()
   end
+
+  @auth_methods ~w(password magic_link passkey social)
+
+  @doc "The auth methods an app may enable. `nil` on the column means all of them."
+  def auth_methods, do: @auth_methods
 
   def changeset(app, attrs) do
     app
@@ -33,6 +45,11 @@ defmodule You.Admin.App do
       :subtitle,
       :tos_url,
       :privacy_url,
+      :background_image_url,
+      :accent_color,
+      :email_from_name,
+      :enabled_providers,
+      :enabled_methods,
       :allowed_roles,
       :default_role,
       :first_party
@@ -43,11 +60,15 @@ defmodule You.Admin.App do
     |> validate_length(:allowed_roles, min: 1)
     |> validate_default_role()
     |> validate_format(:brand_color, ~r/^#[0-9a-fA-F]{6}$/)
+    |> validate_format(:accent_color, ~r/^#[0-9a-fA-F]{6}$/)
     |> validate_length(:headline, max: 200)
     |> validate_length(:subtitle, max: 200)
     |> validate_change(:logo_url, &validate_http_url/2)
     |> validate_change(:tos_url, &validate_http_url/2)
     |> validate_change(:privacy_url, &validate_http_url/2)
+    |> validate_change(:background_image_url, &validate_http_url/2)
+    |> validate_length(:email_from_name, max: 100)
+    |> validate_subset(:enabled_methods, @auth_methods)
     |> unique_constraint(:slug)
   end
 
