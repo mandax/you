@@ -98,6 +98,73 @@ defmodule You.AdminTest do
     end
   end
 
+  describe "login copy and consent urls" do
+    alias You.Admin.App
+
+    test "stores optional headline, subtitle, tos_url, and privacy_url" do
+      assert {:ok, app, _secret} =
+               Admin.create_app(
+                 Map.merge(@valid_attrs, %{
+                   headline: "Welcome to Myapp",
+                   subtitle: "sign in below",
+                   tos_url: "https://myapp.example.com/tos",
+                   privacy_url: "https://myapp.example.com/privacy"
+                 })
+               )
+
+      assert app.headline == "Welcome to Myapp"
+      assert app.subtitle == "sign in below"
+      assert app.tos_url == "https://myapp.example.com/tos"
+      assert app.privacy_url == "https://myapp.example.com/privacy"
+    end
+
+    test "headline and subtitle are nil by default and can be cleared" do
+      assert App.changeset(%App{}, @valid_attrs).valid?
+
+      {:ok, app, _secret} =
+        Admin.create_app(Map.put(@valid_attrs, :headline, "Hello"))
+
+      assert {:ok, updated} = Admin.update_app(app, %{"headline" => ""})
+      assert updated.headline == nil
+    end
+
+    test "headline and subtitle are capped at 200 characters" do
+      too_long = String.duplicate("a", 201)
+      ok_length = String.duplicate("a", 200)
+
+      assert %{headline: ["should be at most 200 character(s)"]} =
+               errors_on(App.changeset(%App{}, Map.put(@valid_attrs, :headline, too_long)))
+
+      assert %{subtitle: ["should be at most 200 character(s)"]} =
+               errors_on(App.changeset(%App{}, Map.put(@valid_attrs, :subtitle, too_long)))
+
+      assert App.changeset(%App{}, Map.put(@valid_attrs, :headline, ok_length)).valid?
+      assert App.changeset(%App{}, Map.put(@valid_attrs, :subtitle, ok_length)).valid?
+    end
+
+    test "tos_url and privacy_url must be http(s) URLs, nil allowed" do
+      for url <- ["javascript:alert(1)", "ftp://example.com/tos", "not a url"] do
+        assert %{tos_url: ["must be an http(s) URL"]} =
+                 errors_on(App.changeset(%App{}, Map.put(@valid_attrs, :tos_url, url)))
+
+        assert %{privacy_url: ["must be an http(s) URL"]} =
+                 errors_on(App.changeset(%App{}, Map.put(@valid_attrs, :privacy_url, url)))
+      end
+
+      assert App.changeset(
+               %App{},
+               Map.put(@valid_attrs, :tos_url, "https://example.com/tos")
+             ).valid?
+
+      assert App.changeset(
+               %App{},
+               Map.put(@valid_attrs, :privacy_url, "https://example.com/privacy")
+             ).valid?
+
+      assert App.changeset(%App{}, @valid_attrs).valid?
+    end
+  end
+
   describe "rotate_app_secret/1" do
     test "rotates the client secret" do
       {:ok, app, original_secret} =

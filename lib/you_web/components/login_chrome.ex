@@ -14,10 +14,16 @@ defmodule YouWeb.Components.LoginChrome do
 
   `app_name` nil renders nothing — the unbranded login page uses its own
   wordmark header instead.
+
+  `headline` and `subtitle` replace the default copy ("Sign in to continue
+  to <app>" / "secured by You") wholesale when set, so an operator can write
+  copy that doesn't fit that template.
   """
   attr :app_name, :string, default: nil
   attr :logo_url, :string, default: nil
   attr :brand_color, :string, default: nil
+  attr :headline, :string, default: nil
+  attr :subtitle, :string, default: nil
 
   def login_header(assigns) do
     ~H"""
@@ -35,11 +41,15 @@ defmodule YouWeb.Components.LoginChrome do
         <span class="lucide-lock block size-5 text-muted-foreground" />
       </div>
       <h1 class="text-2xl font-bold tracking-tight">
-        Sign in to continue to
-        <span :if={@brand_color} style={"color: #{@brand_color}"}>{@app_name}</span>
-        <span :if={!@brand_color} class="text-primary">{@app_name}</span>
+        <%= if @headline do %>
+          {@headline}
+        <% else %>
+          Sign in to continue to
+          <span :if={@brand_color} style={"color: #{@brand_color}"}>{@app_name}</span>
+          <span :if={!@brand_color} class="text-primary">{@app_name}</span>
+        <% end %>
       </h1>
-      <p class="mt-1 text-sm text-muted-foreground">secured by You</p>
+      <p class="mt-1 text-sm text-muted-foreground">{@subtitle || "secured by You"}</p>
     </div>
     """
   end
