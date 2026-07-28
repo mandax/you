@@ -78,7 +78,7 @@ defmodule YouWeb.AppLive.Show do
   # ── consent screen ────────────────────────────────────────────
   def handle_event("update_consent_urls", params, socket) do
     socket.assigns.app
-    |> Admin.update_app(Map.take(params, ["tos_url", "privacy_url"]))
+    |> Admin.update_app(Map.take(params, ["tos_url", "privacy_url", "email_from_name"]))
     |> reload(socket, "Consent screen updated.")
   end
 
@@ -397,6 +397,13 @@ defmodule YouWeb.AppLive.Show do
               name="privacy_url"
               label="Privacy Policy URL (optional)"
               value={@app.privacy_url}
+            />
+            <.input
+              type="text"
+              name="email_from_name"
+              label="Email sender name (optional)"
+              value={@app.email_from_name}
+              placeholder="You"
             />
             <div class="flex justify-end">
               <.button type="submit">Save</.button>

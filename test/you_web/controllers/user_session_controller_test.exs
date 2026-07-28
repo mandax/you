@@ -220,6 +220,69 @@ defmodule YouWeb.UserSessionControllerTest do
     end
   end
 
+  describe "per-app email sender name" do
+    # user_fixture/0 delivers a confirmation email, and assert_received matches
+    # the first message in the mailbox — without draining, these assertions
+    # inspect the fixture's email instead of the magic link and pass vacuously.
+    defp flush_emails do
+      receive do
+        {:email, _} -> flush_emails()
+      after
+        0 -> :ok
+      end
+    end
+
+    test "a magic link sent during an app flow uses the app's name", %{conn: conn} do
+      {:ok, app, _} =
+        You.Admin.create_app(%{
+          slug: "mailer",
+          name: "Mailer",
+          callback_url: "https://mailer.example.com/cb",
+          email_from_name: "Mailer Support"
+        })
+
+      user = You.AccountsFixtures.user_fixture()
+      flush_emails()
+
+      conn
+      |> get(~p"/users/log-in?callback_url=#{app.callback_url}")
+      |> post(~p"/users/log-in", %{"user" => %{"email" => user.email}})
+
+      assert_received {:email, email}
+      assert {"Mailer Support", _address} = email.from
+    end
+
+    test "a plain magic link keeps the default sender", %{conn: conn} do
+      user = You.AccountsFixtures.user_fixture()
+      flush_emails()
+
+      post(conn, ~p"/users/log-in", %{"user" => %{"email" => user.email}})
+
+      assert_received {:email, email}
+      assert {"You", _address} = email.from
+    end
+
+    test "a blank sender name falls back to the default", %{conn: conn} do
+      {:ok, app, _} =
+        You.Admin.create_app(%{
+          slug: "blankname",
+          name: "Blank",
+          callback_url: "https://blank.example.com/cb",
+          email_from_name: ""
+        })
+
+      user = You.AccountsFixtures.user_fixture()
+      flush_emails()
+
+      conn
+      |> get(~p"/users/log-in?callback_url=#{app.callback_url}")
+      |> post(~p"/users/log-in", %{"user" => %{"email" => user.email}})
+
+      assert_received {:email, email}
+      assert {"You", _address} = email.from
+    end
+  end
+
   describe "per-app auth method toggles" do
     setup do
       {:ok, app, _secret} =

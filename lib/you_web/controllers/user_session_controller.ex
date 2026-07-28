@@ -87,6 +87,15 @@ defmodule YouWeb.UserSessionController do
 
   # The auth methods the in-flight app allows. `nil` means every method, so an
   # app registered before a method existed still gets it.
+  # A magic link sent during an app's login flow should arrive under that
+  # app's name, not You's — the user asked to sign in to the app.
+  defp app_from_name(conn) do
+    case app_for(conn) do
+      %{email_from_name: name} when is_binary(name) and name != "" -> name
+      _ -> nil
+    end
+  end
+
   defp enabled_methods(nil), do: You.Admin.App.auth_methods()
   defp enabled_methods(%{enabled_methods: nil}), do: You.Admin.App.auth_methods()
   defp enabled_methods(%{enabled_methods: methods}), do: methods
@@ -244,7 +253,8 @@ defmodule YouWeb.UserSessionController do
 
       Accounts.deliver_login_instructions(
         user,
-        &url(~p"/users/log-in/#{&1}?#{link_params}")
+        &url(~p"/users/log-in/#{&1}?#{link_params}"),
+        app_from_name(conn)
       )
     end
 
