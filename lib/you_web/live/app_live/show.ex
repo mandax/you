@@ -29,7 +29,8 @@ defmodule YouWeb.AppLive.Show do
        node_name: Node.self(),
        tabs: @tabs,
        tab: "overview",
-       new_secret: nil
+       new_secret: nil,
+       selected: MapSet.new()
      )
      |> assign_app(Admin.get_app_by_slug!(slug))}
   end
@@ -73,6 +74,12 @@ defmodule YouWeb.AppLive.Show do
     |> reload(socket, "Role removed.")
   end
 
+  def handle_event("set_default_role", %{"default_role" => role}, socket) do
+    socket.assigns.app
+    |> Admin.set_default_role(role)
+    |> reload(socket, "Default role updated.")
+  end
+
   # ── members ───────────────────────────────────────────────────
   def handle_event("set_member_role", %{"user_id" => user_id} = params, socket) do
     app = socket.assigns.app
@@ -84,6 +91,43 @@ defmodule YouWeb.AppLive.Show do
         {:noreply, assign_app(socket, app)}
 
       {:error, _} ->
+        {:noreply, put_flash(socket, :error, "Role is not allowed for this app.")}
+    end
+  end
+
+  def handle_event("toggle_member", %{"user_id" => user_id}, socket) do
+    selected = socket.assigns.selected
+
+    selected =
+      if MapSet.member?(selected, user_id),
+        do: MapSet.delete(selected, user_id),
+        else: MapSet.put(selected, user_id)
+
+    {:noreply, assign(socket, selected: selected)}
+  end
+
+  def handle_event("toggle_all_members", _params, socket) do
+    all = MapSet.new(socket.assigns.members, fn {user, _} -> to_string(user.id) end)
+
+    selected =
+      if MapSet.equal?(socket.assigns.selected, all), do: MapSet.new(), else: all
+
+    {:noreply, assign(socket, selected: selected)}
+  end
+
+  def handle_event("bulk_set_role", params, socket) do
+    app = socket.assigns.app
+    user_ids = MapSet.to_list(socket.assigns.selected)
+
+    case Roles.set_roles(app, user_ids, params["value"] || params["role"]) do
+      {:ok, count} ->
+        {:noreply,
+         socket
+         |> assign_app(app)
+         |> assign(selected: MapSet.new())
+         |> put_flash(:info, "Updated #{count} #{if count == 1, do: "user", else: "users"}.")}
+
+      {:error, :invalid_role} ->
         {:noreply, put_flash(socket, :error, "Role is not allowed for this app.")}
     end
   end
@@ -157,9 +201,19 @@ defmodule YouWeb.AppLive.Show do
           <% "login" -> %>
             <.login_tab app={@app} />
           <% "roles" -> %>
-            <.roles_tab app={@app} roles={allowed_roles(@app)} counts={@role_counts} />
+            <.roles_tab
+              app={@app}
+              roles={allowed_roles(@app)}
+              counts={@role_counts}
+              default_role={@app.default_role || "user"}
+            />
           <% "members" -> %>
-            <.members_tab app={@app} members={@members} roles={allowed_roles(@app)} />
+            <.members_tab
+              app={@app}
+              members={@members}
+              roles={allowed_roles(@app)}
+              selected={@selected}
+            />
           <% "credentials" -> %>
             <.credentials_tab app={@app} new_secret={@new_secret} />
         <% end %>
@@ -225,6 +279,7 @@ defmodule YouWeb.AppLive.Show do
   attr :app, :map, required: true
   attr :roles, :list, required: true
   attr :counts, :map, required: true
+  attr :default_role, :string, required: true
 
   defp roles_tab(assigns) do
     ~H"""
@@ -262,6 +317,31 @@ defmodule YouWeb.AppLive.Show do
           </div>
           <.button type="submit">Add</.button>
         </form>
+
+        <div class="border-t border-border pt-4">
+          <label class="text-sm font-medium">Default role</label>
+          <p class="mt-1 mb-2 text-xs text-muted-foreground">
+            What users without an explicit assignment resolve to. Changing it
+            re-roles every unassigned user on their next token.
+          </p>
+          <%!-- A form rather than an on_change select: the confirmation has to
+                fire before the change is pushed, and data-confirm needs a real
+                phx- binding to hook onto. --%>
+          <form
+            id="app-default-role-form"
+            phx-submit="set_default_role"
+            data-confirm="Change the default role? Every user without an explicit assignment gets the new role in their next token."
+            class="flex items-center gap-2"
+          >
+            <.select
+              id="app-default-role"
+              name="default_role"
+              value={@default_role}
+              options={Enum.map(@roles, &%{value: &1, label: &1})}
+            />
+            <.button type="submit" size="sm" variant="outline">Set default</.button>
+          </form>
+        </div>
       </div>
     </.panel>
     """
@@ -270,27 +350,58 @@ defmodule YouWeb.AppLive.Show do
   attr :app, :map, required: true
   attr :members, :list, required: true
   attr :roles, :list, required: true
+  attr :selected, :any, required: true
 
   defp members_tab(assigns) do
     ~H"""
-    <.data_table cols={["User", "Role"]} empty={@members == []}>
-      <tr
-        :for={{user, role} <- @members}
-        class="border-b border-border/60 transition-colors last:border-0 hover:bg-muted/40"
+    <div class="space-y-3">
+      <div
+        :if={MapSet.size(@selected) > 0}
+        class="flex items-center gap-3 rounded-md border border-border bg-muted/40 px-3 py-2"
       >
-        <td class="px-3 py-2 font-mono text-xs">{user.email}</td>
-        <td class="px-3 py-2">
+        <span class="font-mono text-xs text-muted-foreground">
+          {MapSet.size(@selected)} selected
+        </span>
+        <div class="ml-auto">
           <.select
-            id={"member-role-#{user.id}"}
-            name="role"
-            value={role}
+            id="bulk-role"
+            value=""
+            placeholder="Set role to…"
             options={Enum.map(@roles, &%{value: &1, label: &1})}
-            phx-change="set_member_role"
-            phx-value-user_id={user.id}
+            on_change="bulk_set_role"
+            align="end"
           />
-        </td>
-      </tr>
-    </.data_table>
+        </div>
+      </div>
+
+      <.data_table cols={["", "User", "Role"]} empty={@members == []}>
+        <tr
+          :for={{user, role} <- @members}
+          class="border-b border-border/60 transition-colors last:border-0 hover:bg-muted/40"
+        >
+          <td class="px-3 py-2">
+            <input
+              type="checkbox"
+              aria-label={"Select #{user.email}"}
+              checked={MapSet.member?(@selected, to_string(user.id))}
+              phx-click="toggle_member"
+              phx-value-user_id={user.id}
+              class="size-4 rounded border-border"
+            />
+          </td>
+          <td class="px-3 py-2 font-mono text-xs">{user.email}</td>
+          <td class="px-3 py-2">
+            <.select
+              id={"member-role-#{user.id}"}
+              value={role}
+              options={Enum.map(@roles, &%{value: &1, label: &1})}
+              on_change="set_member_role"
+              params={%{"user_id" => user.id}}
+            />
+          </td>
+        </tr>
+      </.data_table>
+    </div>
     """
   end
 

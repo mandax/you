@@ -12,17 +12,21 @@ defmodule You.Roles do
   alias You.Roles.Assignment
 
   @doc """
-  Returns the user's role in the app identified by slug, or `"user"` when
-  the app doesn't exist or no role is assigned.
+  Returns the user's role in the app identified by slug.
+
+  Falls back to the app's `default_role` when there is no explicit assignment,
+  and to `"user"` when the app doesn't exist. One left join rather than two
+  queries: this sits on the token-issuing path.
   """
   def role_for(app_slug, user_id) when is_binary(app_slug) do
-    Repo.one(
-      from a in Assignment,
-        join: app in App,
-        on: app.id == a.app_id and app.slug == ^app_slug,
-        where: a.user_id == ^user_id,
-        select: a.role
-    ) || "user"
+    query =
+      from app in App,
+        left_join: a in Assignment,
+        on: a.app_id == app.id and a.user_id == ^user_id,
+        where: app.slug == ^app_slug,
+        select: coalesce(a.role, app.default_role)
+
+    Repo.one(query) || "user"
   end
 
   def role_for(_app_slug, _user_id), do: "user"
@@ -96,8 +100,52 @@ defmodule You.Roles do
   end
 
   @doc """
+  Assigns `role` to many users at once in a single statement.
+
+  One `insert_all` rather than a call per user: every write serialises through
+  SQLite's single writer, so the round-trip count is the cost that matters.
+  Returns `{:ok, count}` or `{:error, :invalid_role}`.
+  """
+  def set_roles(%App{} = app, user_ids, role) when is_list(user_ids) and is_binary(role) do
+    if role in (app.allowed_roles || ["user", "admin"]) do
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+      entries =
+        Enum.map(user_ids, fn user_id ->
+          %{
+            app_id: app.id,
+            user_id: to_integer(user_id),
+            role: role,
+            inserted_at: now,
+            updated_at: now
+          }
+        end)
+
+      {count, _} =
+        Repo.insert_all(Assignment, entries,
+          on_conflict: [set: [role: role, updated_at: now]],
+          conflict_target: [:app_id, :user_id]
+        )
+
+      :telemetry.execute([:you, :audit, :admin, :action], %{}, %{
+        action: "set_roles",
+        target: app.slug,
+        role: role,
+        count: count
+      })
+
+      {:ok, count}
+    else
+      {:error, :invalid_role}
+    end
+  end
+
+  defp to_integer(value) when is_integer(value), do: value
+  defp to_integer(value) when is_binary(value), do: String.to_integer(value)
+
+  @doc """
   Lists all users with their role in the app, sorted by email. Every user
-  appears exactly once, unassigned users with role `"user"`.
+  appears exactly once, unassigned users carrying the app's `default_role`.
   """
   def list_for_app(%App{} = app) do
     assigned =
@@ -118,6 +166,8 @@ defmodule You.Roles do
           order_by: u.email
       )
 
-    Enum.sort_by(assigned ++ Enum.map(unassigned, &{&1, "user"}), fn {u, _} -> u.email end)
+    default = app.default_role || "user"
+
+    Enum.sort_by(assigned ++ Enum.map(unassigned, &{&1, default}), fn {u, _} -> u.email end)
   end
 end

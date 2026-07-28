@@ -215,6 +215,28 @@ defmodule You.Admin do
   end
 
   @doc """
+  Sets the role unassigned users resolve to in this app.
+
+  Emitted as its own audit action rather than a generic `update_app`: changing
+  it re-roles every user without an explicit assignment on their next token,
+  with no per-user record of the change anywhere.
+  """
+  def set_default_role(%App{} = app, role) when is_binary(role) do
+    result = update_app(app, %{"default_role" => role})
+
+    with {:ok, updated} <- result do
+      :telemetry.execute([:you, :audit, :admin, :action], %{}, %{
+        action: "set_default_role",
+        app_slug: app.slug,
+        from: app.default_role,
+        to: updated.default_role
+      })
+    end
+
+    result
+  end
+
+  @doc """
   Deletes a registered app. Returns `{:ok, app}` or `{:error, changeset}`.
   """
   def delete_app(%App{} = app) do

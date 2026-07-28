@@ -2,6 +2,7 @@ defmodule YouWeb.AppLive.ShowTest do
   use YouWeb.ConnCase, async: false
 
   import Phoenix.LiveViewTest
+  import You.DataCase, only: [errors_on: 1]
 
   alias You.{Admin, Roles}
 
@@ -148,7 +149,119 @@ defmodule YouWeb.AppLive.ShowTest do
     end
   end
 
+  describe "default role" do
+    test "unassigned users resolve to the app default", %{app: app} do
+      user = You.AccountsFixtures.user_fixture()
+      assert Roles.role_for(app.slug, user.id) == "user"
+
+      {:ok, _} = Admin.set_default_role(app, "admin")
+
+      assert Roles.role_for(app.slug, user.id) == "admin"
+    end
+
+    test "an explicit assignment still wins over the default", %{app: app} do
+      user = You.AccountsFixtures.user_fixture()
+      {:ok, _} = Roles.set_role(app, user, "user")
+      {:ok, _} = Admin.set_default_role(app, "admin")
+
+      assert Roles.role_for(app.slug, user.id) == "user"
+    end
+
+    test "an unknown app still resolves to user", %{app: app} do
+      {:ok, _} = Admin.set_default_role(app, "admin")
+      assert Roles.role_for("no-such-app", 1) == "user"
+    end
+
+    test "the default must be one of the allowed roles", %{app: app} do
+      assert {:error, changeset} = Admin.set_default_role(app, "wizard")
+      assert "must be one of the allowed roles" in errors_on(changeset).default_role
+    end
+
+    test "a role that is the default cannot be dropped from allowed_roles", %{app: app} do
+      {:ok, app} = Admin.set_default_role(app, "admin")
+
+      assert {:error, changeset} = Admin.update_allowed_roles(app, ["user"])
+      assert "must be one of the allowed roles" in errors_on(changeset).default_role
+      assert "admin" in Admin.get_app!(app.id).allowed_roles
+    end
+
+    # The select renders a hidden input, which LiveViewTest treats as fixed, so
+    # `form/3` cannot change it. Assert the wiring, then push the submit.
+    test "changing it from the roles tab", %{conn: conn, app: app} do
+      {:ok, lv, html} = live(conn, ~p"/console/apps/#{app.slug}?tab=roles")
+
+      assert html =~ ~s(phx-submit="set_default_role")
+      assert html =~ "data-confirm"
+
+      assert render_submit(lv, "set_default_role", %{"default_role" => "admin"}) =~
+               "Default role updated"
+
+      assert Admin.get_app!(app.id).default_role == "admin"
+    end
+  end
+
+  describe "bulk role assignment" do
+    test "assigns one role to many users in a single statement", %{app: app} do
+      users = for _ <- 1..3, do: You.AccountsFixtures.user_fixture()
+      ids = Enum.map(users, & &1.id)
+
+      assert {:ok, 3} = Roles.set_roles(app, ids, "admin")
+
+      for user <- users, do: assert(Roles.role_for(app.slug, user.id) == "admin")
+    end
+
+    test "overwrites an existing assignment rather than failing", %{app: app} do
+      user = You.AccountsFixtures.user_fixture()
+      {:ok, _} = Roles.set_role(app, user, "user")
+
+      assert {:ok, 1} = Roles.set_roles(app, [user.id], "admin")
+      assert Roles.role_for(app.slug, user.id) == "admin"
+    end
+
+    test "rejects a role the app does not allow", %{app: app} do
+      user = You.AccountsFixtures.user_fixture()
+      assert {:error, :invalid_role} = Roles.set_roles(app, [user.id], "wizard")
+    end
+
+    test "selecting users then applying a role from the members tab", %{conn: conn, app: app} do
+      user = You.AccountsFixtures.user_fixture()
+
+      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}?tab=members")
+
+      refute render(lv) =~ "1 selected"
+      render_click(lv, "toggle_member", %{"user_id" => to_string(user.id)})
+      assert render(lv) =~ "1 selected"
+
+      html = render_click(lv, "bulk_set_role", %{"value" => "admin"})
+
+      assert html =~ "Updated 1 user"
+      assert Roles.role_for(app.slug, user.id) == "admin"
+      refute html =~ "1 selected"
+    end
+
+    test "select-all toggles every row on and off", %{conn: conn, app: app} do
+      for _ <- 1..2, do: You.AccountsFixtures.user_fixture()
+
+      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}?tab=members")
+
+      assert render_click(lv, "toggle_all_members", %{}) =~ "3 selected"
+      refute render_click(lv, "toggle_all_members", %{}) =~ "3 selected"
+    end
+  end
+
   describe "members" do
+    # The select is a JS hook, not a form input: it pushes `on_change` with
+    # `params` merged in. Asserting the rendered wiring catches a mismatch that
+    # pushing the event directly would hide.
+    test "the row select is wired to set_member_role", %{conn: conn, app: app} do
+      user = You.AccountsFixtures.user_fixture()
+
+      {:ok, _lv, html} = live(conn, ~p"/console/apps/#{app.slug}?tab=members")
+
+      assert html =~ ~s(data-on-change="set_member_role")
+      assert html =~ ~s(data-params="{&quot;user_id&quot;:#{user.id}}")
+    end
+
     test "assigns a role to a user", %{conn: conn, app: app} do
       user = You.AccountsFixtures.user_fixture()
 
