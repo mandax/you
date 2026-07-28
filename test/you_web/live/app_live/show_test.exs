@@ -107,6 +107,69 @@ defmodule YouWeb.AppLive.ShowTest do
     end
   end
 
+  describe "login preview" do
+    test "renders saved branding on mount", %{conn: conn, app: app} do
+      {:ok, _app} =
+        Admin.update_app(app, %{
+          "logo_url" => "https://edit.example.com/logo.png",
+          "brand_color" => "#7c3aed"
+        })
+
+      {:ok, _lv, html} = live(conn, ~p"/console/apps/#{app.slug}?tab=login")
+
+      assert html =~ ~s(src="https://edit.example.com/logo.png")
+      assert html =~ "color: #7c3aed"
+    end
+
+    test "tracks unsaved edits without persisting them", %{conn: conn, app: app} do
+      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}?tab=login")
+
+      html =
+        lv
+        |> form("#app-branding-form", %{
+          "logo_url" => "https://edit.example.com/draft.png",
+          "brand_color" => "#0ea5e9"
+        })
+        |> render_change()
+
+      assert html =~ ~s(src="https://edit.example.com/draft.png")
+      assert html =~ "color: #0ea5e9"
+
+      # Preview only — nothing written until the form is submitted.
+      assert Admin.get_app!(app.id).logo_url == nil
+      assert Admin.get_app!(app.id).brand_color == nil
+    end
+
+    test "a blank field previews as no value, not an empty attribute", %{conn: conn, app: app} do
+      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}?tab=login")
+
+      html =
+        lv
+        |> form("#app-branding-form", %{"logo_url" => "", "brand_color" => ""})
+        |> render_change()
+
+      refute html =~ ~s(src="")
+      refute html =~ "color: ;"
+      assert html =~ "lucide-lock"
+    end
+
+    test "saving resets the draft to the stored values", %{conn: conn, app: app} do
+      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}?tab=login")
+
+      lv
+      |> form("#app-branding-form", %{"logo_url" => "", "brand_color" => "#0ea5e9"})
+      |> render_submit()
+
+      assert render(lv) =~ "color: #0ea5e9"
+      assert Admin.get_app!(app.id).brand_color == "#0ea5e9"
+    end
+
+    test "links out to the real login page for this app", %{conn: conn, app: app} do
+      {:ok, _lv, html} = live(conn, ~p"/console/apps/#{app.slug}?tab=login")
+      assert html =~ "/users/log-in?callback_url="
+    end
+  end
+
   describe "roles" do
     test "adds a role to allowed_roles", %{conn: conn, app: app} do
       {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}?tab=roles")

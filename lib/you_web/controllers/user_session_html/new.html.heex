@@ -23,26 +23,11 @@
       <div class="w-full max-w-sm animate-rise-in space-y-6">
         <div class="text-center">
           <%= if assigns[:app_name] do %>
-            <img
-              :if={assigns[:app_logo_url]}
-              src={@app_logo_url}
-              alt={@app_name}
-              class="mx-auto mb-4 size-11 rounded-xl border border-border object-cover"
+            <.login_header
+              app_name={@app_name}
+              logo_url={assigns[:app_logo_url]}
+              brand_color={assigns[:app_brand_color]}
             />
-            <div
-              :if={!assigns[:app_logo_url]}
-              class="mx-auto mb-4 flex size-11 items-center justify-center rounded-xl border border-border"
-            >
-              <span class="lucide-lock block size-5 text-muted-foreground" />
-            </div>
-            <h1 class="text-2xl font-bold tracking-tight">
-              Sign in to continue to
-              <span :if={assigns[:app_brand_color]} style={"color: #{@app_brand_color}"}>
-                {@app_name}
-              </span>
-              <span :if={!assigns[:app_brand_color]} class="text-primary">{@app_name}</span>
-            </h1>
-            <p class="mt-1 text-sm text-muted-foreground">secured by You</p>
           <% else %>
             <.wordmark size="lg" class="justify-center mb-4" />
             <h1 class="text-2xl font-bold tracking-tight">

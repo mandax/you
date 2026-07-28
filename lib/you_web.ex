@@ -108,6 +108,9 @@ defmodule YouWeb do
       # Public-site chrome (wordmark, nav, footer) shared by landing and docs
       import YouWeb.Components.SiteChrome
 
+      # Login-page chrome, shared by the real login and the console preview
+      import YouWeb.Components.LoginChrome
+
       # Common modules used in templates
       alias Phoenix.LiveView.JS
       alias YouWeb.Layouts

@@ -51,6 +51,16 @@ defmodule YouWeb.AppLive.Show do
   end
 
   # ── login branding ────────────────────────────────────────────
+  def handle_event("preview_branding", params, socket) do
+    {:noreply,
+     assign(socket,
+       draft: %{
+         logo_url: params["logo_url"],
+         brand_color: params["brand_color"]
+       }
+     )}
+  end
+
   def handle_event("update_branding", params, socket) do
     socket.assigns.app
     |> Admin.update_app(Map.take(params, ["logo_url", "brand_color"]))
@@ -152,6 +162,7 @@ defmodule YouWeb.AppLive.Show do
     assign(socket,
       app: app,
       page_title: app.name,
+      draft: %{logo_url: app.logo_url, brand_color: app.brand_color},
       members: Roles.list_for_app(app),
       role_counts: Roles.count_by_role(app)
     )
@@ -199,7 +210,7 @@ defmodule YouWeb.AppLive.Show do
           <% "overview" -> %>
             <.overview_tab app={@app} />
           <% "login" -> %>
-            <.login_tab app={@app} />
+            <.login_tab app={@app} draft={@draft} />
           <% "roles" -> %>
             <.roles_tab
               app={@app}
@@ -255,26 +266,62 @@ defmodule YouWeb.AppLive.Show do
   end
 
   attr :app, :map, required: true
+  attr :draft, :map, required: true
 
   defp login_tab(assigns) do
     ~H"""
-    <.panel title="Branding" description="Shown on You's login page when users arrive from this app.">
-      <form id="app-branding-form" phx-submit="update_branding" class="max-w-xl space-y-4">
-        <.input type="url" name="logo_url" label="Logo URL (optional)" value={@app.logo_url} />
-        <.input
-          type="text"
-          name="brand_color"
-          label="Brand color (optional)"
-          value={@app.brand_color}
-          placeholder="#7c3aed"
-        />
-        <div class="flex justify-end">
-          <.button type="submit">Save</.button>
+    <div class="grid gap-5 lg:grid-cols-2">
+      <.panel
+        title="Branding"
+        description="Shown on You's login page when users arrive from this app."
+      >
+        <form
+          id="app-branding-form"
+          phx-change="preview_branding"
+          phx-submit="update_branding"
+          class="space-y-4"
+        >
+          <.input type="url" name="logo_url" label="Logo URL (optional)" value={@draft.logo_url} />
+          <.input
+            type="text"
+            name="brand_color"
+            label="Brand color (optional)"
+            value={@draft.brand_color}
+            placeholder="#7c3aed"
+          />
+          <div class="flex justify-end">
+            <.button type="submit">Save</.button>
+          </div>
+        </form>
+      </.panel>
+
+      <.panel title="Preview" description="The real login header, with unsaved values applied.">
+        <div class="rounded-lg border border-border bg-background px-5 py-8 text-center">
+          <.login_header
+            app_name={@app.name}
+            logo_url={presence(@draft.logo_url)}
+            brand_color={presence(@draft.brand_color)}
+          />
         </div>
-      </form>
-    </.panel>
+        <p class="mt-3 text-xs text-muted-foreground">
+          <.link
+            href={~p"/users/log-in?#{[callback_url: @app.callback_url]}"}
+            target="_blank"
+            class="underline underline-offset-2 hover:text-foreground"
+          >
+            Open the full login page
+          </.link>
+          — saved values only.
+        </p>
+      </.panel>
+    </div>
     """
   end
+
+  # A blank form field means "no value", but `""` would render as a logo with an
+  # empty src and an empty style attribute.
+  defp presence(""), do: nil
+  defp presence(value), do: value
 
   attr :app, :map, required: true
   attr :roles, :list, required: true
