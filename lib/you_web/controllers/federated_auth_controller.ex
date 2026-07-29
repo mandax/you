@@ -212,6 +212,10 @@ defmodule YouWeb.FederatedAuthController do
     tokens |> access_token() |> You.IdentityProviders.Github.fetch_identity()
   end
 
+  defp fetch_userinfo(%{kind: "discord"}, tokens) do
+    tokens |> access_token() |> You.IdentityProviders.Discord.fetch_identity()
+  end
+
   defp fetch_userinfo(config, tokens) do
     headers = [{"authorization", "Bearer #{access_token(tokens)}"}]
 

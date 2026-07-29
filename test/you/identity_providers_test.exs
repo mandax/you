@@ -319,4 +319,51 @@ defmodule You.IdentityProvidersTest do
       assert only.display_name == "Edited"
     end
   end
+
+  describe "presets" do
+    test "names keep their declaration order" do
+      names = You.IdentityProviders.Presets.names()
+
+      assert List.first(names) == "google"
+      # generic is last on purpose: it is the fallback, not a suggestion.
+      assert List.last(names) == "generic"
+    end
+
+    test "every preset resolves" do
+      for name <- You.IdentityProviders.Presets.names() do
+        assert {:ok, preset} = You.IdentityProviders.Presets.fetch(name)
+        assert is_binary(preset.display_name)
+        assert is_binary(preset.kind)
+      end
+    end
+
+    # A preset for a non-OIDC provider without an adapter would configure
+    # cleanly in the console and then fail at login.
+    test "non-OIDC presets have no userinfo_url and a kind with an adapter" do
+      for name <- ~w(github discord) do
+        assert {:ok, preset} = You.IdentityProviders.Presets.fetch(name)
+        assert preset.userinfo_url == nil
+        assert preset.kind == name
+      end
+    end
+
+    test "OIDC presets carry a userinfo endpoint" do
+      for name <- ~w(google microsoft gitlab linkedin twitch slack) do
+        assert {:ok, preset} = You.IdentityProviders.Presets.fetch(name)
+        assert is_binary(preset.userinfo_url), "#{name} is missing userinfo_url"
+      end
+    end
+
+    test "expanding a preset keeps admin-supplied attrs" do
+      assert {:ok, attrs} =
+               You.IdentityProviders.Presets.expand("gitlab", %{
+                 "client_id" => "cid",
+                 "display_name" => "Our GitLab"
+               })
+
+      assert attrs.client_id == "cid"
+      assert attrs.display_name == "Our GitLab"
+      assert attrs.token_url == "https://gitlab.com/oauth/token"
+    end
+  end
 end

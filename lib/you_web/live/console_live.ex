@@ -27,6 +27,27 @@ defmodule YouWeb.ConsoleLive do
     {"Audit trail", "Records privileged actions. Not optional."}
   ]
 
+  # One line per section, rendered above its view. Says what the section is for
+  # rather than restating its title.
+  @section_copy %{
+    "overview" => "Instance at a glance: accounts, registered apps, and recent activity.",
+    "users" =>
+      "Everyone with an account here. Filter by app, role, or status, and manage a user's access from their row.",
+    "apps" =>
+      "Services that delegate authentication to You. Each one gets a client id, a secret, and its own roles and login branding.",
+    "providers" =>
+      "Upstream identity providers users can sign in with. Configured once here, then enabled per app. A provider switched off is refused everywhere, not just hidden.",
+    "orgs" => "Groups of users that share app access.",
+    "audit" =>
+      "Privileged actions, newest first. This is the live in-memory view; configure the audit webhook for retention.",
+    "webhooks" =>
+      "Signed outbound events. Use them to react to identity changes in your own systems.",
+    "features" =>
+      "What this instance offers. Switching something off removes it from the console and the login page.",
+    "settings" =>
+      "Instance-wide tuning: token lifetimes, Erlang distribution, and integration secrets."
+  }
+
   @feature_copy %{
     feature_passkeys: {"Passkeys", "WebAuthn sign-in and per-user passkey management."},
     feature_magic_link: {"Magic links", "Passwordless sign-in by emailed link."},
@@ -571,6 +592,8 @@ defmodule YouWeb.ConsoleLive do
     if raw =~ ~r/^\d+$/, do: String.to_integer(raw), else: raw
   end
 
+  defp section_copy(view), do: Map.get(@section_copy, view)
+
   defp nav_label(view), do: Enum.find_value(nav(), "", &if(&1.id == view, do: &1.label))
 
   # ── shell ─────────────────────────────────────────────────────
@@ -578,6 +601,13 @@ defmodule YouWeb.ConsoleLive do
   def render(assigns) do
     ~H"""
     <.console_shell nav={@nav} active={@view} title={nav_label(@view)} node_name={@node_name}>
+      <div class="mb-5">
+        <h1 class="text-lg font-medium">{nav_label(@view)}</h1>
+        <p :if={section_copy(@view)} class="mt-1 max-w-2xl text-sm text-muted-foreground">
+          {section_copy(@view)}
+        </p>
+      </div>
+
       <%= case @view do %>
         <% "overview" -> %>
           <.overview users={@users} apps={@apps} orgs={@orgs} events={@events} />
