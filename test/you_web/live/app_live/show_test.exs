@@ -310,6 +310,82 @@ defmodule YouWeb.AppLive.ShowTest do
     end
   end
 
+  describe "theme configuration" do
+    test "dark colour variants persist and fall back when unset", %{conn: conn, app: app} do
+      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}?tab=login")
+
+      lv
+      |> form("#app-branding-form", %{
+        "brand_color" => "#7c3aed",
+        "brand_color_dark" => "#a78bfa",
+        "accent_color" => "#0ea5e9"
+      })
+      |> render_submit()
+
+      saved = Admin.get_app!(app.id)
+      assert saved.brand_color_dark == "#a78bfa"
+      # Left blank, so the light value carries in dark mode.
+      assert saved.accent_color_dark == nil
+    end
+
+    test "the preview renders both theme variants", %{conn: conn, app: app} do
+      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}?tab=login")
+
+      html =
+        lv
+        |> form("#app-branding-form", %{
+          "brand_color" => "#7c3aed",
+          "brand_color_dark" => "#a78bfa"
+        })
+        |> render_change()
+
+      assert html =~ "color: #7c3aed"
+      assert html =~ "color: #a78bfa"
+    end
+
+    test "an unset dark variant reuses the light colour in the dark span",
+         %{conn: conn, app: app} do
+      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}?tab=login")
+
+      html =
+        lv
+        |> form("#app-branding-form", %{"brand_color" => "#7c3aed", "brand_color_dark" => ""})
+        |> render_change()
+
+      # Both spans render, both using the light value.
+      assert html =~ ~s(class="dark:hidden" style="color: #7c3aed")
+      assert html =~ ~s(class="hidden dark:inline" style="color: #7c3aed")
+    end
+
+    test "an invalid dark colour is dropped from the preview", %{conn: conn, app: app} do
+      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}?tab=login")
+
+      html =
+        lv
+        |> form("#app-branding-form", %{
+          "brand_color" => "#7c3aed",
+          "brand_color_dark" => "red; background: url(https://attacker.example/x)"
+        })
+        |> render_change()
+
+      refute html =~ "attacker.example"
+    end
+
+    test "theme mode saves", %{conn: conn, app: app} do
+      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}?tab=login")
+
+      html = lv |> form("#app-theme-form", %{"theme_mode" => "dark"}) |> render_submit()
+
+      assert html =~ "Theme updated"
+      assert Admin.get_app!(app.id).theme_mode == "dark"
+    end
+
+    test "theme mode rejects an unknown value", %{app: app} do
+      assert {:error, changeset} = Admin.update_app(app, %{"theme_mode" => "sepia"})
+      assert "is invalid" in errors_on(changeset).theme_mode
+    end
+  end
+
   describe "identity provider toggles" do
     setup do
       {:ok, provider} =

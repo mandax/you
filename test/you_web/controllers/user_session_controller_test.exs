@@ -220,6 +220,54 @@ defmodule YouWeb.UserSessionControllerTest do
     end
   end
 
+  describe "per-app theme mode" do
+    test "an app pinned to dark forces it at the document root", %{conn: conn} do
+      {:ok, app, _} =
+        You.Admin.create_app(%{
+          slug: "darkapp",
+          name: "Dark App",
+          callback_url: "https://dark.example.com/cb",
+          theme_mode: "dark"
+        })
+
+      html = conn |> get(~p"/users/log-in?callback_url=#{app.callback_url}") |> html_response(200)
+
+      assert html =~ ~s(data-force-theme="dark")
+    end
+
+    test "an app on system leaves the visitor's preference alone", %{conn: conn} do
+      {:ok, app, _} =
+        You.Admin.create_app(%{
+          slug: "sysapp",
+          name: "System App",
+          callback_url: "https://sys.example.com/cb"
+        })
+
+      assert app.theme_mode == "system"
+
+      html = conn |> get(~p"/users/log-in?callback_url=#{app.callback_url}") |> html_response(200)
+
+      refute html =~ "data-force-theme=\"dark\""
+      refute html =~ "data-force-theme=\"light\""
+    end
+
+    test "both colour variants reach the login page", %{conn: conn} do
+      {:ok, app, _} =
+        You.Admin.create_app(%{
+          slug: "twotone",
+          name: "Two Tone",
+          callback_url: "https://twotone.example.com/cb",
+          brand_color: "#7c3aed",
+          brand_color_dark: "#a78bfa"
+        })
+
+      html = conn |> get(~p"/users/log-in?callback_url=#{app.callback_url}") |> html_response(200)
+
+      assert html =~ "color: #7c3aed"
+      assert html =~ "color: #a78bfa"
+    end
+  end
+
   describe "per-app email sender name" do
     # user_fixture/0 delivers a confirmation email, and assert_received matches
     # the first message in the mailbox — without draining, these assertions

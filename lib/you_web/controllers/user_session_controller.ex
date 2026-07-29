@@ -45,13 +45,18 @@ defmodule YouWeb.UserSessionController do
       form = Phoenix.Component.to_form(%{"email" => email}, as: "user")
       app = app_for(conn)
 
-      render(conn, :new,
+      conn
+      |> assign(:forced_theme, forced_theme(app))
+      |> render(:new,
         form: form,
         callback_url: get_session(conn, :callback_url),
         providers: oidc_providers(app),
         app_name: app && app.name,
         app_logo_url: app && app.logo_url,
         app_brand_color: app && app.brand_color,
+        app_brand_color_dark: app && app.brand_color_dark,
+        app_accent_color_dark: app && app.accent_color_dark,
+        app_accent_color: app && app.accent_color,
         app_headline: app && app.headline,
         app_subtitle: app && app.subtitle,
         methods: enabled_methods(app)
@@ -87,6 +92,11 @@ defmodule YouWeb.UserSessionController do
 
   # The auth methods the in-flight app allows. `nil` means every method, so an
   # app registered before a method existed still gets it.
+  # "system" leaves the visitor's own preference alone; only an explicit
+  # light/dark is pinned onto the document root.
+  defp forced_theme(%{theme_mode: mode}) when mode in ["light", "dark"], do: mode
+  defp forced_theme(_), do: nil
+
   # A magic link sent during an app's login flow should arrive under that
   # app's name, not You's — the user asked to sign in to the app.
   defp app_from_name(conn) do

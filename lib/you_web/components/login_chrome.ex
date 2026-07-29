@@ -25,6 +25,8 @@ defmodule YouWeb.Components.LoginChrome do
   attr :headline, :string, default: nil
   attr :subtitle, :string, default: nil
   attr :accent_color, :string, default: nil
+  attr :brand_color_dark, :string, default: nil
+  attr :accent_color_dark, :string, default: nil
 
   def login_header(assigns) do
     ~H"""
@@ -46,13 +48,29 @@ defmodule YouWeb.Components.LoginChrome do
           {@headline}
         <% else %>
           Sign in to continue to
-          <span :if={@brand_color} style={"color: #{@brand_color}"}>{@app_name}</span>
+          <span :if={@brand_color} class="dark:hidden" style={"color: #{@brand_color}"}>
+            {@app_name}
+          </span>
+          <span
+            :if={@brand_color}
+            class="hidden dark:inline"
+            style={"color: #{@brand_color_dark || @brand_color}"}
+          >
+            {@app_name}
+          </span>
           <span :if={!@brand_color} class="text-primary">{@app_name}</span>
         <% end %>
       </h1>
       <p
-        class="mt-1 text-sm text-muted-foreground"
+        class={["mt-1 text-sm text-muted-foreground", @accent_color && "dark:hidden"]}
         style={@accent_color && "color: #{@accent_color}"}
+      >
+        {@subtitle || "secured by You"}
+      </p>
+      <p
+        :if={@accent_color}
+        class="mt-1 hidden text-sm text-muted-foreground dark:block"
+        style={"color: #{@accent_color_dark || @accent_color}"}
       >
         {@subtitle || "secured by You"}
       </p>

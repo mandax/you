@@ -15,6 +15,9 @@ defmodule You.Admin.App do
     field :privacy_url, :string
     field :background_image_url, :string
     field :accent_color, :string
+    field :brand_color_dark, :string
+    field :accent_color_dark, :string
+    field :theme_mode, :string, default: "system"
     field :email_from_name, :string
     # nil means "everything the instance offers", so a provider or method added
     # later reaches existing apps instead of being silently skipped.
@@ -28,6 +31,10 @@ defmodule You.Admin.App do
   end
 
   @auth_methods ~w(password magic_link passkey social)
+  @theme_modes ~w(system light dark)
+
+  @doc "How an app's login page picks a theme. `system` follows the visitor."
+  def theme_modes, do: @theme_modes
 
   @doc "The auth methods an app may enable. `nil` on the column means all of them."
   def auth_methods, do: @auth_methods
@@ -47,6 +54,9 @@ defmodule You.Admin.App do
       :privacy_url,
       :background_image_url,
       :accent_color,
+      :brand_color_dark,
+      :accent_color_dark,
+      :theme_mode,
       :email_from_name,
       :enabled_providers,
       :enabled_methods,
@@ -61,6 +71,9 @@ defmodule You.Admin.App do
     |> validate_default_role()
     |> validate_format(:brand_color, ~r/^#[0-9a-fA-F]{6}$/)
     |> validate_format(:accent_color, ~r/^#[0-9a-fA-F]{6}$/)
+    |> validate_format(:brand_color_dark, ~r/^#[0-9a-fA-F]{6}$/)
+    |> validate_format(:accent_color_dark, ~r/^#[0-9a-fA-F]{6}$/)
+    |> validate_inclusion(:theme_mode, @theme_modes)
     |> validate_length(:headline, max: 200)
     |> validate_length(:subtitle, max: 200)
     |> validate_change(:logo_url, &validate_http_url/2)

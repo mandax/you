@@ -60,6 +60,8 @@ defmodule YouWeb.AppLive.Show do
          logo_url: safe_logo_url(params["logo_url"]),
          brand_color: safe_brand_color(params["brand_color"]),
          accent_color: safe_brand_color(params["accent_color"]),
+         brand_color_dark: safe_brand_color(params["brand_color_dark"]),
+         accent_color_dark: safe_brand_color(params["accent_color_dark"]),
          background_image_url: safe_logo_url(params["background_image_url"]),
          headline: safe_copy(params["headline"]),
          subtitle: safe_copy(params["subtitle"])
@@ -72,10 +74,12 @@ defmodule YouWeb.AppLive.Show do
     |> Admin.update_app(
       Map.take(params, [
         "accent_color",
+        "accent_color_dark",
         "background_image_url",
-        "logo_url",
         "brand_color",
+        "brand_color_dark",
         "headline",
+        "logo_url",
         "subtitle"
       ])
     )
@@ -92,6 +96,12 @@ defmodule YouWeb.AppLive.Show do
     socket.assigns.app
     |> Admin.update_app(Map.take(params, ["tos_url", "privacy_url", "email_from_name"]))
     |> reload(socket, "Consent screen updated.")
+  end
+
+  def handle_event("update_theme_mode", %{"theme_mode" => mode}, socket) do
+    socket.assigns.app
+    |> Admin.update_app(%{"theme_mode" => mode})
+    |> reload(socket, "Theme updated.")
   end
 
   def handle_event("update_providers", params, socket) do
@@ -229,6 +239,8 @@ defmodule YouWeb.AppLive.Show do
         logo_url: app.logo_url,
         brand_color: app.brand_color,
         accent_color: app.accent_color,
+        brand_color_dark: app.brand_color_dark,
+        accent_color_dark: app.accent_color_dark,
         background_image_url: app.background_image_url,
         headline: app.headline,
         subtitle: app.subtitle
@@ -256,6 +268,10 @@ defmodule YouWeb.AppLive.Show do
   end
 
   defp allowed_roles(app), do: app.allowed_roles || ["user", "admin"]
+
+  defp theme_mode_label("system"), do: "Follow the visitor's preference"
+  defp theme_mode_label("light"), do: "Always light"
+  defp theme_mode_label("dark"), do: "Always dark"
 
   defp enabled_providers(%{enabled_providers: nil}, all), do: Enum.map(all, & &1.slug)
   defp enabled_providers(%{enabled_providers: slugs}, _all), do: slugs
@@ -398,10 +414,42 @@ defmodule YouWeb.AppLive.Show do
               placeholder="#0ea5e9"
             />
             <.input
+              type="text"
+              name="brand_color_dark"
+              label="Brand color — dark mode (optional)"
+              value={@draft.brand_color_dark}
+              placeholder="falls back to the light value"
+            />
+            <.input
+              type="text"
+              name="accent_color_dark"
+              label="Accent color — dark mode (optional)"
+              value={@draft.accent_color_dark}
+              placeholder="falls back to the light value"
+            />
+            <.input
               type="url"
               name="background_image_url"
               label="Background image URL (optional)"
               value={@draft.background_image_url}
+            />
+            <div class="flex justify-end">
+              <.button type="submit">Save</.button>
+            </div>
+          </form>
+        </.panel>
+
+        <.panel
+          title="Theme"
+          description="Which themes this app's login page offers. Forcing one overrides the visitor's own preference."
+        >
+          <form id="app-theme-form" phx-submit="update_theme_mode" class="space-y-3">
+            <.input
+              type="select"
+              name="theme_mode"
+              label="Theme"
+              value={@app.theme_mode || "system"}
+              options={Enum.map(You.Admin.App.theme_modes(), &{theme_mode_label(&1), &1})}
             />
             <div class="flex justify-end">
               <.button type="submit">Save</.button>
@@ -510,7 +558,9 @@ defmodule YouWeb.AppLive.Show do
             app_name={@app.name}
             logo_url={presence(@draft.logo_url)}
             brand_color={presence(@draft.brand_color)}
+            brand_color_dark={presence(@draft.brand_color_dark)}
             accent_color={presence(@draft.accent_color)}
+            accent_color_dark={presence(@draft.accent_color_dark)}
             headline={presence(@draft.headline)}
             subtitle={presence(@draft.subtitle)}
           />

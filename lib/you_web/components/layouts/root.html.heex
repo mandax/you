@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-force-theme={assigns[:forced_theme]}>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -24,12 +24,18 @@
       // Applies the theme before first paint to avoid a flash of the wrong one.
       // Same storage key and "system" semantics as the theme toggle hook.
       (function() {
-        var theme = localStorage.getItem('you-theme');
+        // An app can pin its login page to one theme. Forcing has to happen
+        // here rather than on a wrapper element: a wrapper can add the dark
+        // class but cannot remove it when the visitor's preference is dark.
+        var forced = document.documentElement.getAttribute('data-force-theme');
+        var theme = forced || localStorage.getItem('you-theme');
         if (!theme) {
           theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
         }
         if (theme === 'dark') {
           document.documentElement.classList.add('dark');
+        } else {
+          document.documentElement.classList.remove('dark');
         }
       })();
     </script>
