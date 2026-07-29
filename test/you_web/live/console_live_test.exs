@@ -165,6 +165,42 @@ defmodule YouWeb.ConsoleLiveTest do
     end
   end
 
+  describe "list search" do
+    test "apps list filters by name and client id", %{conn: conn} do
+      {:ok, _, _} =
+        Admin.create_app(%{
+          slug: "alpha",
+          name: "Alpha",
+          callback_url: "https://a.example.com/cb"
+        })
+
+      {:ok, _, _} =
+        Admin.create_app(%{slug: "beta", name: "Beta", callback_url: "https://b.example.com/cb"})
+
+      {:ok, lv, html} = live(conn, ~p"/console?view=apps")
+      assert html =~ ~s(phx-change="filter_apps")
+
+      html = render_change(lv, "filter_apps", %{"query" => "alph"})
+      assert html =~ "Alpha"
+      refute html =~ "Beta"
+
+      # Matching the client id, not only the display name.
+      html = render_change(lv, "filter_apps", %{"query" => "beta"})
+      assert html =~ "Beta"
+      refute html =~ "Alpha"
+    end
+
+    test "webhooks list has a search box", %{conn: conn} do
+      {:ok, _lv, html} = live(conn, ~p"/console?view=webhooks")
+      assert html =~ ~s(phx-change="filter_webhooks")
+    end
+
+    test "providers list has a search box", %{conn: conn} do
+      {:ok, _lv, html} = live(conn, ~p"/console?view=providers")
+      assert html =~ ~s(phx-change="filter_providers")
+    end
+  end
+
   describe "users" do
     test "change You role via the role dropdown", %{conn: conn} do
       other = You.AccountsFixtures.user_fixture()

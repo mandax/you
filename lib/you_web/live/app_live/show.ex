@@ -32,7 +32,8 @@ defmodule YouWeb.AppLive.Show do
        new_secret: nil,
        selected: MapSet.new(),
        preview_theme: "light",
-       providers: You.IdentityProviders.list_enabled_providers()
+       providers: You.IdentityProviders.list_enabled_providers(),
+       member_filter: ""
      )
      |> assign_app(Admin.get_app_by_slug!(slug))}
   end
@@ -153,6 +154,10 @@ defmodule YouWeb.AppLive.Show do
     |> reload(socket, "Role removed.")
   end
 
+  def handle_event("stage_default_role", %{"value" => role}, socket) do
+    {:noreply, assign(socket, pending_default_role: role)}
+  end
+
   def handle_event("set_default_role", %{"default_role" => role}, socket) do
     socket.assigns.app
     |> Admin.set_default_role(role)
@@ -172,6 +177,10 @@ defmodule YouWeb.AppLive.Show do
       {:error, _} ->
         {:noreply, put_flash(socket, :error, "Role is not allowed for this app.")}
     end
+  end
+
+  def handle_event("filter_members", %{"query" => query}, socket) do
+    {:noreply, assign(socket, member_filter: query)}
   end
 
   def handle_event("toggle_member", %{"user_id" => user_id}, socket) do
@@ -246,7 +255,8 @@ defmodule YouWeb.AppLive.Show do
         subtitle: app.subtitle
       },
       members: Roles.list_for_app(app),
-      role_counts: Roles.count_by_role(app)
+      role_counts: Roles.count_by_role(app),
+      pending_default_role: app.default_role || "user"
     )
   end
 
@@ -268,6 +278,16 @@ defmodule YouWeb.AppLive.Show do
   end
 
   defp allowed_roles(app), do: app.allowed_roles || ["user", "admin"]
+
+  # Filtering is presentation only: a hidden row stays selected, so a bulk
+  # action after searching does not silently drop rows the admin had ticked.
+  defp filter_members(members, ""), do: members
+
+  defp filter_members(members, query) do
+    needle = String.downcase(query)
+
+    Enum.filter(members, fn {user, _} -> String.contains?(String.downcase(user.email), needle) end)
+  end
 
   defp theme_mode_label("system"), do: "Follow the visitor's preference"
   defp theme_mode_label("light"), do: "Always light"
@@ -317,11 +337,13 @@ defmodule YouWeb.AppLive.Show do
               roles={allowed_roles(@app)}
               counts={@role_counts}
               default_role={@app.default_role || "user"}
+              pending_default_role={@pending_default_role}
             />
           <% "members" -> %>
             <.members_tab
               app={@app}
-              members={@members}
+              members={filter_members(@members, @member_filter)}
+              filter={@member_filter}
               roles={allowed_roles(@app)}
               selected={@selected}
             />
@@ -385,12 +407,11 @@ defmodule YouWeb.AppLive.Show do
             class="space-y-4"
           >
             <.input type="url" name="logo_url" label="Logo URL (optional)" value={@draft.logo_url} />
-            <.input
-              type="text"
+            <.color_input
+              id="app-brand-color"
               name="brand_color"
               label="Brand color (optional)"
               value={@draft.brand_color}
-              placeholder="#7c3aed"
             />
             <.input
               type="text"
@@ -406,26 +427,23 @@ defmodule YouWeb.AppLive.Show do
               value={@draft.subtitle}
               placeholder="secured by You"
             />
-            <.input
-              type="text"
+            <.color_input
+              id="app-accent-color"
               name="accent_color"
               label="Accent color (optional)"
               value={@draft.accent_color}
-              placeholder="#0ea5e9"
             />
-            <.input
-              type="text"
+            <.color_input
+              id="app-brand-color-dark"
               name="brand_color_dark"
               label="Brand color — dark mode (optional)"
               value={@draft.brand_color_dark}
-              placeholder="falls back to the light value"
             />
-            <.input
-              type="text"
+            <.color_input
+              id="app-accent-color-dark"
               name="accent_color_dark"
               label="Accent color — dark mode (optional)"
               value={@draft.accent_color_dark}
-              placeholder="falls back to the light value"
             />
             <.input
               type="url"
@@ -646,6 +664,7 @@ defmodule YouWeb.AppLive.Show do
   attr :roles, :list, required: true
   attr :counts, :map, required: true
   attr :default_role, :string, required: true
+  attr :pending_default_role, :string, required: true
 
   defp roles_tab(assigns) do
     ~H"""
@@ -677,7 +696,7 @@ defmodule YouWeb.AppLive.Show do
           </li>
         </ul>
 
-        <form id="app-add-role-form" phx-submit="add_role" class="flex items-end gap-2">
+        <form id="app-add-role-form" phx-submit="add_role" class="flex items-end gap-2 [&_>div]:mb-0">
           <div class="flex-1">
             <.input type="text" name="role" label="Add a role" value="" required />
           </div>
@@ -690,23 +709,34 @@ defmodule YouWeb.AppLive.Show do
             What users without an explicit assignment resolve to. Changing it
             re-roles every unassigned user on their next token.
           </p>
-          <%!-- A form rather than an on_change select: the confirmation has to
-                fire before the change is pushed, and data-confirm needs a real
-                phx- binding to hook onto. --%>
-          <form
-            id="app-default-role-form"
-            phx-submit="set_default_role"
-            data-confirm="Change the default role? Every user without an explicit assignment gets the new role in their next token."
-            class="flex items-center gap-2"
-          >
+          <%!-- The select sits outside the form on purpose. A click inside a
+                data-confirm form raises the prompt before the dropdown even
+                opens, so picking a value would ask "are you sure" about a
+                change not yet made. Choosing stages the value; only Save
+                confirms. --%>
+          <div class="flex items-center gap-2">
             <.select
               id="app-default-role"
-              name="default_role"
-              value={@default_role}
+              value={@pending_default_role}
               options={Enum.map(@roles, &%{value: &1, label: &1})}
+              on_change="stage_default_role"
             />
-            <.button type="submit" size="sm" variant="outline">Set default</.button>
-          </form>
+            <form
+              id="app-default-role-form"
+              phx-submit="set_default_role"
+              data-confirm="Change the default role? Every user without an explicit assignment gets the new role in their next token."
+            >
+              <input type="hidden" name="default_role" value={@pending_default_role} />
+              <.button
+                type="submit"
+                size="sm"
+                variant="outline"
+                disabled={@pending_default_role == @default_role}
+              >
+                Set default
+              </.button>
+            </form>
+          </div>
         </div>
       </div>
     </.panel>
@@ -717,10 +747,26 @@ defmodule YouWeb.AppLive.Show do
   attr :members, :list, required: true
   attr :roles, :list, required: true
   attr :selected, :any, required: true
+  attr :filter, :string, required: true
 
   defp members_tab(assigns) do
     ~H"""
     <div class="space-y-3">
+      <form phx-change="filter_members" class="flex items-center gap-2 [&_>div]:mb-0">
+        <div class="flex-1">
+          <.input
+            type="text"
+            name="query"
+            value={@filter}
+            placeholder="Search members by email"
+            phx-debounce="200"
+          />
+        </div>
+        <span class="shrink-0 font-mono text-xs text-muted-foreground">
+          {length(@members)} shown
+        </span>
+      </form>
+
       <div
         :if={MapSet.size(@selected) > 0}
         class="flex items-center gap-3 rounded-md border border-border bg-muted/40 px-3 py-2"

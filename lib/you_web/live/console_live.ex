@@ -81,6 +81,9 @@ defmodule YouWeb.ConsoleLive do
        oidc_providers:
          Application.get_env(:you, :oidc_providers, %{}) |> Map.keys() |> Enum.sort(),
        saved: false,
+       app_filter: "",
+       provider_filter: "",
+       webhook_filter: "",
        features: Settings.features() |> Map.new(&{&1, Settings.get(&1)}),
        onboarding: not Settings.get(:onboarding_completed)
      )
@@ -356,6 +359,18 @@ defmodule YouWeb.ConsoleLive do
   end
 
   # ── settings ──────────────────────────────────────────────────
+  def handle_event("filter_apps", %{"query" => query}, socket) do
+    {:noreply, assign(socket, app_filter: query)}
+  end
+
+  def handle_event("filter_providers", %{"query" => query}, socket) do
+    {:noreply, assign(socket, provider_filter: query)}
+  end
+
+  def handle_event("filter_webhooks", %{"query" => query}, socket) do
+    {:noreply, assign(socket, webhook_filter: query)}
+  end
+
   def handle_event("filter_audit", %{"filter" => filter}, socket) do
     {:noreply, assign(socket, :audit_filter, filter)}
   end
@@ -464,6 +479,21 @@ defmodule YouWeb.ConsoleLive do
     end
   end
 
+  # Case-insensitive substring match across the given fields. Filtering is
+  # presentation only — nothing is re-queried, so a search cannot change what a
+  # bulk action would touch.
+  defp search(rows, "", _fields), do: rows
+
+  defp search(rows, query, fields) do
+    needle = String.downcase(query)
+
+    Enum.filter(rows, fn row ->
+      Enum.any?(fields, fn field ->
+        row |> Map.get(field) |> to_string() |> String.downcase() |> String.contains?(needle)
+      end)
+    end)
+  end
+
   # ── data loading ──────────────────────────────────────────────
   defp refresh_editing_user(socket, user_id) do
     case socket.assigns[:editing_user] do
@@ -561,7 +591,12 @@ defmodule YouWeb.ConsoleLive do
             editing_user={@editing_user}
           />
         <% "apps" -> %>
-          <.apps_view apps={@apps} new_secret={@new_secret} secret_app={@secret_app} />
+          <.apps_view
+            apps={search(@apps, @app_filter, [:name, :slug])}
+            app_filter={@app_filter}
+            new_secret={@new_secret}
+            secret_app={@secret_app}
+          />
         <% "providers" -> %>
           <.providers_view
             providers={@providers}
@@ -581,7 +616,8 @@ defmodule YouWeb.ConsoleLive do
           />
         <% "webhooks" -> %>
           <.webhooks_view
-            endpoints={@endpoints}
+            endpoints={search(@endpoints, @webhook_filter, [:url])}
+            webhook_filter={@webhook_filter}
             events={Webhooks.events()}
             webhook_secret={@webhook_secret}
             webhook_endpoint={@webhook_endpoint}
@@ -923,6 +959,7 @@ defmodule YouWeb.ConsoleLive do
 
   # ── section: apps ─────────────────────────────────────────────
   attr :apps, :list, required: true
+  attr :app_filter, :string, default: ""
   attr :new_secret, :string, default: nil
   attr :secret_app, :map, default: nil
 
@@ -963,6 +1000,14 @@ defmodule YouWeb.ConsoleLive do
           </form>
         </.dialog>
       </div>
+
+      <.list_search
+        event="filter_apps"
+        value={@app_filter}
+        placeholder="Search apps by name or client id"
+        count={length(@apps)}
+        noun="apps"
+      />
 
       <.data_table cols={~w(Name Client-ID Callback 1st-party Secret) ++ [""]} empty={@apps == []}>
         <tr
@@ -1037,6 +1082,7 @@ defmodule YouWeb.ConsoleLive do
 
   # ── section: providers ────────────────────────────────────────
   attr :providers, :list, required: true
+  attr :provider_filter, :string, default: ""
   attr :editing_provider, :any, default: nil
   attr :new_provider_open, :boolean, required: true
   attr :new_provider_preset, :string, required: true
@@ -1053,6 +1099,14 @@ defmodule YouWeb.ConsoleLive do
           <span class="lucide-plus size-4 block" /> New provider
         </.button>
       </div>
+
+      <.list_search
+        event="filter_providers"
+        value={@provider_filter}
+        placeholder="Search providers by name or slug"
+        count={length(@providers)}
+        noun="shown"
+      />
 
       <.data_table
         cols={~w(Slug Kind Display Client-ID Enabled Order) ++ [""]}
@@ -1119,7 +1173,7 @@ defmodule YouWeb.ConsoleLive do
             :if={@new_provider_preset == "generic"}
             class="space-y-3 rounded-md border border-border bg-muted/30 p-3"
           >
-            <form phx-submit="discover_provider" class="flex items-end gap-2">
+            <form phx-submit="discover_provider" class="flex items-end gap-2 [&_>div]:mb-0">
               <div class="flex-1">
                 <.input
                   type="url"
@@ -1314,7 +1368,7 @@ defmodule YouWeb.ConsoleLive do
           <div class="font-mono text-xs text-muted-foreground">{@selected.slug}</div>
         </div>
 
-        <form phx-submit="add_member" class="flex items-end gap-2">
+        <form phx-submit="add_member" class="flex items-end gap-2 [&_>div]:mb-0">
           <div class="flex-1">
             <.input type="email" name="email" label="Add member by email" value="" required />
           </div>
@@ -1448,6 +1502,7 @@ defmodule YouWeb.ConsoleLive do
 
   # ── section: webhooks ─────────────────────────────────────────
   attr :endpoints, :list, required: true
+  attr :webhook_filter, :string, default: ""
   attr :events, :list, required: true
   attr :webhook_secret, :string, default: nil
   attr :webhook_endpoint, :map, default: nil
@@ -1469,7 +1524,7 @@ defmodule YouWeb.ConsoleLive do
         </div>
         <form
           phx-submit="create_webhook"
-          class="mt-4 grid gap-3 sm:grid-cols-[1fr_16rem_auto] sm:items-end"
+          class="mt-4 grid gap-3 sm:grid-cols-[1fr_16rem_auto] sm:items-end [&_>div]:mb-0"
         >
           <label class="space-y-1.5">
             <span class="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
@@ -1501,6 +1556,14 @@ defmodule YouWeb.ConsoleLive do
           <.button type="submit">Create endpoint</.button>
         </form>
       </div>
+
+      <.list_search
+        event="filter_webhooks"
+        value={@webhook_filter}
+        placeholder="Search endpoints by URL"
+        count={length(@endpoints)}
+        noun="shown"
+      />
 
       <.data_table cols={~w(URL Events Status Created) ++ [""]} empty={@endpoints == []}>
         <tr
@@ -1581,6 +1644,31 @@ defmodule YouWeb.ConsoleLive do
         </:footer>
       </.dialog>
     </div>
+    """
+  end
+
+  attr :event, :string, required: true
+  attr :value, :string, required: true
+  attr :placeholder, :string, required: true
+  attr :count, :integer, required: true
+  attr :noun, :string, required: true
+
+  defp list_search(assigns) do
+    ~H"""
+    <form phx-change={@event} class="flex items-center gap-2 [&_>div]:mb-0">
+      <div class="flex-1">
+        <.input
+          type="text"
+          name="query"
+          value={@value}
+          placeholder={@placeholder}
+          phx-debounce="200"
+        />
+      </div>
+      <span class="shrink-0 font-mono text-xs text-muted-foreground">
+        {@count} {@noun}
+      </span>
+    </form>
     """
   end
 

@@ -764,6 +764,52 @@ defmodule YouWeb.AppLive.ShowTest do
     end
   end
 
+  describe "members search" do
+    test "narrows the list and keeps the selection", %{conn: conn, app: app} do
+      alice = You.AccountsFixtures.user_fixture(%{email: "alice@search.test"})
+      _bob = You.AccountsFixtures.user_fixture(%{email: "bob@search.test"})
+
+      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}?tab=members")
+
+      render_click(lv, "toggle_member", %{"user_id" => to_string(alice.id)})
+
+      html = render_change(lv, "filter_members", %{"query" => "alice"})
+
+      assert html =~ "alice@search.test"
+      refute html =~ "bob@search.test"
+      # Filtering is presentation only — a hidden row stays selected, so a bulk
+      # action after searching does not silently drop ticked rows.
+      assert html =~ "1 selected"
+
+      html = render_change(lv, "filter_members", %{"query" => ""})
+      assert html =~ "bob@search.test"
+    end
+
+    test "the search box is rendered and wired", %{conn: conn, app: app} do
+      {:ok, _lv, html} = live(conn, ~p"/console/apps/#{app.slug}?tab=members")
+      assert html =~ ~s(phx-change="filter_members")
+    end
+  end
+
+  describe "staged default role" do
+    # Choosing a value must not raise the confirmation: a click inside a
+    # data-confirm form prompts before the dropdown even opens.
+    test "selecting stages without saving, and the form confirms", %{conn: conn, app: app} do
+      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}?tab=roles")
+
+      html = render_change(lv, "stage_default_role", %{"value" => "admin"})
+
+      assert Admin.get_app!(app.id).default_role == "user"
+      assert html =~ ~s(phx-submit="set_default_role")
+      assert html =~ "data-confirm"
+
+      assert render_submit(lv, "set_default_role", %{"default_role" => "admin"}) =~
+               "Default role updated"
+
+      assert Admin.get_app!(app.id).default_role == "admin"
+    end
+  end
+
   describe "credentials" do
     test "rotating the secret reveals it once", %{conn: conn, app: app} do
       {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}?tab=credentials")

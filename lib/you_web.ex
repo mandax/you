@@ -94,6 +94,7 @@ defmodule YouWeb do
       # Base UI–inspired primitives.
       import YouWeb.Components.Base.Badge
       import YouWeb.Components.Base.Button
+      import YouWeb.Components.Base.ColorPicker
       import YouWeb.Components.Base.CopyButton
       import YouWeb.Components.Base.Dialog
       import YouWeb.Components.Base.DropdownMenu
