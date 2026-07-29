@@ -26,8 +26,41 @@ defmodule You.Settings do
     erlang_node_name: "you@you.example.com",
     epmd_port: 4369,
     scim_bearer_token: "",
-    audit_webhook_url: ""
+    audit_webhook_url: "",
+    onboarding_completed: false,
+    feature_passkeys: true,
+    feature_magic_link: true,
+    feature_totp: true,
+    feature_email_2fa: true,
+    feature_social_login: true,
+    feature_organizations: false,
+    feature_webhooks: true
   }
+
+  # Toggled from the feature screen. Everything else in @defaults is a tuning
+  # value, not a switch.
+  @features [
+    :feature_passkeys,
+    :feature_magic_link,
+    :feature_totp,
+    :feature_email_2fa,
+    :feature_social_login,
+    :feature_organizations,
+    :feature_webhooks
+  ]
+
+  @doc "The optional features an operator can switch off."
+  def features, do: @features
+
+  @doc """
+  Whether an optional feature is on.
+
+  Unknown keys are off rather than raising: a feature removed from the code
+  should not take the console down with it.
+  """
+  def enabled?(key) when is_atom(key) do
+    key in @features and get(key) == true
+  end
 
   @doc """
   Returns the value for a setting key, falling back to the default if not configured.
@@ -56,6 +89,10 @@ defmodule You.Settings do
   Sets a setting value. Upserts: creates if missing, updates if exists.
   Accepts both integers and strings.
   """
+  def set(key, value) when is_atom(key) and is_boolean(value) do
+    do_set(key, to_string(value))
+  end
+
   def set(key, value) when is_atom(key) and is_integer(value) do
     do_set(key, Integer.to_string(value))
   end
@@ -78,6 +115,7 @@ defmodule You.Settings do
     :ok
   end
 
+  defp cast_value(value, default) when is_boolean(default), do: value == "true"
   defp cast_value(value, default) when is_integer(default), do: String.to_integer(value)
   defp cast_value(value, _default), do: value
 end

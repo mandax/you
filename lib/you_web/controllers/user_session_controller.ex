@@ -110,9 +110,22 @@ defmodule YouWeb.UserSessionController do
     end
   end
 
-  defp enabled_methods(nil), do: You.Admin.App.auth_methods()
-  defp enabled_methods(%{enabled_methods: nil}), do: You.Admin.App.auth_methods()
-  defp enabled_methods(%{enabled_methods: methods}), do: methods
+  defp enabled_methods(app) do
+    app
+    |> app_methods()
+    |> Enum.filter(&instance_offers?/1)
+  end
+
+  defp app_methods(nil), do: You.Admin.App.auth_methods()
+  defp app_methods(%{enabled_methods: nil}), do: You.Admin.App.auth_methods()
+  defp app_methods(%{enabled_methods: methods}), do: methods
+
+  # An instance-level switch beats a per-app one: if an operator turned magic
+  # links off entirely, no app can opt back in.
+  defp instance_offers?("magic_link"), do: You.Settings.enabled?(:feature_magic_link)
+  defp instance_offers?("passkey"), do: You.Settings.enabled?(:feature_passkeys)
+  defp instance_offers?("social"), do: You.Settings.enabled?(:feature_social_login)
+  defp instance_offers?(_), do: true
 
   # Rendering is not gating: the login page hides a disabled method's control,
   # but anyone can POST to this action directly, so the method has to be

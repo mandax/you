@@ -19,6 +19,24 @@ defmodule YouWeb.ConsoleLive do
 
   @roles ~w(owner admin member)
 
+  # Shown but locked. An operator should be able to see that password login
+  # exists and cannot be switched off, rather than wonder where it went.
+  @mandatory_features [
+    {"Password sign-in", "The fallback every account has. Disabling it would lock everyone out."},
+    {"Sessions and tokens", "How You proves who a visitor is."},
+    {"Audit trail", "Records privileged actions. Not optional."}
+  ]
+
+  @feature_copy %{
+    feature_passkeys: {"Passkeys", "WebAuthn sign-in and per-user passkey management."},
+    feature_magic_link: {"Magic links", "Passwordless sign-in by emailed link."},
+    feature_totp: {"Authenticator app (TOTP)", "Time-based codes as a second factor."},
+    feature_email_2fa: {"Email codes", "A one-time code emailed as a second factor."},
+    feature_social_login: {"Social sign-in", "Upstream identity providers on the login page."},
+    feature_organizations: {"Organizations", "Teams that share app access. Still incomplete."},
+    feature_webhooks: {"Webhooks", "Signed outbound events."}
+  }
+
   # Write-only in the console: never rendered into the DOM, blank on save
   # keeps the current value, cleared via the explicit "clear" button.
   @secret_settings [:erlang_cookie, :scim_bearer_token]
@@ -64,7 +82,9 @@ defmodule YouWeb.ConsoleLive do
        base_url: YouWeb.Endpoint.url(),
        oidc_providers:
          Application.get_env(:you, :oidc_providers, %{}) |> Map.keys() |> Enum.sort(),
-       saved: false
+       saved: false,
+       features: Settings.features() |> Map.new(&{&1, Settings.get(&1)}),
+       onboarding: not Settings.get(:onboarding_completed)
      )
      |> load_data()
      |> load_settings()}
@@ -72,8 +92,11 @@ defmodule YouWeb.ConsoleLive do
 
   @impl true
   def handle_params(params, _uri, socket) do
-    view = params["view"] || "overview"
-    view = if Enum.any?(@nav, &(&1.id == view)), do: view, else: "overview"
+    # First admin login lands here rather than on an overview of a console
+    # they have not shaped yet.
+    default = if socket.assigns.onboarding, do: "features", else: "overview"
+    view = params["view"] || default
+    view = if Enum.any?(@nav, &(&1.id == view)), do: view, else: default
     {:noreply, assign(socket, view: view, saved: false)}
   end
 
@@ -390,6 +413,25 @@ defmodule YouWeb.ConsoleLive do
     {:noreply, assign(socket, webhook_secret: nil, webhook_endpoint: nil)}
   end
 
+  def handle_event("save_features", params, socket) do
+    enabled = Map.get(params, "features", %{})
+
+    for key <- Settings.features() do
+      Settings.set(key, Map.get(enabled, Atom.to_string(key)) == "true")
+    end
+
+    Settings.set(:onboarding_completed, true)
+    audit_admin(socket, "update_features", "instance")
+
+    {:noreply,
+     socket
+     |> assign(
+       features: Settings.features() |> Map.new(&{&1, Settings.get(&1)}),
+       onboarding: false
+     )
+     |> put_flash(:info, "Features updated.")}
+  end
+
   def handle_event("save_settings", params, socket) do
     Enum.each(@settings_fields, fn %{key: key} ->
       raw = params[Atom.to_string(key)]
@@ -541,6 +583,8 @@ defmodule YouWeb.ConsoleLive do
             webhook_secret={@webhook_secret}
             webhook_endpoint={@webhook_endpoint}
           />
+        <% "features" -> %>
+          <.features_view features={@features} onboarding={@onboarding} />
         <% "settings" -> %>
           <.settings_view
             settings={@settings}
@@ -1533,6 +1577,72 @@ defmodule YouWeb.ConsoleLive do
           <.button variant="outline" phx-click="dismiss_webhook_secret">Done</.button>
         </:footer>
       </.dialog>
+    </div>
+    """
+  end
+
+  # ── section: features ─────────────────────────────────────────
+  attr :features, :map, required: true
+  attr :onboarding, :boolean, required: true
+
+  defp features_view(assigns) do
+    assigns = assign(assigns, copy: @feature_copy, mandatory: @mandatory_features)
+
+    ~H"""
+    <div class="max-w-2xl space-y-5">
+      <div :if={@onboarding} class="rounded-lg border border-border bg-muted/40 p-4 text-sm">
+        <p class="font-medium">Welcome. Choose what this instance offers.</p>
+        <p class="mt-1 text-muted-foreground">
+          You ships a lot of surface. Switch off what you are not using and it
+          disappears from the console and the login page. You can change this later.
+        </p>
+      </div>
+
+      <form id="features-form" phx-submit="save_features" class="space-y-5">
+        <div class="rounded-lg border border-border bg-card p-5">
+          <div class="mb-3 text-sm font-medium">Optional</div>
+          <div class="space-y-3">
+            <label :for={{key, value} <- @features} class="flex items-start gap-3">
+              <%!-- Paired hidden input so an unticked box submits "false"
+                    rather than vanishing from the params. --%>
+              <input type="hidden" name={"features[#{key}]"} value="false" />
+              <input
+                type="checkbox"
+                name={"features[#{key}]"}
+                value="true"
+                checked={value}
+                class="mt-0.5 size-4 rounded border-border"
+              />
+              <span>
+                <span class="block text-sm">{elem(Map.fetch!(@copy, key), 0)}</span>
+                <span class="block text-xs text-muted-foreground">
+                  {elem(Map.fetch!(@copy, key), 1)}
+                </span>
+              </span>
+            </label>
+          </div>
+        </div>
+
+        <div class="rounded-lg border border-border bg-card p-5">
+          <div class="mb-1 text-sm font-medium">Always on</div>
+          <p class="mb-3 text-xs text-muted-foreground">
+            Listed so you can see they exist. These cannot be switched off.
+          </p>
+          <div class="space-y-3">
+            <label :for={{label, description} <- @mandatory} class="flex items-start gap-3 opacity-60">
+              <input type="checkbox" checked disabled class="mt-0.5 size-4 rounded border-border" />
+              <span>
+                <span class="block text-sm">{label}</span>
+                <span class="block text-xs text-muted-foreground">{description}</span>
+              </span>
+            </label>
+          </div>
+        </div>
+
+        <div class="flex justify-end">
+          <.button type="submit">Save</.button>
+        </div>
+      </form>
     </div>
     """
   end

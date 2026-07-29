@@ -285,6 +285,41 @@ defmodule YouWeb.UserSessionControllerTest do
     end
   end
 
+  describe "instance feature switches" do
+    # An instance switch beats a per-app one: an app cannot opt back into a
+    # method the operator turned off entirely.
+    test "a disabled instance feature removes the control even if the app allows it",
+         %{conn: conn} do
+      You.Settings.set(:feature_magic_link, false)
+      on_exit(fn -> You.Settings.set(:feature_magic_link, true) end)
+
+      {:ok, app, _} =
+        You.Admin.create_app(%{
+          slug: "instgate",
+          name: "Inst Gate",
+          callback_url: "https://instgate.example.com/cb"
+        })
+
+      assert app.enabled_methods == nil
+
+      html = conn |> get(~p"/users/log-in?callback_url=#{app.callback_url}") |> html_response(200)
+
+      refute html =~ ~s(id="login_form_magic")
+      assert html =~ ~s(id="login_form_password")
+    end
+
+    test "a magic-link request is rejected while the feature is off", %{conn: conn} do
+      You.Settings.set(:feature_magic_link, false)
+      on_exit(fn -> You.Settings.set(:feature_magic_link, true) end)
+
+      user = You.AccountsFixtures.user_fixture()
+
+      conn = post(conn, ~p"/users/log-in", %{"user" => %{"email" => user.email}})
+
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "not available"
+    end
+  end
+
   describe "per-app theme mode" do
     test "an app pinned to dark forces it at the document root", %{conn: conn} do
       {:ok, app, _} =

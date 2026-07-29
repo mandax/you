@@ -18,6 +18,51 @@ defmodule YouWeb.ConsoleLiveTest do
     end
   end
 
+  describe "feature toggles" do
+    test "first admin login lands on the features screen", %{conn: conn} do
+      refute You.Settings.get(:onboarding_completed)
+
+      {:ok, _lv, html} = live(conn, ~p"/console")
+
+      assert html =~ "Choose what this instance offers"
+      assert html =~ ~s(phx-submit="save_features")
+    end
+
+    # Shown but locked, so an operator can see the feature exists rather than
+    # wonder where it went.
+    test "mandatory features are listed and disabled", %{conn: conn} do
+      {:ok, _lv, html} = live(conn, ~p"/console?view=features")
+
+      assert html =~ "Always on"
+      assert html =~ "Password sign-in"
+      assert html =~ "disabled"
+    end
+
+    test "saving stores the toggles and completes onboarding", %{conn: conn} do
+      {:ok, lv, _} = live(conn, ~p"/console?view=features")
+
+      html =
+        lv
+        |> form("#features-form", %{
+          "features" => %{"feature_passkeys" => "true", "feature_magic_link" => "false"}
+        })
+        |> render_submit()
+
+      assert html =~ "Features updated"
+      assert You.Settings.get(:feature_passkeys) == true
+      assert You.Settings.get(:feature_magic_link) == false
+      assert You.Settings.get(:onboarding_completed) == true
+    end
+
+    test "after onboarding the console opens on the overview", %{conn: conn} do
+      You.Settings.set(:onboarding_completed, true)
+
+      {:ok, _lv, html} = live(conn, ~p"/console")
+
+      refute html =~ "Choose what this instance offers"
+    end
+  end
+
   describe "apps" do
     test "create reveals a one-time secret; delete removes", %{conn: conn} do
       {:ok, lv, _} = live(conn, "/console?view=apps")
