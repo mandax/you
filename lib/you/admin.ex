@@ -5,8 +5,9 @@ defmodule You.Admin do
 
   import Ecto.Query, warn: false
   alias You.Repo
-  alias You.Accounts.{User, Passkey, FederatedIdentity}
+  alias You.Accounts.{User, Passkey, FederatedIdentity, Consent}
   alias You.Admin.App
+  alias You.Roles.Assignment
 
   require Bcrypt
 
@@ -82,8 +83,18 @@ defmodule You.Admin do
     |> Ecto.Changeset.change(client_secret_hash: hashed)
     |> Repo.update()
     |> case do
-      {:ok, app} -> {:ok, app, secret}
-      {:error, changeset} -> {:error, changeset}
+      {:ok, app} ->
+        # Rotation invalidates the live secret immediately, so it needs a trail
+        # of its own rather than inheriting `update_app`'s.
+        :telemetry.execute([:you, :audit, :admin, :action], %{}, %{
+          action: "rotate_app_secret",
+          app_slug: app.slug
+        })
+
+        {:ok, app, secret}
+
+      {:error, changeset} ->
+        {:error, changeset}
     end
   end
 
@@ -109,12 +120,14 @@ defmodule You.Admin do
     users = Repo.all(from u in User, order_by: [asc: u.email])
 
     passkey_counts =
-      Repo.all(from p in Passkey, group_by: p.user_id, select: {p.user_id, count(p.id)})
-      |> Map.new()
+      Map.new(Repo.all(from p in Passkey, group_by: p.user_id, select: {p.user_id, count(p.id)}))
 
     identity_counts =
-      Repo.all(from f in FederatedIdentity, group_by: f.user_id, select: {f.user_id, count(f.id)})
-      |> Map.new()
+      Map.new(
+        Repo.all(
+          from f in FederatedIdentity, group_by: f.user_id, select: {f.user_id, count(f.id)}
+        )
+      )
 
     Enum.map(users, fn u ->
       %{
@@ -172,6 +185,11 @@ defmodule You.Admin do
   def get_app!(id), do: Repo.get!(App, id)
 
   @doc """
+  Fetches a single app by slug (its client_id), raising if it does not exist.
+  """
+  def get_app_by_slug!(slug) when is_binary(slug), do: Repo.get_by!(App, slug: slug)
+
+  @doc """
   Updates an existing app's attributes.
 
   Returns `{:ok, app}` or `{:error, changeset}`.
@@ -182,12 +200,81 @@ defmodule You.Admin do
       |> App.changeset(attrs)
       |> Repo.update()
 
-    :telemetry.execute([:you, :audit, :admin, :action], %{}, %{
-      action: "update_app",
-      app_slug: app.slug
-    })
+    # Only on success: a rejected changeset that still emitted would put a
+    # change into the audit trail that never happened.
+    with {:ok, _} <- result do
+      :telemetry.execute([:you, :audit, :admin, :action], %{}, %{
+        action: "update_app",
+        app_slug: app.slug
+      })
+    end
 
     result
+  end
+
+  @doc """
+  Replaces the app's `allowed_roles`.
+
+  Refuses to drop a role that users are still assigned, since those users would
+  keep a role the app no longer recognises. Returns `{:ok, app}`,
+  `{:error, {:roles_in_use, roles}}`, or `{:error, changeset}`.
+  """
+  def update_allowed_roles(%App{} = app, roles) when is_list(roles) do
+    roles = roles |> Enum.map(&String.trim/1) |> Enum.reject(&(&1 == "")) |> Enum.uniq()
+    in_use = Map.keys(You.Roles.count_by_role(app))
+    current = app.allowed_roles || []
+
+    with [] <- Enum.reject(in_use, &(&1 in roles)),
+         {:ok, updated} <- update_app(app, %{"allowed_roles" => roles}) do
+      # Which roles moved, not just that the app changed: the generic
+      # `update_app` event cannot say what was granted or taken away.
+      :telemetry.execute([:you, :audit, :admin, :action], %{}, %{
+        action: "update_allowed_roles",
+        app_slug: app.slug,
+        added: roles -- current,
+        removed: current -- roles
+      })
+
+      {:ok, updated}
+    else
+      {:error, changeset} -> {:error, changeset}
+      stranded -> {:error, {:roles_in_use, Enum.sort(stranded)}}
+    end
+  end
+
+  @doc """
+  Sets the role unassigned users resolve to in this app.
+
+  Emitted as its own audit action rather than a generic `update_app`: changing
+  it re-roles every user without an explicit assignment on their next token,
+  with no per-user record of the change anywhere.
+  """
+  def set_default_role(%App{} = app, role) when is_binary(role) do
+    result = update_app(app, %{"default_role" => role})
+
+    with {:ok, updated} <- result do
+      :telemetry.execute([:you, :audit, :admin, :action], %{}, %{
+        action: "set_default_role",
+        app_slug: app.slug,
+        from: app.default_role,
+        to: updated.default_role
+      })
+    end
+
+    result
+  end
+
+  @doc """
+  Counts the rows that cascade-delete along with the app: consents and role
+  assignments. Surfaced in the delete confirmation so an admin sees the
+  blast radius before confirming, since both tables `on_delete: :delete_all`
+  silently.
+  """
+  def deletion_impact(%App{} = app) do
+    %{
+      consents: Repo.aggregate(from(c in Consent, where: c.app_id == ^app.id), :count),
+      role_assignments: Repo.aggregate(from(a in Assignment, where: a.app_id == ^app.id), :count)
+    }
   end
 
   @doc """
@@ -196,10 +283,14 @@ defmodule You.Admin do
   def delete_app(%App{} = app) do
     result = Repo.delete(app)
 
-    :telemetry.execute([:you, :audit, :admin, :action], %{}, %{
-      action: "delete_app",
-      app_slug: app.slug
-    })
+    # Only on success, matching every other mutator here. A failed delete that
+    # still emitted would put an app removal into the trail that never happened.
+    with {:ok, _} <- result do
+      :telemetry.execute([:you, :audit, :admin, :action], %{}, %{
+        action: "delete_app",
+        app_slug: app.slug
+      })
+    end
 
     result
   end

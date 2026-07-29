@@ -122,13 +122,15 @@
   --signal-warn: 38 92% 45%;
   --signal-down: 0 72% 51%;
 
-  /* Sidebar */
-  --sidebar-background: 255 26% 97%;
-  --sidebar-foreground: 255 18% 38%;
-  --sidebar-muted: 255 20% 92%;
-  --sidebar-accent: 210 90% 48%;
-  --sidebar-accent-foreground: 0 0% 100%;
-  --sidebar-border: 258 18% 88%;
+  /* Sidebar. The active row is a neutral tint rather than a saturated fill: at
+     this density a solid block of brand colour reads as an alert, not a
+     location. */
+  --sidebar-background: 255 24% 96%;
+  --sidebar-foreground: 255 14% 45%;
+  --sidebar-muted: 255 20% 91%;
+  --sidebar-accent: 255 26% 88%;
+  --sidebar-accent-foreground: 260 35% 12%;
+  --sidebar-border: 258 18% 89%;
   --sidebar-ring: 210 90% 48%;
 }
 
@@ -165,12 +167,12 @@
   --signal-down: 0 72% 56%;
 
   /* Sidebar — ink panel, one step darker than --card */
-  --sidebar-background: 255 12% 8%;
-  --sidebar-foreground: 255 14% 62%;
-  --sidebar-muted: 255 9% 14%;
-  --sidebar-accent: 210 92% 62%;
-  --sidebar-accent-foreground: 260 35% 12%;
-  --sidebar-border: 255 9% 18%;
+  --sidebar-background: 255 10% 9%;
+  --sidebar-foreground: 255 12% 58%;
+  --sidebar-muted: 255 9% 15%;
+  --sidebar-accent: 255 9% 18%;
+  --sidebar-accent-foreground: 250 20% 96%;
+  --sidebar-border: 255 9% 17%;
   --sidebar-ring: 210 92% 62%;
 }
 
@@ -440,4 +442,22 @@
 @keyframes slide-in-right {
   from { opacity: 0; transform: translateX(1rem); }
   to { opacity: 1; transform: translateX(0); }
+}
+
+/* Per-app login branding. The values arrive as inline custom properties on
+   .app-branded (validated hex, set by the login controller); these rules pick
+   the right pair for the active theme and apply them. */
+.dark .app-branded {
+  --app-brand: var(--app-brand-dark);
+  --app-on-brand: var(--app-on-brand-dark);
+}
+
+.app-branded [data-brand-bg] {
+  background-color: var(--app-brand);
+  color: var(--app-on-brand);
+  border-color: var(--app-brand);
+}
+
+.app-branded [data-brand-text] {
+  color: var(--app-brand);
 }

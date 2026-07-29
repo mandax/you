@@ -1,7 +1,7 @@
 defmodule You.Accounts.CookieSync do
   @moduledoc """
   Reads `erlang_cookie` from settings after boot and applies it to the
-  Erlang VM. This lets operators manage the distribution cookie through
+  Erlang VM. This lets admins manage the distribution cookie through
   the admin settings page instead of only via env vars.
 
   The cookie from settings overrides whatever was set via `RELEASE_COOKIE`

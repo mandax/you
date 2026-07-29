@@ -101,7 +101,7 @@ defmodule You.Accounts do
   @doc """
   Registers a user with email and password, confirmed immediately.
 
-  Used by the management API: an operator-created account must be usable
+  Used by the management API: an admin-created account must be usable
   right away, without the magic-link confirmation round-trip. Atomic:
   either the whole account exists or nothing does.
 
@@ -314,12 +314,16 @@ defmodule You.Accounts do
 
   @doc """
   Delivers the magic link login instructions to the given user.
+
+  `from_name` sets the sender name, so mail sent as part of an app's login
+  flow arrives under that app's name rather than You's. `nil` keeps the
+  default.
   """
-  def deliver_login_instructions(%User{} = user, magic_link_url_fun)
+  def deliver_login_instructions(%User{} = user, magic_link_url_fun, from_name \\ nil)
       when is_function(magic_link_url_fun, 1) do
     {encoded_token, user_token} = UserToken.build_email_token(user, "login")
     Repo.insert!(user_token)
-    UserNotifier.deliver_login_instructions(user, magic_link_url_fun.(encoded_token))
+    UserNotifier.deliver_login_instructions(user, magic_link_url_fun.(encoded_token), from_name)
   end
 
   @doc """

@@ -94,8 +94,10 @@ defmodule YouWeb do
       # Base UI–inspired primitives.
       import YouWeb.Components.Base.Badge
       import YouWeb.Components.Base.Button
+      import YouWeb.Components.Base.ColorPicker
       import YouWeb.Components.Base.CopyButton
       import YouWeb.Components.Base.Dialog
+      import YouWeb.Components.Base.Disclosure
       import YouWeb.Components.Base.DropdownMenu
       import YouWeb.Components.Base.Input
       import YouWeb.Components.Base.Select
@@ -107,6 +109,9 @@ defmodule YouWeb do
 
       # Public-site chrome (wordmark, nav, footer) shared by landing and docs
       import YouWeb.Components.SiteChrome
+
+      # Login-page chrome, shared by the real login and the console preview
+      import YouWeb.Components.LoginChrome
 
       # Common modules used in templates
       alias Phoenix.LiveView.JS

@@ -4,11 +4,16 @@ defmodule You.Accounts.UserNotifier do
   alias You.Mailer
   alias You.Accounts.User
 
-  defp deliver(recipient, subject, body) do
+  @default_from_name "You"
+
+  defp deliver(recipient, subject, body, from_name \\ nil) do
     email =
       new()
       |> to(recipient)
-      |> from({"You", Application.get_env(:you, :mail_from, "contact@example.com")})
+      |> from(
+        {from_name || @default_from_name,
+         Application.get_env(:you, :mail_from, "contact@example.com")}
+      )
       |> subject(subject)
       |> text_body(body)
 
@@ -40,66 +45,81 @@ defmodule You.Accounts.UserNotifier do
   @doc """
   Deliver instructions to log in with a magic link.
   """
-  def deliver_login_instructions(user, url) do
+  def deliver_login_instructions(user, url, from_name \\ nil) do
     case user do
-      %User{confirmed_at: nil} -> deliver_confirmation_instructions(user, url)
-      _ -> deliver_magic_link_instructions(user, url)
+      %User{confirmed_at: nil} -> deliver_confirmation_instructions(user, url, from_name)
+      _ -> deliver_magic_link_instructions(user, url, from_name)
     end
   end
 
   @doc """
   Deliver a one-time email 2FA code.
   """
-  def deliver_email_2fa_code(user, code) do
-    deliver(user.email, "Your verification code", """
+  def deliver_email_2fa_code(user, code, from_name \\ nil) do
+    deliver(
+      user.email,
+      "Your verification code",
+      """
 
-    ==============================
+      ==============================
 
-    Hi #{user.email},
+      Hi #{user.email},
 
-    Your verification code is:
+      Your verification code is:
 
-    #{code}
+      #{code}
 
-    It expires in 10 minutes. If you didn't try to sign in, ignore this email
-    and consider changing your password.
+      It expires in 10 minutes. If you didn't try to sign in, ignore this email
+      and consider changing your password.
 
-    ==============================
-    """)
+      ==============================
+      """,
+      from_name
+    )
   end
 
-  defp deliver_magic_link_instructions(user, url) do
-    deliver(user.email, "Log in instructions", """
+  defp deliver_magic_link_instructions(user, url, from_name) do
+    deliver(
+      user.email,
+      "Log in instructions",
+      """
 
-    ==============================
+      ==============================
 
-    Hi #{user.email},
+      Hi #{user.email},
 
-    You can log into your account by visiting the URL below:
+      You can log into your account by visiting the URL below:
 
-    #{url}
+      #{url}
 
-    If you didn't request this email, please ignore this.
+      If you didn't request this email, please ignore this.
 
-    ==============================
-    """)
+      ==============================
+      """,
+      from_name
+    )
   end
 
-  defp deliver_confirmation_instructions(user, url) do
-    deliver(user.email, "Confirmation instructions", """
+  defp deliver_confirmation_instructions(user, url, from_name) do
+    deliver(
+      user.email,
+      "Confirmation instructions",
+      """
 
-    ==============================
+      ==============================
 
-    Hi #{user.email},
+      Hi #{user.email},
 
-    You can confirm your account by visiting the URL below:
+      You can confirm your account by visiting the URL below:
 
-    #{url}
+      #{url}
 
-    If you didn't create an account with us, please ignore this.
+      If you didn't create an account with us, please ignore this.
 
-    ==============================
-    """)
+      ==============================
+      """,
+      from_name
+    )
   end
 
   @doc """

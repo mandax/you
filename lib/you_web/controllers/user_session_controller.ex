@@ -30,29 +30,40 @@ defmodule YouWeb.UserSessionController do
 
     if conn.assigns[:current_scope] && conn.assigns.current_scope.user &&
          get_session(conn, :callback_url) do
-      app_name =
-        case You.Admin.lookup_app_by_callback(get_session(conn, :callback_url)) do
-          {:ok, app} -> app.name
-          :error -> get_session(conn, :callback_url)
-        end
+      app = app_for(conn)
+      app_name = if app, do: app.name, else: get_session(conn, :callback_url)
 
       render(conn, :authorize,
         app_name: app_name,
         user_email: conn.assigns.current_scope.user.email,
-        scopes: get_session(conn, :scopes) || ["email"]
+        scopes: get_session(conn, :scopes) || ["email"],
+        tos_url: app && app.tos_url,
+        privacy_url: app && app.privacy_url
       )
     else
       email = get_in(conn.assigns, [:current_scope, Access.key(:user), Access.key(:email)])
       form = Phoenix.Component.to_form(%{"email" => email}, as: "user")
       app = app_for(conn)
 
-      render(conn, :new,
+      conn
+      |> assign(:forced_theme, forced_theme(app))
+      |> render(:new,
         form: form,
         callback_url: get_session(conn, :callback_url),
-        providers: oidc_providers(),
+        providers: oidc_providers(app),
         app_name: app && app.name,
         app_logo_url: app && app.logo_url,
-        app_brand_color: app && app.brand_color
+        app_brand_color: app && app.brand_color,
+        app_brand_color_dark: app && app.brand_color_dark,
+        app_on_brand: app && app.brand_color && You.Admin.App.contrast_on(app.brand_color),
+        app_on_brand_dark:
+          app && app.brand_color &&
+            You.Admin.App.contrast_on(app.brand_color_dark || app.brand_color),
+        app_accent_color_dark: app && app.accent_color_dark,
+        app_accent_color: app && app.accent_color,
+        app_headline: app && app.headline,
+        app_subtitle: app && app.subtitle,
+        methods: enabled_methods(app)
       )
     end
   end
@@ -69,9 +80,56 @@ defmodule YouWeb.UserSessionController do
     end
   end
 
-  # Configured upstream OIDC providers, as a sorted list of ids ("google", …).
-  defp oidc_providers do
-    Application.get_env(:you, :oidc_providers, %{}) |> Map.keys() |> Enum.sort()
+  # Enabled upstream OIDC providers, as a sorted list of slugs ("google", …),
+  # filtered to the ones the in-flight `app` allows. Hiding the button here is
+  # a UX nicety only — `FederatedAuthController` is what actually gates access.
+  defp oidc_providers(app) do
+    You.IdentityProviders.list_enabled_providers()
+    |> Enum.map(& &1.slug)
+    |> then(&You.Admin.App.resolved_providers(app, &1))
+    |> Enum.sort()
+  end
+
+  # The auth methods the in-flight app allows. `nil` means every method, so an
+  # app registered before a method existed still gets it.
+  # "system" leaves the visitor's own preference alone; only an explicit
+  # light/dark is pinned onto the document root.
+  defp forced_theme(%{theme_mode: mode}) when mode in ["light", "dark"], do: mode
+  defp forced_theme(_), do: nil
+
+  # A magic link sent during an app's login flow should arrive under that
+  # app's name, not You's — the user asked to sign in to the app.
+  defp app_from_name(conn) do
+    case app_for(conn) do
+      %{email_from_name: name} when is_binary(name) and name != "" -> name
+      _ -> nil
+    end
+  end
+
+  defp enabled_methods(app) do
+    You.Admin.App.auth_methods()
+    |> Enum.filter(&instance_offers?/1)
+    |> then(&You.Admin.App.resolved_methods(app, &1))
+  end
+
+  # An instance-level switch beats a per-app one: if an admin turned magic
+  # links off entirely, no app can opt back in.
+  defp instance_offers?("magic_link"), do: You.Settings.enabled?(:feature_magic_link)
+  defp instance_offers?("passkey"), do: You.Settings.enabled?(:feature_passkeys)
+  defp instance_offers?("social"), do: You.Settings.enabled?(:feature_social_login)
+  defp instance_offers?(_), do: true
+
+  # Rendering is not gating: the login page hides a disabled method's control,
+  # but anyone can POST to this action directly, so the method has to be
+  # rejected here too.
+  defp method_enabled?(conn, method) do
+    method in enabled_methods(app_for(conn))
+  end
+
+  defp reject_disabled_method(conn) do
+    conn
+    |> put_flash(:error, "That sign-in method is not available for this application.")
+    |> redirect(to: ~p"/users/log-in?#{oauth_link_params(conn)}")
   end
 
   # The OAuth params stashed in the session, as a query map for embedding in
@@ -133,13 +191,31 @@ defmodule YouWeb.UserSessionController do
         |> render(:new,
           form: Phoenix.Component.to_form(%{}, as: "user"),
           callback_url: get_session(conn, :callback_url),
-          providers: oidc_providers()
+          providers: oidc_providers(app_for(conn)),
+          methods: enabled_methods(app_for(conn))
         )
     end
   end
 
   # email + password login
   def create(conn, %{"user" => %{"email" => email, "password" => password} = user_params}) do
+    if not method_enabled?(conn, "password") do
+      reject_disabled_method(conn)
+    else
+      do_password_login(conn, email, password, user_params)
+    end
+  end
+
+  # magic link request
+  def create(conn, %{"user" => %{"email" => email}}) do
+    if not method_enabled?(conn, "magic_link") do
+      reject_disabled_method(conn)
+    else
+      do_magic_link_request(conn, email)
+    end
+  end
+
+  defp do_password_login(conn, email, password, user_params) do
     if user = Accounts.get_user_by_email_and_password(email, password) do
       :telemetry.execute([:you, :audit, :login, :attempt], %{}, %{
         user_id: user.id,
@@ -181,13 +257,13 @@ defmodule YouWeb.UserSessionController do
       |> render(:new,
         form: form,
         callback_url: get_session(conn, :callback_url),
-        providers: oidc_providers()
+        providers: oidc_providers(app_for(conn)),
+        methods: enabled_methods(app_for(conn))
       )
     end
   end
 
-  # magic link request
-  def create(conn, %{"user" => %{"email" => email}}) do
+  defp do_magic_link_request(conn, email) do
     if user = Accounts.get_user_by_email(email) do
       # Carry the OAuth params in the magic-link URL, not just the session:
       # the link is usually opened in a different context (email client, other
@@ -196,7 +272,8 @@ defmodule YouWeb.UserSessionController do
 
       Accounts.deliver_login_instructions(
         user,
-        &url(~p"/users/log-in/#{&1}?#{link_params}")
+        &url(~p"/users/log-in/#{&1}?#{link_params}"),
+        app_from_name(conn)
       )
     end
 

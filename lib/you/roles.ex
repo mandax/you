@@ -12,17 +12,21 @@ defmodule You.Roles do
   alias You.Roles.Assignment
 
   @doc """
-  Returns the user's role in the app identified by slug, or `"user"` when
-  the app doesn't exist or no role is assigned.
+  Returns the user's role in the app identified by slug.
+
+  Falls back to the app's `default_role` when there is no explicit assignment,
+  and to `"user"` when the app doesn't exist. One left join rather than two
+  queries: this sits on the token-issuing path.
   """
   def role_for(app_slug, user_id) when is_binary(app_slug) do
-    Repo.one(
-      from a in Assignment,
-        join: app in App,
-        on: app.id == a.app_id and app.slug == ^app_slug,
-        where: a.user_id == ^user_id,
-        select: a.role
-    ) || "user"
+    query =
+      from app in App,
+        left_join: a in Assignment,
+        on: a.app_id == app.id and a.user_id == ^user_id,
+        where: app.slug == ^app_slug,
+        select: coalesce(a.role, app.default_role)
+
+    Repo.one(query) || "user"
   end
 
   def role_for(_app_slug, _user_id), do: "user"
@@ -72,15 +76,96 @@ defmodule You.Roles do
   rendering per-user role matrices.
   """
   def all_assignments do
-    Repo.all(from a in Assignment, select: {a.user_id, a.app_id, a.role})
-    |> Enum.reduce(%{}, fn {user_id, app_id, role}, acc ->
+    query = from a in Assignment, select: {a.user_id, a.app_id, a.role}
+
+    Enum.reduce(Repo.all(query), %{}, fn {user_id, app_id, role}, acc ->
       Map.update(acc, user_id, %{app_id => role}, &Map.put(&1, app_id, role))
     end)
   end
 
   @doc """
+  Counts explicit assignments per role in the app, as `%{role => count}`.
+
+  Only assigned roles appear: users on the implicit `"user"` role are not
+  counted, since removing that role from `allowed_roles` cannot strand them.
+  """
+  def count_by_role(%App{} = app) do
+    query =
+      from a in Assignment,
+        where: a.app_id == ^app.id,
+        group_by: a.role,
+        select: {a.role, count(a.id)}
+
+    Map.new(Repo.all(query))
+  end
+
+  @doc """
+  Assigns `role` to many users at once in a single statement.
+
+  One `insert_all` rather than a call per user: every write serialises through
+  SQLite's single writer, so the round-trip count is the cost that matters.
+  Returns `{:ok, count}` or `{:error, :invalid_role}`.
+  """
+  def set_roles(%App{} = app, user_ids, role) when is_list(user_ids) and is_binary(role) do
+    with true <- role in (app.allowed_roles || ["user", "admin"]),
+         {:ok, ids} <- parse_ids(user_ids) do
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+      entries =
+        Enum.map(ids, fn user_id ->
+          %{
+            app_id: app.id,
+            user_id: user_id,
+            role: role,
+            inserted_at: now,
+            updated_at: now
+          }
+        end)
+
+      {count, _} =
+        Repo.insert_all(Assignment, entries,
+          on_conflict: [set: [role: role, updated_at: now]],
+          conflict_target: [:app_id, :user_id]
+        )
+
+      # The ids, not just the count: a mass role change is worth as much
+      # forensically as the per-user events `set_role/3` emits.
+      :telemetry.execute([:you, :audit, :admin, :action], %{}, %{
+        action: "set_roles",
+        target: app.slug,
+        role: role,
+        user_ids: ids,
+        count: count
+      })
+
+      {:ok, count}
+    else
+      false -> {:error, :invalid_role}
+      :error -> {:error, :invalid_user}
+    end
+  end
+
+  # Ids arrive as strings from the client, which can push any payload it likes
+  # over the socket. Reject junk rather than raising out of the LiveView.
+  defp parse_ids(user_ids) do
+    Enum.reduce_while(user_ids, {:ok, []}, fn
+      id, {:ok, acc} when is_integer(id) ->
+        {:cont, {:ok, [id | acc]}}
+
+      id, {:ok, acc} when is_binary(id) ->
+        case Integer.parse(id) do
+          {parsed, ""} -> {:cont, {:ok, [parsed | acc]}}
+          _ -> {:halt, :error}
+        end
+
+      _, _ ->
+        {:halt, :error}
+    end)
+  end
+
+  @doc """
   Lists all users with their role in the app, sorted by email. Every user
-  appears exactly once, unassigned users with role `"user"`.
+  appears exactly once, unassigned users carrying the app's `default_role`.
   """
   def list_for_app(%App{} = app) do
     assigned =
@@ -101,8 +186,8 @@ defmodule You.Roles do
           order_by: u.email
       )
 
-    (Enum.map(assigned, fn {u, role} -> {u, role} end) ++
-       Enum.map(unassigned, &{&1, "user"}))
-    |> Enum.sort_by(fn {u, _} -> u.email end)
+    default = app.default_role || "user"
+
+    Enum.sort_by(assigned ++ Enum.map(unassigned, &{&1, default}), fn {u, _} -> u.email end)
   end
 end

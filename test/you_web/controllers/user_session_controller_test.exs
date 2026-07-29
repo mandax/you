@@ -23,12 +23,48 @@ defmodule YouWeb.UserSessionControllerTest do
     test "shows a federated provider button only when configured", %{conn: conn} do
       refute get(conn, ~p"/users/log-in") |> html_response(200) =~ "Sign in with Google"
 
-      Application.put_env(:you, :oidc_providers, %{"google" => %{}})
-      on_exit(fn -> Application.put_env(:you, :oidc_providers, %{}) end)
+      {:ok, _provider} =
+        You.IdentityProviders.create_provider(%{
+          "slug" => "google",
+          "display_name" => "Google",
+          "kind" => "google"
+        })
 
       html = get(conn, ~p"/users/log-in") |> html_response(200)
       assert html =~ "Sign in with Google"
       assert html =~ ~p"/auth/google"
+    end
+
+    test "omits a provider disabled for the in-flight app", %{conn: conn} do
+      {:ok, _google} =
+        You.IdentityProviders.create_provider(%{
+          "slug" => "google",
+          "display_name" => "Google",
+          "kind" => "google"
+        })
+
+      {:ok, _github} =
+        You.IdentityProviders.create_provider(%{
+          "slug" => "github",
+          "display_name" => "GitHub",
+          "kind" => "generic"
+        })
+
+      {:ok, _app, _secret} =
+        You.Admin.create_app(%{
+          slug: "google-only",
+          name: "Google Only",
+          callback_url: "https://google-only.example.com/cb",
+          enabled_providers: ["google"]
+        })
+
+      html =
+        conn
+        |> get(~p"/users/log-in?callback_url=https://google-only.example.com/cb")
+        |> html_response(200)
+
+      assert html =~ "Sign in with Google"
+      refute html =~ "Sign in with Github"
     end
 
     test "renders login page with email filled in (sudo mode)", %{conn: conn, user: user} do
@@ -91,6 +127,384 @@ defmodule YouWeb.UserSessionControllerTest do
       assert html =~ ~s(<span class="text-primary">Plain</span>)
       assert html =~ "lucide-lock"
       refute html =~ "<img"
+    end
+
+    test "shows a custom headline and subtitle for an app's OAuth login", %{conn: conn} do
+      {:ok, _app, _secret} =
+        You.Admin.create_app(%{
+          slug: "custom-copy",
+          name: "Custom Copy",
+          callback_url: "https://custom-copy.example.com/cb",
+          headline: "Welcome back to Custom Copy",
+          subtitle: "please sign in to continue"
+        })
+
+      html =
+        conn
+        |> get(~p"/users/log-in?callback_url=https://custom-copy.example.com/cb")
+        |> html_response(200)
+
+      assert html =~ "Welcome back to Custom Copy"
+      assert html =~ "please sign in to continue"
+      refute html =~ "Sign in to continue to"
+      refute html =~ "secured by You"
+    end
+
+    test "falls back to the default copy when headline/subtitle are unset", %{conn: conn} do
+      {:ok, _app, _secret} =
+        You.Admin.create_app(%{
+          slug: "default-copy",
+          name: "Default Copy",
+          callback_url: "https://default-copy.example.com/cb"
+        })
+
+      html =
+        conn
+        |> get(~p"/users/log-in?callback_url=https://default-copy.example.com/cb")
+        |> html_response(200)
+
+      assert html =~ "Sign in to continue to"
+      assert html =~ ~s(<span class="text-primary">Default Copy</span>)
+      assert html =~ "secured by You"
+    end
+  end
+
+  describe "GET /users/log-in - authorize (consent screen)" do
+    test "shows Terms of Service and Privacy Policy links when the app configures them", %{
+      conn: conn,
+      user: user
+    } do
+      {:ok, _app, _secret} =
+        You.Admin.create_app(%{
+          slug: "consenting",
+          name: "Consenting App",
+          callback_url: "https://consenting.example.com/cb",
+          tos_url: "https://consenting.example.com/tos",
+          privacy_url: "https://consenting.example.com/privacy"
+        })
+
+      html =
+        conn
+        |> log_in_user(user)
+        |> get(~p"/users/log-in?callback_url=https://consenting.example.com/cb&scope=email")
+        |> html_response(200)
+
+      assert html =~ "Authorize"
+      assert html =~ ~s(href="https://consenting.example.com/tos")
+      assert html =~ "Terms of Service"
+      assert html =~ ~s(href="https://consenting.example.com/privacy")
+      assert html =~ "Privacy Policy"
+    end
+
+    test "omits the consent links entirely when the app does not configure them", %{
+      conn: conn,
+      user: user
+    } do
+      {:ok, _app, _secret} =
+        You.Admin.create_app(%{
+          slug: "unconsenting",
+          name: "Unconsenting App",
+          callback_url: "https://unconsenting.example.com/cb"
+        })
+
+      html =
+        conn
+        |> log_in_user(user)
+        |> get(~p"/users/log-in?callback_url=https://unconsenting.example.com/cb&scope=email")
+        |> html_response(200)
+
+      assert html =~ "Authorize"
+      refute html =~ "Terms of Service"
+      refute html =~ "Privacy Policy"
+      refute html =~ "By continuing, you agree to"
+    end
+  end
+
+  describe "brand colour on buttons and links" do
+    test "the submit button and links pick up the brand colour in both themes", %{conn: conn} do
+      {:ok, app, _} =
+        You.Admin.create_app(%{
+          slug: "branded-btn",
+          name: "Branded",
+          callback_url: "https://bb.example.com/cb",
+          brand_color: "#7c3aed",
+          brand_color_dark: "#a78bfa"
+        })
+
+      html = conn |> get(~p"/users/log-in?callback_url=#{app.callback_url}") |> html_response(200)
+
+      assert html =~ "app-branded"
+      assert html =~ "--app-brand: #7c3aed"
+      assert html =~ "--app-brand-dark: #a78bfa"
+      assert html =~ "data-brand-bg"
+      assert html =~ "data-brand-text"
+    end
+
+    # The operator picks a background; the text on it has to stay legible, so
+    # the foreground is derived rather than configured.
+    test "the on-brand foreground is derived from luminance", %{conn: conn} do
+      {:ok, dark_bg, _} =
+        You.Admin.create_app(%{
+          slug: "darkbg",
+          name: "Dark BG",
+          callback_url: "https://darkbg.example.com/cb",
+          brand_color: "#111111"
+        })
+
+      html =
+        conn |> get(~p"/users/log-in?callback_url=#{dark_bg.callback_url}") |> html_response(200)
+
+      assert html =~ "--app-on-brand: #ffffff"
+
+      {:ok, light_bg, _} =
+        You.Admin.create_app(%{
+          slug: "lightbg",
+          name: "Light BG",
+          callback_url: "https://lightbg.example.com/cb",
+          brand_color: "#fefefe"
+        })
+
+      html =
+        conn |> get(~p"/users/log-in?callback_url=#{light_bg.callback_url}") |> html_response(200)
+
+      assert html =~ "--app-on-brand: #000000"
+    end
+
+    test "an unbranded app gets no style block", %{conn: conn} do
+      {:ok, app, _} =
+        You.Admin.create_app(%{
+          slug: "plainbtn",
+          name: "Plain",
+          callback_url: "https://plainbtn.example.com/cb"
+        })
+
+      html = conn |> get(~p"/users/log-in?callback_url=#{app.callback_url}") |> html_response(200)
+
+      refute html =~ "app-branded"
+      refute html =~ "--app-brand"
+    end
+  end
+
+  describe "instance feature switches" do
+    # An instance switch beats a per-app one: an app cannot opt back into a
+    # method the operator turned off entirely.
+    test "a disabled instance feature removes the control even if the app allows it",
+         %{conn: conn} do
+      You.Settings.set(:feature_magic_link, false)
+      on_exit(fn -> You.Settings.set(:feature_magic_link, true) end)
+
+      {:ok, app, _} =
+        You.Admin.create_app(%{
+          slug: "instgate",
+          name: "Inst Gate",
+          callback_url: "https://instgate.example.com/cb"
+        })
+
+      assert app.enabled_methods == nil
+
+      html = conn |> get(~p"/users/log-in?callback_url=#{app.callback_url}") |> html_response(200)
+
+      refute html =~ ~s(id="login_form_magic")
+      assert html =~ ~s(id="login_form_password")
+    end
+
+    test "a magic-link request is rejected while the feature is off", %{conn: conn} do
+      You.Settings.set(:feature_magic_link, false)
+      on_exit(fn -> You.Settings.set(:feature_magic_link, true) end)
+
+      user = You.AccountsFixtures.user_fixture()
+
+      conn = post(conn, ~p"/users/log-in", %{"user" => %{"email" => user.email}})
+
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "not available"
+    end
+  end
+
+  describe "per-app theme mode" do
+    test "an app pinned to dark forces it at the document root", %{conn: conn} do
+      {:ok, app, _} =
+        You.Admin.create_app(%{
+          slug: "darkapp",
+          name: "Dark App",
+          callback_url: "https://dark.example.com/cb",
+          theme_mode: "dark"
+        })
+
+      html = conn |> get(~p"/users/log-in?callback_url=#{app.callback_url}") |> html_response(200)
+
+      assert html =~ ~s(data-force-theme="dark")
+    end
+
+    test "an app on system leaves the visitor's preference alone", %{conn: conn} do
+      {:ok, app, _} =
+        You.Admin.create_app(%{
+          slug: "sysapp",
+          name: "System App",
+          callback_url: "https://sys.example.com/cb"
+        })
+
+      assert app.theme_mode == "system"
+
+      html = conn |> get(~p"/users/log-in?callback_url=#{app.callback_url}") |> html_response(200)
+
+      refute html =~ "data-force-theme=\"dark\""
+      refute html =~ "data-force-theme=\"light\""
+    end
+
+    test "both colour variants reach the login page", %{conn: conn} do
+      {:ok, app, _} =
+        You.Admin.create_app(%{
+          slug: "twotone",
+          name: "Two Tone",
+          callback_url: "https://twotone.example.com/cb",
+          brand_color: "#7c3aed",
+          brand_color_dark: "#a78bfa"
+        })
+
+      html = conn |> get(~p"/users/log-in?callback_url=#{app.callback_url}") |> html_response(200)
+
+      assert html =~ "color: #7c3aed"
+      assert html =~ "color: #a78bfa"
+    end
+  end
+
+  describe "per-app email sender name" do
+    # user_fixture/0 delivers a confirmation email, and assert_received matches
+    # the first message in the mailbox — without draining, these assertions
+    # inspect the fixture's email instead of the magic link and pass vacuously.
+    defp flush_emails do
+      receive do
+        {:email, _} -> flush_emails()
+      after
+        0 -> :ok
+      end
+    end
+
+    test "a magic link sent during an app flow uses the app's name", %{conn: conn} do
+      {:ok, app, _} =
+        You.Admin.create_app(%{
+          slug: "mailer",
+          name: "Mailer",
+          callback_url: "https://mailer.example.com/cb",
+          email_from_name: "Mailer Support"
+        })
+
+      user = You.AccountsFixtures.user_fixture()
+      flush_emails()
+
+      conn
+      |> get(~p"/users/log-in?callback_url=#{app.callback_url}")
+      |> post(~p"/users/log-in", %{"user" => %{"email" => user.email}})
+
+      assert_received {:email, email}
+      assert {"Mailer Support", _address} = email.from
+    end
+
+    test "a plain magic link keeps the default sender", %{conn: conn} do
+      user = You.AccountsFixtures.user_fixture()
+      flush_emails()
+
+      post(conn, ~p"/users/log-in", %{"user" => %{"email" => user.email}})
+
+      assert_received {:email, email}
+      assert {"You", _address} = email.from
+    end
+
+    test "a blank sender name falls back to the default", %{conn: conn} do
+      {:ok, app, _} =
+        You.Admin.create_app(%{
+          slug: "blankname",
+          name: "Blank",
+          callback_url: "https://blank.example.com/cb",
+          email_from_name: ""
+        })
+
+      user = You.AccountsFixtures.user_fixture()
+      flush_emails()
+
+      conn
+      |> get(~p"/users/log-in?callback_url=#{app.callback_url}")
+      |> post(~p"/users/log-in", %{"user" => %{"email" => user.email}})
+
+      assert_received {:email, email}
+      assert {"You", _address} = email.from
+    end
+  end
+
+  describe "per-app auth method toggles" do
+    setup do
+      {:ok, app, _secret} =
+        You.Admin.create_app(%{
+          slug: "gated",
+          name: "Gated",
+          callback_url: "https://gated.example.com/cb",
+          enabled_methods: ["passkey"]
+        })
+
+      %{app: app}
+    end
+
+    defp start_flow(conn, app) do
+      get(conn, ~p"/users/log-in?callback_url=#{app.callback_url}")
+    end
+
+    test "the login page omits controls for disabled methods", %{conn: conn, app: app} do
+      html = conn |> start_flow(app) |> html_response(200)
+
+      refute html =~ ~s(id="login_form_password")
+      refute html =~ ~s(id="login_form_magic")
+      assert html =~ ~s(id="passkey-login")
+    end
+
+    # Hiding the form is not the feature. Anyone can POST directly, so the
+    # rejection below is what actually disables the method.
+    test "a password POST is rejected for an app that disabled it", %{conn: conn, app: app} do
+      user = You.AccountsFixtures.user_fixture()
+
+      conn =
+        conn
+        |> start_flow(app)
+        |> post(~p"/users/log-in", %{
+          "user" => %{"email" => user.email, "password" => "hello world!"}
+        })
+
+      assert redirected_to(conn) =~ "/users/log-in"
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "not available"
+      refute get_session(conn, :user_token)
+    end
+
+    test "a magic-link request is rejected for an app that disabled it", %{conn: conn, app: app} do
+      user = You.AccountsFixtures.user_fixture()
+
+      conn =
+        conn
+        |> start_flow(app)
+        |> post(~p"/users/log-in", %{"user" => %{"email" => user.email}})
+
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "not available"
+    end
+
+    test "nil enabled_methods leaves every method working", %{conn: conn} do
+      {:ok, open_app, _} =
+        You.Admin.create_app(%{
+          slug: "open",
+          name: "Open",
+          callback_url: "https://open.example.com/cb"
+        })
+
+      assert open_app.enabled_methods == nil
+
+      html = conn |> start_flow(open_app) |> html_response(200)
+
+      assert html =~ ~s(id="login_form_password")
+      assert html =~ ~s(id="login_form_magic")
+    end
+
+    test "a plain login with no app in flight keeps every method", %{conn: conn} do
+      html = conn |> get(~p"/users/log-in") |> html_response(200)
+
+      assert html =~ ~s(id="login_form_password")
+      assert html =~ ~s(id="login_form_magic")
     end
   end
 

@@ -1,6 +1,6 @@
 defmodule YouWeb.ConsoleLive do
   @moduledoc """
-  Operator console: the admin surface at `/console`.
+  Admin console at `/console`.
 
   A single LiveView shell (sidebar + topbar + section views) with a dense,
   mono-accented design: cards and tables, a live
@@ -10,19 +10,51 @@ defmodule YouWeb.ConsoleLive do
   """
   use YouWeb, :live_view
 
-  alias You.{Admin, Organizations, Accounts, Settings, Webhooks, Roles}
+  import YouWeb.Components.ConsoleChrome
+
+  alias You.{Admin, Organizations, Accounts, Settings, Webhooks, Roles, IdentityProviders}
   alias You.Audit.Streamer
 
-  @nav [
-    %{id: "overview", label: "Overview", icon: "lucide-layout-dashboard"},
-    %{id: "users", label: "Users", icon: "lucide-users"},
-    %{id: "apps", label: "Apps", icon: "lucide-boxes"},
-    %{id: "audit", label: "Audit Log", icon: "lucide-scroll-text"},
-    %{id: "webhooks", label: "Webhooks", icon: "lucide-webhook"},
-    %{id: "settings", label: "Settings", icon: "lucide-settings"}
+  @roles ~w(owner admin member)
+
+  # Shown but locked. An admin should be able to see that password login
+  # exists and cannot be switched off, rather than wonder where it went.
+  @mandatory_features [
+    {"Password sign-in", "The fallback every account has. Disabling it would lock everyone out."},
+    {"Two-factor authentication",
+     "TOTP and emailed codes. A switch that turns a second factor off is a downgrade attack with a friendly label, and would strand enrolled accounts."},
+    {"Sessions and tokens", "How You proves who a visitor is."},
+    {"Audit trail", "Records privileged actions. Not optional."}
   ]
 
-  @roles ~w(owner admin member)
+  # One line per section, rendered above its view. Says what the section is for
+  # rather than restating its title.
+  @section_copy %{
+    "overview" => "Instance at a glance: accounts, registered apps, and recent activity.",
+    "users" =>
+      "Everyone with an account here. Filter by app, role, or status, and manage a user's access from their row.",
+    "apps" =>
+      "Services that delegate authentication to You. Each one gets a client id, a secret, and its own roles and login branding.",
+    "providers" =>
+      "Upstream identity providers users can sign in with. Configured once here, then enabled per app. A provider switched off is refused everywhere, not just hidden.",
+    "orgs" => "Groups of users that share app access.",
+    "audit" =>
+      "Privileged actions, newest first. This is the live in-memory view; configure the audit webhook for retention.",
+    "webhooks" =>
+      "Signed outbound events. Use them to react to identity changes in your own systems.",
+    "features" =>
+      "What this instance offers. Switching something off removes it from the console and the login page.",
+    "settings" =>
+      "Instance-wide tuning: token lifetimes, Erlang distribution, and integration secrets."
+  }
+
+  @feature_copy %{
+    feature_passkeys: {"Passkeys", "WebAuthn sign-in and per-user passkey management."},
+    feature_magic_link: {"Magic links", "Passwordless sign-in by emailed link."},
+    feature_social_login: {"Social sign-in", "Upstream identity providers on the login page."},
+    feature_organizations: {"Organizations", "Teams that share app access. Still incomplete."},
+    feature_webhooks: {"Webhooks", "Signed outbound events."}
+  }
 
   # Write-only in the console: never rendered into the DOM, blank on save
   # keeps the current value, cleared via the explicit "clear" button.
@@ -48,24 +80,33 @@ defmodule YouWeb.ConsoleLive do
      socket
      |> assign(
        page_title: "Console",
-       nav: @nav,
+       nav: nav(),
        view: "overview",
        node_name: Node.self(),
        roles: @roles,
        new_secret: nil,
        secret_app: nil,
-       editing_app: nil,
        selected_org: nil,
        members: [],
        audit_filter: "",
+       audit_app_filter: "",
        webhook_secret: nil,
        webhook_endpoint: nil,
        user_filters: %{},
        editing_user: nil,
+       editing_provider: nil,
+       new_provider_open: false,
+       new_provider_preset: "generic",
+       discovery: nil,
        base_url: YouWeb.Endpoint.url(),
        oidc_providers:
          Application.get_env(:you, :oidc_providers, %{}) |> Map.keys() |> Enum.sort(),
-       saved: false
+       saved: false,
+       app_filter: "",
+       provider_filter: "",
+       webhook_filter: "",
+       features: Settings.features() |> Map.new(&{&1, Settings.get(&1)}),
+       onboarding: not Settings.get(:onboarding_completed)
      )
      |> load_data()
      |> load_settings()}
@@ -73,8 +114,11 @@ defmodule YouWeb.ConsoleLive do
 
   @impl true
   def handle_params(params, _uri, socket) do
-    view = params["view"] || "overview"
-    view = if Enum.any?(@nav, &(&1.id == view)), do: view, else: "overview"
+    # First admin login lands here rather than on an overview of a console
+    # they have not shaped yet.
+    default = if socket.assigns.onboarding, do: "features", else: "overview"
+    view = params["view"] || default
+    view = if Enum.any?(nav(), &(&1.id == view)), do: view, else: default
     {:noreply, assign(socket, view: view, saved: false)}
   end
 
@@ -117,53 +161,117 @@ defmodule YouWeb.ConsoleLive do
         {:noreply, socket |> load_data() |> assign(new_secret: secret, secret_app: app)}
 
       {:error, changeset} ->
-        {:noreply, put_flash(socket, :error, "Could not create app: #{errors(changeset)}")}
-    end
-  end
-
-  def handle_event("rotate_secret", %{"id" => id}, socket) do
-    case id |> Admin.get_app!() |> Admin.rotate_app_secret() do
-      {:ok, app, secret} -> {:noreply, assign(socket, new_secret: secret, secret_app: app)}
-      {:error, cs} -> {:noreply, put_flash(socket, :error, "Could not rotate: #{errors(cs)}")}
+        {:noreply, put_flash(socket, :error, "Could not create app: #{error_summary(changeset)}")}
     end
   end
 
   def handle_event("delete_app", %{"id" => id}, socket) do
-    app = Admin.get_app!(id)
-    Admin.delete_app(app)
-    audit_admin(socket, "delete_app", app.slug)
-    {:noreply, socket |> load_data() |> put_flash(:info, "App deleted.")}
-  end
-
-  def handle_event("edit_app", %{"id" => id}, socket) do
-    {:noreply, assign(socket, editing_app: Admin.get_app!(id))}
-  end
-
-  def handle_event("update_app", params, socket) do
-    app = socket.assigns.editing_app
-
-    case Admin.update_app(
-           app,
-           Map.take(params, [
-             "name",
-             "callback_url",
-             "launch_url",
-             "logo_url",
-             "brand_color",
-             "first_party"
-           ])
-         ) do
+    # `Admin.delete_app/1` emits the audit event itself; a second one here
+    # would record the same removal twice under two different shapes.
+    case id |> Admin.get_app!() |> Admin.delete_app() do
       {:ok, _app} ->
-        {:noreply,
-         socket |> load_data() |> assign(editing_app: nil) |> put_flash(:info, "App updated.")}
+        {:noreply, socket |> load_data() |> put_flash(:info, "App deleted.")}
 
       {:error, changeset} ->
-        {:noreply, put_flash(socket, :error, "Could not update app: #{errors(changeset)}")}
+        {:noreply, put_flash(socket, :error, "Could not delete: #{error_summary(changeset)}")}
     end
   end
 
-  def handle_event("cancel_edit_app", _params, socket) do
-    {:noreply, assign(socket, editing_app: nil)}
+  # ── identity providers ───────────────────────────────────────
+  def handle_event("new_provider", _params, socket) do
+    {:noreply,
+     assign(socket, new_provider_open: true, new_provider_preset: "generic", discovery: nil)}
+  end
+
+  def handle_event("cancel_new_provider", _params, socket) do
+    {:noreply, assign(socket, new_provider_open: false, discovery: nil)}
+  end
+
+  def handle_event("select_new_provider_preset", %{"value" => preset}, socket) do
+    {:noreply, assign(socket, new_provider_preset: preset, discovery: nil)}
+  end
+
+  def handle_event("discover_provider", %{"issuer" => issuer}, socket) do
+    socket =
+      case IdentityProviders.discover(issuer) do
+        {:ok, attrs} -> assign(socket, discovery: {:ok, attrs})
+        {:error, reason} -> assign(socket, discovery: {:error, reason})
+      end
+
+    {:noreply, socket}
+  end
+
+  def handle_event("create_provider", params, socket) do
+    preset = params["preset"] || "generic"
+    attrs = provider_create_attrs(params)
+
+    case IdentityProviders.create_provider_from_preset(preset, attrs) do
+      {:ok, provider} ->
+        audit_admin(socket, "create_provider", provider.slug)
+
+        {:noreply,
+         socket
+         |> load_data()
+         |> assign(new_provider_open: false, discovery: nil)
+         |> put_flash(:info, "Provider created.")}
+
+      {:error, %Ecto.Changeset{} = changeset} ->
+        {:noreply,
+         put_flash(socket, :error, "Could not create provider: #{error_summary(changeset)}")}
+
+      {:error, :unknown_preset} ->
+        {:noreply, put_flash(socket, :error, "Unknown preset.")}
+    end
+  end
+
+  def handle_event("edit_provider", %{"id" => id}, socket) do
+    {:noreply, assign(socket, editing_provider: IdentityProviders.get_provider!(id))}
+  end
+
+  def handle_event("cancel_edit_provider", _params, socket) do
+    {:noreply, assign(socket, editing_provider: nil)}
+  end
+
+  def handle_event("update_provider", params, socket) do
+    provider = IdentityProviders.get_provider!(params["provider_id"])
+    attrs = provider_update_attrs(params)
+
+    case IdentityProviders.update_provider(provider, attrs) do
+      {:ok, provider} ->
+        audit_admin(socket, "update_provider", provider.slug)
+
+        {:noreply,
+         socket
+         |> load_data()
+         |> assign(editing_provider: nil)
+         |> put_flash(:info, "Provider updated.")}
+
+      {:error, changeset} ->
+        {:noreply,
+         put_flash(socket, :error, "Could not update provider: #{error_summary(changeset)}")}
+    end
+  end
+
+  def handle_event("toggle_provider", %{"id" => id}, socket) do
+    provider = IdentityProviders.get_provider!(id)
+
+    {:ok, updated} =
+      IdentityProviders.update_provider(provider, %{"enabled" => !provider.enabled})
+
+    audit_admin(
+      socket,
+      if(updated.enabled, do: "enable_provider", else: "disable_provider"),
+      updated.slug
+    )
+
+    {:noreply, load_data(socket)}
+  end
+
+  def handle_event("delete_provider", %{"id" => id}, socket) do
+    provider = IdentityProviders.get_provider!(id)
+    {:ok, _} = IdentityProviders.delete_provider(provider)
+    audit_admin(socket, "delete_provider", provider.slug)
+    {:noreply, socket |> load_data() |> put_flash(:info, "Provider deleted.")}
   end
 
   def handle_event("filter_users", %{"filter_key" => key, "value" => value}, socket) do
@@ -235,7 +343,7 @@ defmodule YouWeb.ConsoleLive do
         {:noreply, socket |> load_data() |> put_flash(:info, "Organization created.")}
 
       {:error, cs} ->
-        {:noreply, put_flash(socket, :error, "Could not create org: #{errors(cs)}")}
+        {:noreply, put_flash(socket, :error, "Could not create org: #{error_summary(cs)}")}
     end
   end
 
@@ -254,7 +362,7 @@ defmodule YouWeb.ConsoleLive do
             {:noreply, socket |> select_org(org.id) |> put_flash(:info, "Member added.")}
 
           {:error, cs} ->
-            {:noreply, put_flash(socket, :error, "Could not add: #{errors(cs)}")}
+            {:noreply, put_flash(socket, :error, "Could not add: #{error_summary(cs)}")}
         end
     end
   end
@@ -272,8 +380,24 @@ defmodule YouWeb.ConsoleLive do
   end
 
   # ── settings ──────────────────────────────────────────────────
+  def handle_event("filter_apps", %{"query" => query}, socket) do
+    {:noreply, assign(socket, app_filter: query)}
+  end
+
+  def handle_event("filter_providers", %{"query" => query}, socket) do
+    {:noreply, assign(socket, provider_filter: query)}
+  end
+
+  def handle_event("filter_webhooks", %{"query" => query}, socket) do
+    {:noreply, assign(socket, webhook_filter: query)}
+  end
+
   def handle_event("filter_audit", %{"filter" => filter}, socket) do
     {:noreply, assign(socket, :audit_filter, filter)}
+  end
+
+  def handle_event("filter_audit_app", %{"value" => app_slug}, socket) do
+    {:noreply, assign(socket, :audit_app_filter, app_slug)}
   end
 
   # ── webhooks ──────────────────────────────────────────────────
@@ -295,7 +419,8 @@ defmodule YouWeb.ConsoleLive do
          |> assign(webhook_secret: endpoint.secret, webhook_endpoint: endpoint)}
 
       {:error, changeset} ->
-        {:noreply, put_flash(socket, :error, "Could not create endpoint: #{errors(changeset)}")}
+        {:noreply,
+         put_flash(socket, :error, "Could not create endpoint: #{error_summary(changeset)}")}
     end
   end
 
@@ -327,6 +452,25 @@ defmodule YouWeb.ConsoleLive do
     {:noreply, assign(socket, webhook_secret: nil, webhook_endpoint: nil)}
   end
 
+  def handle_event("save_features", params, socket) do
+    enabled = Map.get(params, "features", %{})
+
+    for key <- Settings.features() do
+      Settings.set(key, Map.get(enabled, Atom.to_string(key)) == "true")
+    end
+
+    Settings.set(:onboarding_completed, true)
+    audit_admin(socket, "update_features", "instance")
+
+    {:noreply,
+     socket
+     |> assign(
+       features: Settings.features() |> Map.new(&{&1, Settings.get(&1)}),
+       onboarding: false
+     )
+     |> put_flash(:info, "Features updated.")}
+  end
+
   def handle_event("save_settings", params, socket) do
     Enum.each(@settings_fields, fn %{key: key} ->
       raw = params[Atom.to_string(key)]
@@ -342,15 +486,33 @@ defmodule YouWeb.ConsoleLive do
   end
 
   def handle_event("clear_setting", %{"key" => key}, socket) do
-    key = String.to_existing_atom(key)
+    # Resolve against the allowlist rather than converting first: an unknown key
+    # would raise in `String.to_existing_atom/1` before any membership check.
+    case Enum.find(@secret_settings, &(Atom.to_string(&1) == key)) do
+      nil ->
+        {:noreply, socket}
 
-    if key in @secret_settings do
-      Settings.set(key, "")
-      You.Accounts.CookieSync.apply_cookie()
-      You.Audit.Streamer.reload()
+      setting ->
+        Settings.set(setting, "")
+        You.Accounts.CookieSync.apply_cookie()
+        You.Audit.Streamer.reload()
+        {:noreply, load_settings(socket)}
     end
+  end
 
-    {:noreply, load_settings(socket)}
+  # Case-insensitive substring match across the given fields. Filtering is
+  # presentation only — nothing is re-queried, so a search cannot change what a
+  # bulk action would touch.
+  defp search(rows, "", _fields), do: rows
+
+  defp search(rows, query, fields) do
+    needle = String.downcase(query)
+
+    Enum.filter(rows, fn row ->
+      Enum.any?(fields, fn field ->
+        row |> Map.get(field) |> to_string() |> String.downcase() |> String.contains?(needle)
+      end)
+    end)
   end
 
   # ── data loading ──────────────────────────────────────────────
@@ -386,10 +548,35 @@ defmodule YouWeb.ConsoleLive do
       orgs: Organizations.list_organizations_with_counts(),
       events: Streamer.recent(),
       endpoints: Webhooks.list_endpoints(),
-      assignments: Roles.all_assignments()
+      assignments: Roles.all_assignments(),
+      providers: IdentityProviders.list_providers()
     )
     |> assign(members: if(org, do: Organizations.list_members(org), else: []))
   end
+
+  # Drops blank/missing keys so a preset's endpoint template (or, on edit, the
+  # provider's own stored values) is left in place rather than clobbered by an
+  # empty form field. `create_provider_from_preset/2` merges these attrs over
+  # the preset, so a key's absence here is what makes the preset default win.
+  defp provider_create_attrs(params) do
+    ~w(slug display_name client_id client_secret issuer authorize_url token_url userinfo_url scopes)
+    |> Enum.reduce(%{}, fn key, attrs ->
+      case params[key] do
+        value when is_binary(value) and value != "" -> Map.put(attrs, key, value)
+        _ -> attrs
+      end
+    end)
+  end
+
+  defp provider_update_attrs(params) do
+    Map.take(params, ~w(
+      display_name client_id client_secret issuer authorize_url token_url userinfo_url scopes
+      sort_order
+    ))
+  end
+
+  defp discovery_value({:ok, attrs}, key), do: Map.get(attrs, key)
+  defp discovery_value(_discovery, _key), do: nil
 
   defp load_settings(socket),
     do: assign(socket, settings: Settings.all())
@@ -401,116 +588,85 @@ defmodule YouWeb.ConsoleLive do
     end
   end
 
-  defp errors(changeset) do
-    Ecto.Changeset.traverse_errors(changeset, fn {msg, _} -> msg end)
-    |> Enum.map_join("; ", fn {f, msgs} -> "#{f} #{Enum.join(msgs, ", ")}" end)
-  end
-
   defp parse_value(raw) do
     if raw =~ ~r/^\d+$/, do: String.to_integer(raw), else: raw
   end
 
-  defp nav_label(view), do: Enum.find_value(@nav, "", &if(&1.id == view, do: &1.label))
+  defp section_copy(view), do: Map.get(@section_copy, view)
+
+  defp nav_label(view), do: Enum.find_value(nav(), "", &if(&1.id == view, do: &1.label))
 
   # ── shell ─────────────────────────────────────────────────────
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="flex h-screen overflow-hidden bg-background text-foreground">
-      <aside class="flex w-56 shrink-0 flex-col border-r border-sidebar-border bg-sidebar">
-        <div class="flex h-12 items-center gap-2 border-b border-sidebar-border px-4">
-          <.wordmark size="sm" />
-        </div>
-
-        <nav class="flex-1 space-y-0.5 px-2 pt-2">
-          <.link
-            :for={n <- @nav}
-            patch={~p"/console?view=#{n.id}"}
-            class={[
-              "flex h-8 w-full items-center gap-2.5 rounded-md px-2.5 text-sm transition-colors",
-              if(@view == n.id,
-                do: "bg-sidebar-accent text-sidebar-accent-foreground",
-                else: "text-sidebar-foreground hover:bg-sidebar-muted hover:text-foreground"
-              )
-            ]}
-          >
-            <span class={[n.icon, "size-4 block shrink-0"]} /> {n.label}
-          </.link>
-        </nav>
-
-        <div class="space-y-1 border-t border-sidebar-border px-2 py-2">
-          <.link
-            navigate={~p"/users/settings"}
-            class="flex h-8 items-center gap-2.5 rounded-md px-2.5 text-sm text-sidebar-foreground transition-colors hover:bg-sidebar-muted hover:text-foreground"
-          >
-            <span class="lucide-user size-4 block shrink-0" /> My account
-          </.link>
-          <.link
-            href={~p"/users/log-out"}
-            method="delete"
-            class="flex h-8 items-center gap-2.5 rounded-md px-2.5 text-sm text-sidebar-foreground transition-colors hover:bg-sidebar-muted hover:text-foreground"
-          >
-            <span class="lucide-log-out size-4 block shrink-0" /> Sign out
-          </.link>
-        </div>
-      </aside>
-
-      <div class="flex min-w-0 flex-1 flex-col">
-        <header class="flex h-12 shrink-0 items-center gap-3 border-b border-border px-4">
-          <div class="text-sm font-medium">{nav_label(@view)}</div>
-          <div class="ml-auto flex items-center gap-3">
-            <span class="hidden items-center gap-1.5 font-mono text-xs text-muted-foreground sm:flex">
-              <span class="h-1.5 w-1.5 animate-pulse-live rounded-full bg-signal-live" />
-              connected · {@node_name}
-            </span>
-            <.theme_toggle id="console-theme" />
-          </div>
-        </header>
-
-        <main class="flex-1 overflow-y-auto p-6">
-          <%= case @view do %>
-            <% "overview" -> %>
-              <.overview users={@users} apps={@apps} orgs={@orgs} events={@events} />
-            <% "users" -> %>
-              <.users_view
-                users={@users}
-                apps={@apps}
-                assignments={@assignments}
-                filters={@user_filters}
-                current_scope={@current_scope}
-                editing_user={@editing_user}
-              />
-            <% "apps" -> %>
-              <.apps_view
-                apps={@apps}
-                new_secret={@new_secret}
-                secret_app={@secret_app}
-                editing_app={@editing_app}
-              />
-            <% "orgs" -> %>
-              <.orgs_view orgs={@orgs} selected={@selected_org} members={@members} roles={@roles} />
-            <% "audit" -> %>
-              <.audit_view events={@events} audit_filter={@audit_filter} />
-            <% "webhooks" -> %>
-              <.webhooks_view
-                endpoints={@endpoints}
-                events={Webhooks.events()}
-                webhook_secret={@webhook_secret}
-                webhook_endpoint={@webhook_endpoint}
-              />
-            <% "settings" -> %>
-              <.settings_view
-                settings={@settings}
-                base_url={@base_url}
-                oidc_providers={@oidc_providers}
-                saved={@saved}
-              />
-          <% end %>
-        </main>
+    <.console_shell nav={@nav} active={@view} title={nav_label(@view)} node_name={@node_name}>
+      <div class="mb-5">
+        <h1 class="text-lg font-medium">{nav_label(@view)}</h1>
+        <p :if={section_copy(@view)} class="mt-1 max-w-2xl text-sm text-muted-foreground">
+          {section_copy(@view)}
+        </p>
       </div>
-    </div>
 
-    <Layouts.flash_group flash={@flash} />
+      <%= case @view do %>
+        <% "overview" -> %>
+          <.overview users={@users} apps={@apps} orgs={@orgs} events={@events} />
+        <% "users" -> %>
+          <.users_view
+            users={@users}
+            apps={@apps}
+            assignments={@assignments}
+            filters={@user_filters}
+            current_scope={@current_scope}
+            editing_user={@editing_user}
+          />
+        <% "apps" -> %>
+          <.apps_view
+            apps={search(@apps, @app_filter, [:name, :slug])}
+            app_filter={@app_filter}
+            new_secret={@new_secret}
+            secret_app={@secret_app}
+          />
+        <% "providers" -> %>
+          <.providers_view
+            providers={search(@providers, @provider_filter, [:display_name, :slug])}
+            provider_filter={@provider_filter}
+            base_url={@base_url}
+            editing_provider={@editing_provider}
+            new_provider_open={@new_provider_open}
+            new_provider_preset={@new_provider_preset}
+            discovery={@discovery}
+          />
+        <% "orgs" -> %>
+          <.orgs_view orgs={@orgs} selected={@selected_org} members={@members} roles={@roles} />
+        <% "audit" -> %>
+          <.audit_view
+            events={@events}
+            apps={@apps}
+            audit_filter={@audit_filter}
+            audit_app_filter={@audit_app_filter}
+          />
+        <% "webhooks" -> %>
+          <.webhooks_view
+            endpoints={search(@endpoints, @webhook_filter, [:url])}
+            webhook_filter={@webhook_filter}
+            events={Webhooks.events()}
+            webhook_secret={@webhook_secret}
+            webhook_endpoint={@webhook_endpoint}
+          />
+        <% "features" -> %>
+          <.features_view features={@features} onboarding={@onboarding} />
+        <% "settings" -> %>
+          <.settings_view
+            settings={@settings}
+            base_url={@base_url}
+            oidc_providers={@oidc_providers}
+            saved={@saved}
+          />
+      <% end %>
+
+      <Layouts.flash_group flash={@flash} />
+    </.console_shell>
     """
   end
 
@@ -736,7 +892,7 @@ defmodule YouWeb.ConsoleLive do
   # Per-app roles for one user, condensed into a single cell.
   #
   # A column per app does not survive contact with a real instance: it grows
-  # without bound and nearly every cell reads "user". What an operator scans for
+  # without bound and nearly every cell reads "user". What an admin scans for
   # is the exception, so elevated roles are shown by name and the rest collapses
   # into a count.
   attr :access, :map, required: true
@@ -835,9 +991,9 @@ defmodule YouWeb.ConsoleLive do
 
   # ── section: apps ─────────────────────────────────────────────
   attr :apps, :list, required: true
+  attr :app_filter, :string, default: ""
   attr :new_secret, :string, default: nil
   attr :secret_app, :map, default: nil
-  attr :editing_app, :map, default: nil
 
   defp apps_view(assigns) do
     ~H"""
@@ -877,6 +1033,14 @@ defmodule YouWeb.ConsoleLive do
         </.dialog>
       </div>
 
+      <.list_search
+        event="filter_apps"
+        value={@app_filter}
+        placeholder="Search apps by name or client id"
+        count={length(@apps)}
+        noun="apps"
+      />
+
       <.data_table cols={~w(Name Client-ID Callback 1st-party Secret) ++ [""]} empty={@apps == []}>
         <tr
           :for={app <- @apps}
@@ -895,27 +1059,17 @@ defmodule YouWeb.ConsoleLive do
             <.status_badge status={if app.client_secret_hash, do: "running", else: "idle"} />
           </td>
           <td class="px-3 py-2 text-right whitespace-nowrap">
-            <button
-              type="button"
-              phx-click="edit_app"
-              phx-value-id={app.id}
+            <.link
+              navigate={~p"/console/apps/#{app.slug}"}
               class="rounded px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             >
-              Edit
-            </button>
-            <button
-              type="button"
-              phx-click="rotate_secret"
-              phx-value-id={app.id}
-              class="rounded px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-            >
-              Rotate
-            </button>
+              Manage
+            </.link>
             <button
               type="button"
               phx-click="delete_app"
               phx-value-id={app.id}
-              data-confirm={"Delete app “#{app.name}”? This cannot be undone."}
+              data-confirm={delete_app_confirm(app)}
               class="rounded px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-destructive hover:text-destructive-foreground"
             >
               Delete
@@ -923,51 +1077,6 @@ defmodule YouWeb.ConsoleLive do
           </td>
         </tr>
       </.data_table>
-
-      <.dialog id="edit-app" open={@editing_app != nil} on_close="cancel_edit_app">
-        <:title>Edit app</:title>
-        <:description>Update the app's name, URLs, and first-party flag.</:description>
-        <form :if={@editing_app} phx-submit="update_app" class="space-y-4">
-          <.input type="text" name="name" label="Name" value={@editing_app.name} required />
-          <.input
-            type="url"
-            name="callback_url"
-            label="Callback URL"
-            value={@editing_app.callback_url}
-            required
-          />
-          <.input
-            type="url"
-            name="launch_url"
-            label="Launch URL (optional)"
-            value={@editing_app.launch_url}
-          />
-          <.input
-            type="url"
-            name="logo_url"
-            label="Logo URL (optional)"
-            value={@editing_app.logo_url}
-          />
-          <.input
-            type="text"
-            name="brand_color"
-            label="Brand color (optional)"
-            value={@editing_app.brand_color}
-            placeholder="#7c3aed"
-          />
-          <.input
-            type="checkbox"
-            name="first_party"
-            label="First-party app"
-            value="true"
-            checked={@editing_app.first_party}
-          />
-          <div class="flex justify-end gap-2">
-            <.button type="button" variant="outline" phx-click="cancel_edit_app">Cancel</.button>
-            <.button type="submit">Save</.button>
-          </div>
-        </form>
-      </.dialog>
 
       <.dialog id="app-secret" open={@new_secret != nil} on_close="dismiss_secret">
         <:title>Client secret</:title>
@@ -987,6 +1096,251 @@ defmodule YouWeb.ConsoleLive do
           <.button variant="outline" phx-click="dismiss_secret">Done</.button>
         </:footer>
       </.dialog>
+    </div>
+    """
+  end
+
+  # Computed at render time rather than carried as an assign: app counts are a
+  # handful of rows in an admin console, and staleness here would understate
+  # exactly the number an admin is relying on to decide.
+  defp delete_app_confirm(app) do
+    %{consents: consents, role_assignments: roles} = Admin.deletion_impact(app)
+
+    "Delete app “#{app.name}”? This permanently deletes #{consents} #{pluralize(consents, "consent", "consents")} and #{roles} #{pluralize(roles, "role assignment", "role assignments")}. This cannot be undone."
+  end
+
+  defp pluralize(1, singular, _plural), do: singular
+  defp pluralize(_count, _singular, plural), do: plural
+
+  # ── section: providers ────────────────────────────────────────
+  attr :providers, :list, required: true
+  attr :provider_filter, :string, default: ""
+  attr :base_url, :string, required: true
+  attr :editing_provider, :any, default: nil
+  attr :new_provider_open, :boolean, required: true
+  attr :new_provider_preset, :string, required: true
+  attr :discovery, :any, default: nil
+
+  defp providers_view(assigns) do
+    ~H"""
+    <div class="space-y-4">
+      <div class="flex items-center justify-between">
+        <span class="font-mono text-xs text-muted-foreground">
+          {length(@providers)} providers
+        </span>
+        <.button size="sm" phx-click="new_provider">
+          <span class="lucide-plus size-4 block" /> New provider
+        </.button>
+      </div>
+
+      <.list_search
+        event="filter_providers"
+        value={@provider_filter}
+        placeholder="Search providers by name or slug"
+        count={length(@providers)}
+        noun="shown"
+      />
+
+      <.data_table
+        cols={~w(Slug Kind Display Client-ID Enabled Order) ++ [""]}
+        empty={@providers == []}
+      >
+        <tr
+          :for={p <- @providers}
+          class="border-b border-border/60 transition-colors last:border-0 hover:bg-muted/40"
+        >
+          <td class="px-3 py-2 font-mono text-xs text-foreground/90">{p.slug}</td>
+          <td class="px-3 py-2 font-mono text-xs text-muted-foreground">{p.kind}</td>
+          <td class="px-3 py-2 text-xs">{p.display_name}</td>
+          <td class="px-3 py-2 font-mono text-xs text-muted-foreground">{p.client_id || "—"}</td>
+          <td class="px-3 py-2">
+            <.switch checked={p.enabled} phx-click="toggle_provider" phx-value-id={p.id} />
+          </td>
+          <td class="px-3 py-2 font-mono text-xs text-muted-foreground">{p.sort_order}</td>
+          <td class="px-3 py-2 text-right whitespace-nowrap">
+            <button
+              type="button"
+              phx-click="edit_provider"
+              phx-value-id={p.id}
+              class="rounded px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            >
+              Edit
+            </button>
+            <button
+              type="button"
+              phx-click="delete_provider"
+              phx-value-id={p.id}
+              data-confirm={"Delete provider “#{p.display_name}”? Logins via this provider will stop working immediately."}
+              class="rounded px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-destructive hover:text-destructive-foreground"
+            >
+              Delete
+            </button>
+          </td>
+        </tr>
+      </.data_table>
+
+      <.dialog id="new-provider" open={@new_provider_open} on_close="cancel_new_provider">
+        <:title>New provider</:title>
+        <:description>Create from a preset, or configure a generic OIDC provider.</:description>
+
+        <div class="space-y-4">
+          <div class="space-y-1.5">
+            <span class="block font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+              Preset
+            </span>
+            <.select
+              id="new-provider-preset"
+              value={@new_provider_preset}
+              options={
+                Enum.map(
+                  IdentityProviders.Presets.names(),
+                  &%{value: &1, label: String.capitalize(&1)}
+                )
+              }
+              on_change="select_new_provider_preset"
+              params={%{}}
+            />
+          </div>
+
+          <.provider_setup preset={@new_provider_preset} base_url={@base_url} />
+
+          <div
+            :if={@new_provider_preset == "generic"}
+            class="space-y-3 rounded-md border border-border bg-muted/30 p-3"
+          >
+            <form phx-submit="discover_provider" class="flex items-end gap-2 [&_>div]:mb-0">
+              <div class="flex-1">
+                <.input
+                  type="url"
+                  name="issuer"
+                  label="Discover from issuer URL"
+                  value={discovery_value(@discovery, :issuer)}
+                  placeholder="https://issuer.example.com"
+                />
+              </div>
+              <.button type="submit" variant="outline" size="sm">Discover</.button>
+            </form>
+            <p :if={match?({:error, _}, @discovery)} class="font-mono text-[11px] text-signal-down">
+              Discovery failed: {elem(@discovery, 1)}
+            </p>
+            <p :if={match?({:ok, _}, @discovery)} class="font-mono text-[11px] text-signal-ok">
+              Discovered endpoints below — review before creating.
+            </p>
+          </div>
+
+          <form id="new-provider-form" phx-submit="create_provider" class="space-y-3">
+            <input type="hidden" name="preset" value={@new_provider_preset} />
+            <.input type="text" name="slug" label="Slug" value="" required />
+            <.input type="text" name="display_name" label="Display name (optional)" value="" />
+            <.input type="text" name="client_id" label="Client ID" value="" />
+            <.input
+              type="password"
+              name="client_secret"
+              label="Client secret"
+              value=""
+              autocomplete="off"
+            />
+
+            <div :if={@new_provider_preset == "generic"} class="space-y-3">
+              <.input
+                type="url"
+                name="issuer"
+                label="Issuer"
+                value={discovery_value(@discovery, :issuer)}
+              />
+              <.input
+                type="url"
+                name="authorize_url"
+                label="Authorize URL"
+                value={discovery_value(@discovery, :authorize_url)}
+              />
+              <.input
+                type="url"
+                name="token_url"
+                label="Token URL"
+                value={discovery_value(@discovery, :token_url)}
+              />
+              <.input
+                type="url"
+                name="userinfo_url"
+                label="Userinfo URL"
+                value={discovery_value(@discovery, :userinfo_url)}
+              />
+              <.input
+                type="text"
+                name="scopes"
+                label="Scopes"
+                value={discovery_value(@discovery, :scopes)}
+              />
+            </div>
+
+            <div class="flex justify-end gap-2">
+              <.button type="button" variant="outline" phx-click="cancel_new_provider">
+                Cancel
+              </.button>
+              <.button type="submit">Create</.button>
+            </div>
+          </form>
+        </div>
+      </.dialog>
+
+      <.sheet id="edit-provider" open={@editing_provider != nil} on_close="cancel_edit_provider">
+        <:title>{@editing_provider && @editing_provider.display_name}</:title>
+        <:description>
+          {@editing_provider && @editing_provider.slug} · {@editing_provider && @editing_provider.kind}
+        </:description>
+        <form
+          :if={@editing_provider}
+          id="edit-provider-form"
+          phx-submit="update_provider"
+          class="space-y-3"
+        >
+          <input type="hidden" name="provider_id" value={@editing_provider.id} />
+          <.input
+            type="text"
+            name="display_name"
+            label="Display name"
+            value={@editing_provider.display_name}
+            required
+          />
+          <.input type="text" name="client_id" label="Client ID" value={@editing_provider.client_id} />
+          <.input
+            type="password"
+            name="client_secret"
+            label="Client secret"
+            value=""
+            placeholder="unchanged — enter to replace"
+            autocomplete="off"
+          />
+          <.input type="url" name="issuer" label="Issuer" value={@editing_provider.issuer} />
+          <.input
+            type="url"
+            name="authorize_url"
+            label="Authorize URL"
+            value={@editing_provider.authorize_url}
+          />
+          <.input type="url" name="token_url" label="Token URL" value={@editing_provider.token_url} />
+          <.input
+            type="url"
+            name="userinfo_url"
+            label="Userinfo URL"
+            value={@editing_provider.userinfo_url}
+          />
+          <.input type="text" name="scopes" label="Scopes" value={@editing_provider.scopes} />
+          <.input
+            type="number"
+            name="sort_order"
+            label="Sort order"
+            value={@editing_provider.sort_order}
+          />
+          <div class="flex justify-end gap-2">
+            <.button type="button" variant="outline" phx-click="cancel_edit_provider">
+              Cancel
+            </.button>
+            <.button type="submit">Save</.button>
+          </div>
+        </form>
+      </.sheet>
     </div>
     """
   end
@@ -1049,7 +1403,7 @@ defmodule YouWeb.ConsoleLive do
           <div class="font-mono text-xs text-muted-foreground">{@selected.slug}</div>
         </div>
 
-        <form phx-submit="add_member" class="flex items-end gap-2">
+        <form phx-submit="add_member" class="flex items-end gap-2 [&_>div]:mb-0">
           <div class="flex-1">
             <.input type="email" name="email" label="Add member by email" value="" required />
           </div>
@@ -1108,16 +1462,17 @@ defmodule YouWeb.ConsoleLive do
 
   # ── section: audit ────────────────────────────────────────────
   attr :events, :list, required: true
+  attr :apps, :list, required: true
   attr :audit_filter, :string, required: true
+  attr :audit_app_filter, :string, required: true
 
   defp audit_view(assigns) do
     assigns =
       assign(assigns,
         filtered:
-          if(assigns.audit_filter == "",
-            do: assigns.events,
-            else: Enum.filter(assigns.events, &audit_matches?(&1, assigns.audit_filter))
-          )
+          assigns.events
+          |> Enum.filter(&audit_matches?(&1, assigns.audit_filter))
+          |> Enum.filter(&audit_app_matches?(&1, assigns.audit_app_filter))
       )
 
     ~H"""
@@ -1129,15 +1484,28 @@ defmodule YouWeb.ConsoleLive do
             add a webhook for durable retention
           </.link>
         </p>
-        <form phx-change="filter_audit" class="shrink-0">
-          <input
-            type="text"
-            name="filter"
-            value={@audit_filter}
-            placeholder="filter events"
-            class="h-8 w-48 rounded-md border border-input bg-background px-3 font-mono text-xs placeholder:text-muted-foreground/60"
+        <div class="flex shrink-0 items-center gap-2">
+          <.select
+            id="filter-audit-app"
+            value={@audit_app_filter}
+            placeholder="all apps"
+            options={
+              [%{value: "", label: "all apps"}] ++
+                Enum.map(@apps, &%{value: &1.slug, label: &1.name})
+            }
+            on_change="filter_audit_app"
+            params={%{}}
           />
-        </form>
+          <form phx-change="filter_audit">
+            <input
+              type="text"
+              name="filter"
+              value={@audit_filter}
+              placeholder="filter events"
+              class="h-8 w-48 rounded-md border border-input bg-background px-3 font-mono text-xs placeholder:text-muted-foreground/60"
+            />
+          </form>
+        </div>
       </div>
       <.data_table cols={~w(Event Details At)} empty={@filtered == []}>
         <tr
@@ -1162,8 +1530,14 @@ defmodule YouWeb.ConsoleLive do
     String.contains?(haystack, String.downcase(filter))
   end
 
+  defp audit_app_matches?(_event, ""), do: true
+
+  defp audit_app_matches?(event, app_slug),
+    do: to_string(event.metadata[:app_slug]) == app_slug
+
   # ── section: webhooks ─────────────────────────────────────────
   attr :endpoints, :list, required: true
+  attr :webhook_filter, :string, default: ""
   attr :events, :list, required: true
   attr :webhook_secret, :string, default: nil
   attr :webhook_endpoint, :map, default: nil
@@ -1185,7 +1559,7 @@ defmodule YouWeb.ConsoleLive do
         </div>
         <form
           phx-submit="create_webhook"
-          class="mt-4 grid gap-3 sm:grid-cols-[1fr_16rem_auto] sm:items-end"
+          class="mt-4 grid gap-3 sm:grid-cols-[1fr_16rem_auto] sm:items-end [&_>div]:mb-0"
         >
           <label class="space-y-1.5">
             <span class="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
@@ -1217,6 +1591,14 @@ defmodule YouWeb.ConsoleLive do
           <.button type="submit">Create endpoint</.button>
         </form>
       </div>
+
+      <.list_search
+        event="filter_webhooks"
+        value={@webhook_filter}
+        placeholder="Search endpoints by URL"
+        count={length(@endpoints)}
+        noun="shown"
+      />
 
       <.data_table cols={~w(URL Events Status Created) ++ [""]} empty={@endpoints == []}>
         <tr
@@ -1296,6 +1678,146 @@ defmodule YouWeb.ConsoleLive do
           <.button variant="outline" phx-click="dismiss_webhook_secret">Done</.button>
         </:footer>
       </.dialog>
+    </div>
+    """
+  end
+
+  attr :event, :string, required: true
+  attr :value, :string, required: true
+  attr :placeholder, :string, required: true
+  attr :count, :integer, required: true
+  attr :noun, :string, required: true
+
+  defp list_search(assigns) do
+    ~H"""
+    <form phx-change={@event} class="flex items-center gap-2 [&_>div]:mb-0">
+      <div class="flex-1">
+        <.input
+          type="text"
+          name="query"
+          value={@value}
+          placeholder={@placeholder}
+          phx-debounce="200"
+        />
+      </div>
+      <span class="shrink-0 font-mono text-xs text-muted-foreground">
+        {@count} {@noun}
+      </span>
+    </form>
+    """
+  end
+
+  attr :preset, :string, required: true
+  attr :base_url, :string, required: true
+
+  defp provider_setup(assigns) do
+    assigns = assign(assigns, guide: IdentityProviders.Setup.for_preset(assigns.preset))
+
+    ~H"""
+    <.disclosure
+      :if={@guide}
+      id={"provider-setup-#{@preset}"}
+      summary={"Where to get these credentials for #{String.capitalize(@preset)}"}
+    >
+      <ol class="list-decimal space-y-1.5 pl-5 text-sm text-muted-foreground">
+        <li :for={step <- @guide.steps}>{step}</li>
+      </ol>
+
+      <dl class="mt-3 space-y-1.5 border-t border-border pt-3 text-xs">
+        <div class="flex gap-2">
+          <dt class="shrink-0 text-muted-foreground">Callback URL</dt>
+          <dd class="min-w-0 flex-1 text-right">
+            <span class="font-mono break-all text-primary">
+              {@base_url}/auth/{@preset}/callback
+            </span>
+            <span class="mt-0.5 block text-muted-foreground">
+              paste into “{@guide.redirect_field}”
+            </span>
+          </dd>
+        </div>
+        <div class="flex justify-between gap-2">
+          <dt class="shrink-0 text-muted-foreground">Scopes</dt>
+          <dd class="text-right">{@guide.scopes}</dd>
+        </div>
+      </dl>
+
+      <p class="mt-3 rounded-md border border-signal-warn/40 bg-signal-warn/10 px-3 py-2 text-xs">
+        {@guide.caveat}
+      </p>
+
+      <p class="mt-2 text-[11px] text-muted-foreground">
+        From
+        <.link href={@guide.source} target="_blank" class="underline underline-offset-2">
+          {URI.parse(@guide.source).host}
+        </.link>
+        — vendor consoles change, so check there if a step no longer matches.
+      </p>
+    </.disclosure>
+    """
+  end
+
+  # ── section: features ─────────────────────────────────────────
+  attr :features, :map, required: true
+  attr :onboarding, :boolean, required: true
+
+  defp features_view(assigns) do
+    assigns = assign(assigns, copy: @feature_copy, mandatory: @mandatory_features)
+
+    ~H"""
+    <div class="max-w-2xl space-y-5">
+      <div :if={@onboarding} class="rounded-lg border border-border bg-muted/40 p-4 text-sm">
+        <p class="font-medium">Welcome. Choose what this instance offers.</p>
+        <p class="mt-1 text-muted-foreground">
+          You ships a lot of surface. Switch off what you are not using and it
+          disappears from the console and the login page. You can change this later.
+        </p>
+      </div>
+
+      <form id="features-form" phx-submit="save_features" class="space-y-5">
+        <div class="rounded-lg border border-border bg-card p-5">
+          <div class="mb-3 text-sm font-medium">Optional</div>
+          <div class="space-y-3">
+            <label :for={{key, value} <- @features} class="flex items-start gap-3">
+              <%!-- Paired hidden input so an unticked box submits "false"
+                    rather than vanishing from the params. --%>
+              <input type="hidden" name={"features[#{key}]"} value="false" />
+              <input
+                type="checkbox"
+                name={"features[#{key}]"}
+                value="true"
+                checked={value}
+                class="mt-0.5 size-4 rounded border-border"
+              />
+              <span>
+                <span class="block text-sm">{elem(Map.fetch!(@copy, key), 0)}</span>
+                <span class="block text-xs text-muted-foreground">
+                  {elem(Map.fetch!(@copy, key), 1)}
+                </span>
+              </span>
+            </label>
+          </div>
+        </div>
+
+        <div class="rounded-lg border border-border bg-card p-5">
+          <div class="mb-1 text-sm font-medium">Always on</div>
+          <p class="mb-3 text-xs text-muted-foreground">
+            Listed so you can see they exist. These cannot be switched off.
+          </p>
+          <div class="space-y-3">
+            <label :for={{label, description} <- @mandatory} class="flex items-start gap-3 opacity-60">
+              <input type="checkbox" checked disabled class="mt-0.5 size-4 rounded border-border" />
+              <span>
+                <span class="block text-sm">{label}</span>
+                <span class="block text-xs text-muted-foreground">{description}</span>
+              </span>
+            </label>
+          </div>
+        </div>
+
+        <div class="flex justify-end">
+          <.button type="submit">Save</.button>
+        </div>
+      </form>
     </div>
     """
   end
@@ -1403,37 +1925,6 @@ defmodule YouWeb.ConsoleLive do
   end
 
   # ── small shared pieces ───────────────────────────────────────
-  attr :cols, :list, required: true
-  attr :empty, :boolean, default: false
-  slot :inner_block, required: true
-
-  defp data_table(assigns) do
-    ~H"""
-    <div class="overflow-x-auto rounded-lg border border-border">
-      <table class="w-full text-sm">
-        <thead>
-          <tr class="border-b border-border bg-muted/40 text-left font-mono text-xs uppercase tracking-wide text-muted-foreground">
-            <th
-              :for={{c, i} <- Enum.with_index(@cols)}
-              class={["px-3 py-2 font-medium", i > 0 && c == "" && "text-right"]}
-            >
-              {c}
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {render_slot(@inner_block)}
-          <tr :if={@empty}>
-            <td colspan={length(@cols)} class="px-3 py-8 text-center text-sm text-muted-foreground">
-              Nothing here yet.
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-    """
-  end
-
   attr :title, :string, required: true
   slot :inner_block, required: true
 
@@ -1497,34 +1988,6 @@ defmodule YouWeb.ConsoleLive do
         </button>
       </div>
     </div>
-    """
-  end
-
-  attr :k, :string, required: true
-  attr :v, :string, required: true
-
-  defp kv(assigns) do
-    ~H"""
-    <div class="flex justify-between gap-4 border-b border-border/60 pb-1.5 last:border-0">
-      <dt class="text-muted-foreground">{@k}</dt>
-      <dd class="font-mono text-right break-all text-primary">{@v}</dd>
-    </div>
-    """
-  end
-
-  attr :id, :string, required: true
-
-  defp theme_toggle(assigns) do
-    ~H"""
-    <button
-      id={@id}
-      phx-hook="ThemeToggle"
-      aria-label="Toggle theme"
-      class="grid size-8 place-items-center rounded-md border border-border hover:bg-muted/50"
-    >
-      <.icon name="moon" class="size-4 text-brand-azure block dark:hidden" />
-      <.icon name="sun" class="size-4 text-signal-warn hidden dark:block" />
-    </button>
     """
   end
 

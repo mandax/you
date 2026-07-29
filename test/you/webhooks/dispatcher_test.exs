@@ -13,10 +13,13 @@ defmodule You.Webhooks.DispatcherTest do
       {:ok, body, conn} = Plug.Conn.read_body(conn)
       send(test_pid, {:webhook_delivery, conn.req_headers, body})
 
+      # Fail the first `failures` deliveries, then succeed.
       status =
-        case :counters.get(failures, 1) do
-          0 -> 200
-          n -> :counters.sub(failures, 1, 1) && 500
+        if :counters.get(failures, 1) == 0 do
+          200
+        else
+          :counters.sub(failures, 1, 1)
+          500
         end
 
       Plug.Conn.send_resp(conn, status, "")

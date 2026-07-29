@@ -1,7 +1,7 @@
 defmodule YouWeb.FederatedAuthController do
   use YouWeb, :controller
 
-  alias You.Accounts
+  alias You.{Accounts, Admin, IdentityProviders}
 
   @doc """
   GET /auth/:provider
@@ -10,7 +10,8 @@ defmodule YouWeb.FederatedAuthController do
   Stores the OIDC `state` param in the session for CSRF protection.
   """
   def authorize(conn, %{"provider" => provider}) do
-    with {:ok, config} <- fetch_provider_config(provider) do
+    with {:ok, config} <- fetch_provider_config(provider),
+         :ok <- authorize_for_app(conn, provider) do
       state = generate_state()
 
       query =
@@ -44,6 +45,7 @@ defmodule YouWeb.FederatedAuthController do
   """
   def callback(conn, %{"provider" => provider, "code" => code, "state" => state}) do
     with {:ok, config} <- fetch_provider_config(provider),
+         :ok <- authorize_for_app(conn, provider),
          :ok <- verify_state(conn, state),
          {:ok, tokens} <- exchange_code(config, code, conn, provider),
          {:ok, userinfo} <- fetch_userinfo(config, tokens),
@@ -127,15 +129,33 @@ defmodule YouWeb.FederatedAuthController do
   end
 
   defp fetch_provider_config(provider) do
-    providers = Application.get_env(:you, :oidc_providers, %{})
+    case IdentityProviders.get_provider_by_slug(provider) do
+      {:ok, %{enabled: true} = config} -> {:ok, config}
+      _ -> :error
+    end
+  end
 
-    case Map.fetch(providers, provider) do
-      {:ok, config} ->
-        config = Map.new(config, fn {k, v} -> {String.to_existing_atom(k), v} end)
-        {:ok, config}
+  # A provider an app has not enabled must be rejected here, not merely
+  # hidden from the login page — anyone can hit /auth/:provider directly.
+  # `enabled_providers: nil` on the app means every provider is allowed;
+  # a login with no in-flight app (not an OAuth handoff) is unrestricted too.
+  defp authorize_for_app(conn, provider) do
+    if provider in Admin.App.resolved_providers(app_for(conn), [provider]) do
+      :ok
+    else
+      :error
+    end
+  end
 
-      :error ->
-        :error
+  # The registered app the in-flight OAuth handoff is for, resolved the same
+  # way as `YouWeb.OAuthFlow.safe_callback_url/1`. `nil` for a plain sign-in
+  # to You itself.
+  defp app_for(conn) do
+    with url when is_binary(url) <- get_session(conn, :callback_url),
+         {:ok, app} <- Admin.lookup_app_by_callback(url) do
+      app
+    else
+      _ -> nil
     end
   end
 
@@ -153,6 +173,9 @@ defmodule YouWeb.FederatedAuthController do
     end
   end
 
+  defp access_token(tokens) when is_binary(tokens), do: tokens
+  defp access_token(tokens) when is_map(tokens), do: tokens["access_token"]
+
   defp redirect_uri(_conn, provider) do
     url(~p"/auth/#{provider}/callback")
   end
@@ -163,10 +186,14 @@ defmodule YouWeb.FederatedAuthController do
       code: code,
       redirect_uri: redirect_uri(conn, provider),
       client_id: config.client_id,
-      client_secret: config.client_secret
+      client_secret: IdentityProviders.decrypt_secret(config)
     }
 
-    case Req.post(config.token_url, form: body) do
+    # GitHub returns a form-encoded body unless asked for JSON; every OIDC
+    # provider ignores the header, so it is unconditional.
+    headers = [{"accept", "application/json"}]
+
+    case Req.post(config.token_url, form: body, headers: headers) do
       {:ok, %{status: status, body: body}} when status in 200..299 ->
         {:ok, body}
 
@@ -178,14 +205,19 @@ defmodule YouWeb.FederatedAuthController do
     end
   end
 
-  defp fetch_userinfo(config, tokens) do
-    access_token =
-      cond do
-        is_binary(tokens) -> tokens
-        is_map(tokens) -> tokens["access_token"]
-      end
+  # GitHub is not OIDC: it has no userinfo endpoint and no `sub` claim, so a
+  # github-kind provider goes through its own adapter rather than the generic
+  # OIDC fetch.
+  defp fetch_userinfo(%{kind: "github"}, tokens) do
+    tokens |> access_token() |> You.IdentityProviders.Github.fetch_identity()
+  end
 
-    headers = [{"authorization", "Bearer #{access_token}"}]
+  defp fetch_userinfo(%{kind: "discord"}, tokens) do
+    tokens |> access_token() |> You.IdentityProviders.Discord.fetch_identity()
+  end
+
+  defp fetch_userinfo(config, tokens) do
+    headers = [{"authorization", "Bearer #{access_token(tokens)}"}]
 
     case Req.get(config.userinfo_url, headers: headers) do
       {:ok, %{status: status, body: body}} when status in 200..299 ->

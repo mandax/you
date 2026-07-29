@@ -2,6 +2,7 @@ defmodule You.AdminTest do
   use You.DataCase, async: false
 
   alias You.Admin
+  alias You.Accounts
   alias You.AccountsFixtures
 
   describe "promote_admin/1" do
@@ -97,6 +98,129 @@ defmodule You.AdminTest do
     end
   end
 
+  describe "app customisation columns" do
+    setup do
+      {:ok, app, _secret} =
+        Admin.create_app(%{
+          slug: "custom",
+          name: "Custom",
+          callback_url: "https://custom.example.com/cb"
+        })
+
+      %{app: app}
+    end
+
+    test "enabled_providers and enabled_methods default to nil, meaning all", %{app: app} do
+      assert app.enabled_providers == nil
+      assert app.enabled_methods == nil
+    end
+
+    test "stores enabled providers and methods", %{app: app} do
+      {:ok, app} =
+        Admin.update_app(app, %{
+          "enabled_providers" => ["google"],
+          "enabled_methods" => ["password", "passkey"]
+        })
+
+      assert app.enabled_providers == ["google"]
+      assert app.enabled_methods == ["password", "passkey"]
+    end
+
+    test "rejects an auth method the instance does not offer", %{app: app} do
+      assert {:error, changeset} = Admin.update_app(app, %{"enabled_methods" => ["telepathy"]})
+      assert "has an invalid entry" in errors_on(changeset).enabled_methods
+    end
+
+    test "accent_color must be a 6-digit hex color", %{app: app} do
+      assert {:error, changeset} = Admin.update_app(app, %{"accent_color" => "red"})
+      assert "has invalid format" in errors_on(changeset).accent_color
+
+      assert {:ok, app} = Admin.update_app(app, %{"accent_color" => "#0ea5e9"})
+      assert app.accent_color == "#0ea5e9"
+    end
+
+    test "background_image_url must be an http(s) URL", %{app: app} do
+      assert {:error, changeset} =
+               Admin.update_app(app, %{"background_image_url" => "javascript:alert(1)"})
+
+      assert "must be an http(s) URL" in errors_on(changeset).background_image_url
+    end
+
+    test "email_from_name is capped", %{app: app} do
+      assert {:error, changeset} =
+               Admin.update_app(app, %{"email_from_name" => String.duplicate("a", 101)})
+
+      assert "should be at most 100 character(s)" in errors_on(changeset).email_from_name
+    end
+  end
+
+  describe "login copy and consent urls" do
+    alias You.Admin.App
+
+    test "stores optional headline, subtitle, tos_url, and privacy_url" do
+      assert {:ok, app, _secret} =
+               Admin.create_app(
+                 Map.merge(@valid_attrs, %{
+                   headline: "Welcome to Myapp",
+                   subtitle: "sign in below",
+                   tos_url: "https://myapp.example.com/tos",
+                   privacy_url: "https://myapp.example.com/privacy"
+                 })
+               )
+
+      assert app.headline == "Welcome to Myapp"
+      assert app.subtitle == "sign in below"
+      assert app.tos_url == "https://myapp.example.com/tos"
+      assert app.privacy_url == "https://myapp.example.com/privacy"
+    end
+
+    test "headline and subtitle are nil by default and can be cleared" do
+      assert App.changeset(%App{}, @valid_attrs).valid?
+
+      {:ok, app, _secret} =
+        Admin.create_app(Map.put(@valid_attrs, :headline, "Hello"))
+
+      assert {:ok, updated} = Admin.update_app(app, %{"headline" => ""})
+      assert updated.headline == nil
+    end
+
+    test "headline and subtitle are capped at 200 characters" do
+      too_long = String.duplicate("a", 201)
+      ok_length = String.duplicate("a", 200)
+
+      assert %{headline: ["should be at most 200 character(s)"]} =
+               errors_on(App.changeset(%App{}, Map.put(@valid_attrs, :headline, too_long)))
+
+      assert %{subtitle: ["should be at most 200 character(s)"]} =
+               errors_on(App.changeset(%App{}, Map.put(@valid_attrs, :subtitle, too_long)))
+
+      assert App.changeset(%App{}, Map.put(@valid_attrs, :headline, ok_length)).valid?
+      assert App.changeset(%App{}, Map.put(@valid_attrs, :subtitle, ok_length)).valid?
+    end
+
+    test "tos_url and privacy_url must be http(s) URLs, nil allowed" do
+      for url <- ["javascript:alert(1)", "ftp://example.com/tos", "not a url"] do
+        assert %{tos_url: ["must be an http(s) URL"]} =
+                 errors_on(App.changeset(%App{}, Map.put(@valid_attrs, :tos_url, url)))
+
+        assert %{privacy_url: ["must be an http(s) URL"]} =
+                 errors_on(App.changeset(%App{}, Map.put(@valid_attrs, :privacy_url, url)))
+      end
+
+      assert App.changeset(
+               %App{},
+               Map.put(@valid_attrs, :tos_url, "https://example.com/tos")
+             ).valid?
+
+      assert App.changeset(
+               %App{},
+               Map.put(@valid_attrs, :privacy_url, "https://example.com/privacy")
+             ).valid?
+
+      assert App.changeset(%App{}, @valid_attrs).valid?
+    end
+  end
+
   describe "rotate_app_secret/1" do
     test "rotates the client secret" do
       {:ok, app, original_secret} =
@@ -180,6 +304,58 @@ defmodule You.AdminTest do
 
       assert :error =
                Admin.lookup_app_by_callback("https://myapp.example.com/auth/callback/sub")
+    end
+  end
+
+  describe "deletion_impact/1" do
+    test "counts consents and role assignments for an app with several of each" do
+      {:ok, app, _secret} =
+        Admin.create_app(%{
+          slug: "impacted",
+          name: "Impacted App",
+          callback_url: "https://impacted.example.com/cb"
+        })
+
+      for _ <- 1..3 do
+        user = AccountsFixtures.user_fixture()
+        {:ok, _consent} = Accounts.record_consent(user, app, ["profile"])
+        {:ok, _assignment} = You.Roles.set_role(app, user, "admin")
+      end
+
+      assert Admin.deletion_impact(app) == %{consents: 3, role_assignments: 3}
+    end
+
+    test "returns zero counts for an app with no consents or role assignments" do
+      {:ok, app, _secret} =
+        Admin.create_app(%{
+          slug: "untouched",
+          name: "Untouched App",
+          callback_url: "https://untouched.example.com/cb"
+        })
+
+      assert Admin.deletion_impact(app) == %{consents: 0, role_assignments: 0}
+    end
+
+    test "does not count another app's consents or role assignments" do
+      {:ok, app, _secret} =
+        Admin.create_app(%{
+          slug: "target-app",
+          name: "Target App",
+          callback_url: "https://target.example.com/cb"
+        })
+
+      {:ok, other_app, _secret} =
+        Admin.create_app(%{
+          slug: "other-app",
+          name: "Other App",
+          callback_url: "https://other.example.com/cb"
+        })
+
+      user = AccountsFixtures.user_fixture()
+      {:ok, _consent} = Accounts.record_consent(user, other_app, ["profile"])
+      {:ok, _assignment} = You.Roles.set_role(other_app, user, "admin")
+
+      assert Admin.deletion_impact(app) == %{consents: 0, role_assignments: 0}
     end
   end
 

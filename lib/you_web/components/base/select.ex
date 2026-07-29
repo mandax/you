@@ -167,13 +167,30 @@ defmodule YouWeb.Components.Base.Select do
             this.popup.style.position = "fixed"
             this.popup.style.margin = "0"
             this.popup.style.minWidth = `${rect.width}px`
+
+            // `position: fixed` resolves against the viewport only while no
+            // ancestor is transformed. A dialog animated with rise-in keeps
+            // `transform: translateY(0)` after it finishes (fill-mode `both`),
+            // and a transform that is not `none` still establishes a containing
+            // block — so inside a dialog these viewport coordinates would be
+            // applied relative to the dialog box and the popup would land
+            // offset. offsetParent is that containing block, or null when there
+            // isn't one.
+            const containingBlock = this.popup.offsetParent
+            const origin = containingBlock
+              ? containingBlock.getBoundingClientRect()
+              : {top: 0, left: 0}
+
             // Flip above the trigger when there is not enough room below.
-            this.popup.style.top = below < popupRect.height + 8
-              ? `${Math.max(8, rect.top - popupRect.height - 4)}px`
-              : `${rect.bottom + 4}px`
-            this.popup.style.left = this.el.dataset.align === "end"
-              ? `${Math.max(8, rect.right - popupRect.width)}px`
-              : `${rect.left}px`
+            const top = below < popupRect.height + 8
+              ? Math.max(8, rect.top - popupRect.height - 4)
+              : rect.bottom + 4
+            const left = this.el.dataset.align === "end"
+              ? Math.max(8, rect.right - popupRect.width)
+              : rect.left
+
+            this.popup.style.top = `${top - origin.top}px`
+            this.popup.style.left = `${left - origin.left}px`
 
             const selected = this.options().findIndex((el) => el.getAttribute("aria-selected") === "true")
             this.highlight(selected < 0 ? 0 : selected)
