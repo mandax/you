@@ -2,7 +2,7 @@ defmodule You.Webhooks do
   @moduledoc """
   Outbound webhook endpoints.
 
-  Operators register endpoints (URL + subscribed events) in the console;
+  Admins register endpoints (URL + subscribed events) in the console;
   `You.Webhooks.Dispatcher` delivers signed JSON payloads to every enabled
   endpoint subscribed to an event. Supersedes the single global
   `audit_webhook_url` setting, which keeps working independently.
@@ -11,7 +11,7 @@ defmodule You.Webhooks do
 
   Only the http/https schemes are accepted, but nothing prevents an
   endpoint from pointing at an internal address; deliveries originate
-  from the server, so operators must only register endpoints they
+  from the server, so admins must only register endpoints they
   control.
   """
 

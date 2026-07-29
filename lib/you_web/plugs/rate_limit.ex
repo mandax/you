@@ -5,7 +5,7 @@ defmodule YouWeb.Plugs.RateLimit do
 
       plug YouWeb.Plugs.RateLimit, key: :login
 
-  Limits are read at request time so operators can tune them in
+  Limits are read at request time so admins can tune them in
   `runtime.exs` without recompiling:
 
       config :you, YouWeb.RateLimit, %{login: {5, 60_000}}

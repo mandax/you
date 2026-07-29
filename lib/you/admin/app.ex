@@ -37,9 +37,43 @@ defmodule You.Admin.App do
   def theme_modes, do: @theme_modes
 
   @doc """
+  The sign-in methods this app offers, given what the instance supports.
+
+  A `nil` column means the app follows the instance rather than pinning a list,
+  so a method added to You later reaches it. This is the one place that
+  convention is interpreted — callers ask, they do not match on nil.
+  """
+  def resolved_methods(%__MODULE__{enabled_methods: nil}, available), do: available
+
+  def resolved_methods(%__MODULE__{enabled_methods: methods}, available),
+    do: Enum.filter(available, &(&1 in methods))
+
+  def resolved_methods(nil, available), do: available
+
+  @doc """
+  The identity providers this app offers, given what the instance has enabled.
+
+  Same convention as `resolved_methods/2`: `nil` follows the instance.
+  """
+  def resolved_providers(%__MODULE__{enabled_providers: nil}, available), do: available
+
+  def resolved_providers(%__MODULE__{enabled_providers: slugs}, available),
+    do: Enum.filter(available, &(&1 in slugs))
+
+  def resolved_providers(nil, available), do: available
+
+  @doc "Whether the app pins its own list rather than following the instance."
+  def restricts_methods?(%__MODULE__{enabled_methods: nil}), do: false
+  def restricts_methods?(_), do: true
+
+  @doc "Whether the app pins its own provider list rather than following the instance."
+  def restricts_providers?(%__MODULE__{enabled_providers: nil}), do: false
+  def restricts_providers?(_), do: true
+
+  @doc """
   Black or white, whichever stays legible on `hex`.
 
-  An operator picking a brand colour is choosing a background; the text on top
+  An admin picking a brand colour is choosing a background; the text on top
   of it has to be readable either way, so it is derived rather than configured.
   Uses WCAG relative luminance with the standard 0.179 crossover.
   """

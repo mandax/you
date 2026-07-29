@@ -417,23 +417,46 @@ defmodule YouWeb.AppLive.ShowTest do
 
       html =
         lv
-        |> form("#app-providers-form", %{"providers" => %{"google" => "false"}})
+        |> form("#app-providers-form", %{
+          "follow_instance" => "false",
+          "providers" => %{"google" => "false"}
+        })
         |> render_submit()
 
       assert html =~ "Identity providers updated"
       assert Admin.get_app!(app.id).enabled_providers == []
     end
 
-    test "ticking every provider stores nil rather than the list", %{conn: conn, app: app} do
+    # "Follow the instance" is an explicit tick, not something inferred from
+    # having every box ticked — so unticking and reticking a provider cannot
+    # silently change what the record means.
+    test "choosing to follow the instance stores nil", %{conn: conn, app: app} do
       {:ok, _app} = Admin.update_app(app, %{"enabled_providers" => []})
 
       {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}?tab=login")
 
       lv
-      |> form("#app-providers-form", %{"providers" => %{"google" => "true"}})
+      |> form("#app-providers-form", %{
+        "follow_instance" => "true",
+        "providers" => %{"google" => "true"}
+      })
       |> render_submit()
 
       assert Admin.get_app!(app.id).enabled_providers == nil
+    end
+
+    test "ticking every provider while restricting stores the explicit list",
+         %{conn: conn, app: app} do
+      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}?tab=login")
+
+      lv
+      |> form("#app-providers-form", %{
+        "follow_instance" => "false",
+        "providers" => %{"google" => "true"}
+      })
+      |> render_submit()
+
+      assert Admin.get_app!(app.id).enabled_providers == ["google"]
     end
   end
 
@@ -504,6 +527,7 @@ defmodule YouWeb.AppLive.ShowTest do
       html =
         lv
         |> form("#app-methods-form", %{
+          "follow_instance" => "false",
           "methods" => %{
             "password" => "true",
             "magic_link" => "false",
@@ -517,17 +541,34 @@ defmodule YouWeb.AppLive.ShowTest do
       assert Admin.get_app!(app.id).enabled_methods == ["password", "passkey"]
     end
 
-    # All ticked stores nil, so a method added to You later reaches this app
-    # instead of being excluded by a list frozen at save time.
-    test "ticking every method stores nil rather than the full list", %{conn: conn, app: app} do
+    # nil is chosen, not inferred: a method added to You later reaches an app
+    # that follows the instance, and reticking every box on a restricted app
+    # does not silently convert it.
+    test "choosing to follow the instance stores nil", %{conn: conn, app: app} do
       {:ok, _app} = Admin.update_app(app, %{"enabled_methods" => ["passkey"]})
 
       {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}?tab=login")
 
       all = Map.new(You.Admin.App.auth_methods(), &{&1, "true"})
-      lv |> form("#app-methods-form", %{"methods" => all}) |> render_submit()
+
+      lv
+      |> form("#app-methods-form", %{"follow_instance" => "true", "methods" => all})
+      |> render_submit()
 
       assert Admin.get_app!(app.id).enabled_methods == nil
+    end
+
+    test "ticking every method while restricting keeps the explicit list",
+         %{conn: conn, app: app} do
+      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}?tab=login")
+
+      all = Map.new(You.Admin.App.auth_methods(), &{&1, "true"})
+
+      lv
+      |> form("#app-methods-form", %{"follow_instance" => "false", "methods" => all})
+      |> render_submit()
+
+      assert Admin.get_app!(app.id).enabled_methods == You.Admin.App.auth_methods()
     end
   end
 

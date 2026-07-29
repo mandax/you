@@ -3,7 +3,7 @@ defmodule YouWeb.Components.LoginChrome do
   The branded part of the login page.
 
   Rendered both by the real login template and by the console's branding
-  preview, so what an operator previews is the markup users get rather than a
+  preview, so what an admin previews is the markup users get rather than a
   mockup that drifts.
   """
   use Phoenix.Component
@@ -16,7 +16,7 @@ defmodule YouWeb.Components.LoginChrome do
   wordmark header instead.
 
   `headline` and `subtitle` replace the default copy ("Sign in to continue
-  to <app>" / "secured by You") wholesale when set, so an operator can write
+  to <app>" / "secured by You") wholesale when set, so an admin can write
   copy that doesn't fit that template.
   """
   attr :app_name, :string, default: nil

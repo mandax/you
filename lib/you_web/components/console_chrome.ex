@@ -1,6 +1,6 @@
 defmodule YouWeb.Components.ConsoleChrome do
   @moduledoc """
-  Operator-console chrome shared by the console shell and the per-app pages:
+  Admin-console chrome shared by the console shell and the per-app pages:
   the sidebar/topbar frame, the table wrapper, and the small pieces both use.
 
   Section views stay private to the LiveView that renders them; only what more
@@ -24,8 +24,21 @@ defmodule YouWeb.Components.ConsoleChrome do
     %{id: "settings", label: "Settings", icon: "lucide-settings"}
   ]
 
-  @doc "The console sidebar entries, shared by every console LiveView."
-  def nav, do: @nav
+  @doc """
+  The console sidebar entries, filtered to what the instance has switched on.
+
+  A section that is off disappears from the nav; the LiveView also refuses to
+  render its view, since a nav entry is presentation and not a gate.
+  """
+  def nav do
+    Enum.reject(@nav, fn entry ->
+      case entry.id do
+        "webhooks" -> not You.Settings.enabled?(:feature_webhooks)
+        "orgs" -> not You.Settings.enabled?(:feature_organizations)
+        _ -> false
+      end
+    end)
+  end
 
   @doc """
   The console frame: sidebar navigation, topbar, and a scrolling main area.

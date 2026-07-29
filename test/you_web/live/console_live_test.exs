@@ -79,7 +79,16 @@ defmodule YouWeb.ConsoleLiveTest do
       assert html =~ "Client secret"
       assert [app] = Admin.list_apps()
 
-      render_click(lv, "delete_app", %{"id" => app.id})
+      # Through the rendered button, not a hand-built push: the binding and its
+      # confirmation are part of what makes the delete safe.
+      html = render(lv)
+      assert html =~ ~s(phx-click="delete_app")
+      assert html =~ "data-confirm"
+
+      lv
+      |> element(~s(button[phx-click="delete_app"][phx-value-id="#{app.id}"]))
+      |> render_click()
+
       assert Admin.list_apps() == []
     end
 

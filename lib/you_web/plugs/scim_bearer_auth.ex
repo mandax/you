@@ -47,7 +47,7 @@ defmodule YouWeb.SCIM.BearerAuth do
   end
 
   # Prefer the admin-managed DB setting; fall back to compile-time config so an
-  # operator can still set it via `config :you, :scim_bearer_token, ...`.
+  # admin can still set it via `config :you, :scim_bearer_token, ...`.
   defp configured_token do
     case You.Settings.get(:scim_bearer_token) do
       token when is_binary(token) and token != "" -> token

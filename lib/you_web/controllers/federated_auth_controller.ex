@@ -140,10 +140,10 @@ defmodule YouWeb.FederatedAuthController do
   # `enabled_providers: nil` on the app means every provider is allowed;
   # a login with no in-flight app (not an OAuth handoff) is unrestricted too.
   defp authorize_for_app(conn, provider) do
-    case app_for(conn) do
-      nil -> :ok
-      %{enabled_providers: nil} -> :ok
-      %{enabled_providers: enabled} -> if provider in enabled, do: :ok, else: :error
+    if provider in Admin.App.resolved_providers(app_for(conn), [provider]) do
+      :ok
+    else
+      :error
     end
   end
 

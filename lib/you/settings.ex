@@ -30,8 +30,6 @@ defmodule You.Settings do
     onboarding_completed: false,
     feature_passkeys: true,
     feature_magic_link: true,
-    feature_totp: true,
-    feature_email_2fa: true,
     feature_social_login: true,
     feature_organizations: false,
     feature_webhooks: true
@@ -39,17 +37,20 @@ defmodule You.Settings do
 
   # Toggled from the feature screen. Everything else in @defaults is a tuning
   # value, not a switch.
+  #
+  # Second factors are deliberately absent. TOTP and email 2FA are security
+  # controls, not optional surface: a switch that turns them off is a
+  # downgrade attack with an admin-friendly label on it, and it would strand
+  # every account already enrolled.
   @features [
     :feature_passkeys,
     :feature_magic_link,
-    :feature_totp,
-    :feature_email_2fa,
     :feature_social_login,
     :feature_organizations,
     :feature_webhooks
   ]
 
-  @doc "The optional features an operator can switch off."
+  @doc "The optional features an admin can switch off."
   def features, do: @features
 
   @doc """

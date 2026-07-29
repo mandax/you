@@ -101,7 +101,7 @@ defmodule You.Accounts do
   @doc """
   Registers a user with email and password, confirmed immediately.
 
-  Used by the management API: an operator-created account must be usable
+  Used by the management API: an admin-created account must be usable
   right away, without the magic-link confirmation round-trip. Atomic:
   either the whole account exists or nothing does.
 

@@ -1,6 +1,6 @@
 defmodule YouWeb.ConsoleLive do
   @moduledoc """
-  Operator console: the admin surface at `/console`.
+  Admin console at `/console`.
 
   A single LiveView shell (sidebar + topbar + section views) with a dense,
   mono-accented design: cards and tables, a live
@@ -15,14 +15,14 @@ defmodule YouWeb.ConsoleLive do
   alias You.{Admin, Organizations, Accounts, Settings, Webhooks, Roles, IdentityProviders}
   alias You.Audit.Streamer
 
-  @nav YouWeb.Components.ConsoleChrome.nav()
-
   @roles ~w(owner admin member)
 
-  # Shown but locked. An operator should be able to see that password login
+  # Shown but locked. An admin should be able to see that password login
   # exists and cannot be switched off, rather than wonder where it went.
   @mandatory_features [
     {"Password sign-in", "The fallback every account has. Disabling it would lock everyone out."},
+    {"Two-factor authentication",
+     "TOTP and emailed codes. A switch that turns a second factor off is a downgrade attack with a friendly label, and would strand enrolled accounts."},
     {"Sessions and tokens", "How You proves who a visitor is."},
     {"Audit trail", "Records privileged actions. Not optional."}
   ]
@@ -30,8 +30,6 @@ defmodule YouWeb.ConsoleLive do
   @feature_copy %{
     feature_passkeys: {"Passkeys", "WebAuthn sign-in and per-user passkey management."},
     feature_magic_link: {"Magic links", "Passwordless sign-in by emailed link."},
-    feature_totp: {"Authenticator app (TOTP)", "Time-based codes as a second factor."},
-    feature_email_2fa: {"Email codes", "A one-time code emailed as a second factor."},
     feature_social_login: {"Social sign-in", "Upstream identity providers on the login page."},
     feature_organizations: {"Organizations", "Teams that share app access. Still incomplete."},
     feature_webhooks: {"Webhooks", "Signed outbound events."}
@@ -61,7 +59,7 @@ defmodule YouWeb.ConsoleLive do
      socket
      |> assign(
        page_title: "Console",
-       nav: @nav,
+       nav: nav(),
        view: "overview",
        node_name: Node.self(),
        roles: @roles,
@@ -96,7 +94,7 @@ defmodule YouWeb.ConsoleLive do
     # they have not shaped yet.
     default = if socket.assigns.onboarding, do: "features", else: "overview"
     view = params["view"] || default
-    view = if Enum.any?(@nav, &(&1.id == view)), do: view, else: default
+    view = if Enum.any?(nav(), &(&1.id == view)), do: view, else: default
     {:noreply, assign(socket, view: view, saved: false)}
   end
 
@@ -144,10 +142,15 @@ defmodule YouWeb.ConsoleLive do
   end
 
   def handle_event("delete_app", %{"id" => id}, socket) do
-    app = Admin.get_app!(id)
-    Admin.delete_app(app)
-    audit_admin(socket, "delete_app", app.slug)
-    {:noreply, socket |> load_data() |> put_flash(:info, "App deleted.")}
+    # `Admin.delete_app/1` emits the audit event itself; a second one here
+    # would record the same removal twice under two different shapes.
+    case id |> Admin.get_app!() |> Admin.delete_app() do
+      {:ok, _app} ->
+        {:noreply, socket |> load_data() |> put_flash(:info, "App deleted.")}
+
+      {:error, changeset} ->
+        {:noreply, put_flash(socket, :error, "Could not delete: #{error_summary(changeset)}")}
+    end
   end
 
   # ── identity providers ───────────────────────────────────────
@@ -538,7 +541,7 @@ defmodule YouWeb.ConsoleLive do
     if raw =~ ~r/^\d+$/, do: String.to_integer(raw), else: raw
   end
 
-  defp nav_label(view), do: Enum.find_value(@nav, "", &if(&1.id == view, do: &1.label))
+  defp nav_label(view), do: Enum.find_value(nav(), "", &if(&1.id == view, do: &1.label))
 
   # ── shell ─────────────────────────────────────────────────────
   @impl true
@@ -821,7 +824,7 @@ defmodule YouWeb.ConsoleLive do
   # Per-app roles for one user, condensed into a single cell.
   #
   # A column per app does not survive contact with a real instance: it grows
-  # without bound and nearly every cell reads "user". What an operator scans for
+  # without bound and nearly every cell reads "user". What an admin scans for
   # is the exception, so elevated roles are shown by name and the rest collapses
   # into a count.
   attr :access, :map, required: true
@@ -1022,7 +1025,7 @@ defmodule YouWeb.ConsoleLive do
 
   # Computed at render time rather than carried as an assign: app counts are a
   # handful of rows in an admin console, and staleness here would understate
-  # exactly the number an operator is relying on to decide.
+  # exactly the number an admin is relying on to decide.
   defp delete_app_confirm(app) do
     %{consents: consents, role_assignments: roles} = Admin.deletion_impact(app)
 

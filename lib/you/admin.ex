@@ -266,7 +266,7 @@ defmodule You.Admin do
 
   @doc """
   Counts the rows that cascade-delete along with the app: consents and role
-  assignments. Surfaced in the delete confirmation so an operator sees the
+  assignments. Surfaced in the delete confirmation so an admin sees the
   blast radius before confirming, since both tables `on_delete: :delete_all`
   silently.
   """
@@ -283,10 +283,14 @@ defmodule You.Admin do
   def delete_app(%App{} = app) do
     result = Repo.delete(app)
 
-    :telemetry.execute([:you, :audit, :admin, :action], %{}, %{
-      action: "delete_app",
-      app_slug: app.slug
-    })
+    # Only on success, matching every other mutator here. A failed delete that
+    # still emitted would put an app removal into the trail that never happened.
+    with {:ok, _} <- result do
+      :telemetry.execute([:you, :audit, :admin, :action], %{}, %{
+        action: "delete_app",
+        app_slug: app.slug
+      })
+    end
 
     result
   end

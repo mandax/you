@@ -127,7 +127,7 @@ defmodule YouWeb.Router do
     end
   end
 
-  ## Management REST API: bearer-token automation for operators (see
+  ## Management REST API: bearer-token automation for admins (see
   ## docs/api.md). Token-authenticated, rate-limited per IP.
 
   pipeline :api_management do

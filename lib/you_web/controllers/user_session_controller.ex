@@ -86,13 +86,9 @@ defmodule YouWeb.UserSessionController do
   defp oidc_providers(app) do
     You.IdentityProviders.list_enabled_providers()
     |> Enum.map(& &1.slug)
-    |> Enum.filter(&provider_enabled_for_app?(&1, app))
+    |> then(&You.Admin.App.resolved_providers(app, &1))
     |> Enum.sort()
   end
-
-  defp provider_enabled_for_app?(_slug, nil), do: true
-  defp provider_enabled_for_app?(_slug, %{enabled_providers: nil}), do: true
-  defp provider_enabled_for_app?(slug, %{enabled_providers: enabled}), do: slug in enabled
 
   # The auth methods the in-flight app allows. `nil` means every method, so an
   # app registered before a method existed still gets it.
@@ -111,16 +107,12 @@ defmodule YouWeb.UserSessionController do
   end
 
   defp enabled_methods(app) do
-    app
-    |> app_methods()
+    You.Admin.App.auth_methods()
     |> Enum.filter(&instance_offers?/1)
+    |> then(&You.Admin.App.resolved_methods(app, &1))
   end
 
-  defp app_methods(nil), do: You.Admin.App.auth_methods()
-  defp app_methods(%{enabled_methods: nil}), do: You.Admin.App.auth_methods()
-  defp app_methods(%{enabled_methods: methods}), do: methods
-
-  # An instance-level switch beats a per-app one: if an operator turned magic
+  # An instance-level switch beats a per-app one: if an admin turned magic
   # links off entirely, no app can opt back in.
   defp instance_offers?("magic_link"), do: You.Settings.enabled?(:feature_magic_link)
   defp instance_offers?("passkey"), do: You.Settings.enabled?(:feature_passkeys)

@@ -109,9 +109,9 @@ defmodule YouWeb.AppLive.Show do
     all = Enum.map(socket.assigns.providers, & &1.slug)
     checked = Enum.filter(all, &(&1 in ticked))
 
-    # All ticked stores nil, so a provider added later reaches this app rather
-    # than being excluded by a list frozen today.
-    providers = if checked == all, do: nil, else: checked
+    # Explicit, same as sign-in methods: nil is a chosen state, not one
+    # inferred from having every box ticked.
+    providers = if params["follow_instance"] == "true", do: nil, else: checked
 
     socket.assigns.app
     |> Admin.update_app(%{"enabled_providers" => providers})
@@ -122,14 +122,14 @@ defmodule YouWeb.AppLive.Show do
     ticked = for {method, "true"} <- Map.get(params, "methods", %{}), do: method
 
     # Params arrive as a map, so the comprehension's order is arbitrary. Filter
-    # the canonical list instead, both to store a stable order and so the
-    # all-ticked comparison below can actually match.
+    # the canonical list instead, to store a stable order.
     checked = Enum.filter(You.Admin.App.auth_methods(), &(&1 in ticked))
 
-    # All ticked is stored as nil, not the full list: nil means "whatever the
-    # instance offers", so a method added later reaches this app instead of
-    # being excluded by a list frozen today.
-    methods = if checked == You.Admin.App.auth_methods(), do: nil, else: checked
+    # nil means "follow the instance". That is now an explicit choice on the
+    # form rather than something inferred from having ticked every box, so
+    # unticking and reticking a method no longer silently changes the meaning
+    # of the record.
+    methods = if params["follow_instance"] == "true", do: nil, else: checked
 
     socket.assigns.app
     |> Admin.update_app(%{"enabled_methods" => methods})
@@ -273,11 +273,11 @@ defmodule YouWeb.AppLive.Show do
   defp theme_mode_label("light"), do: "Always light"
   defp theme_mode_label("dark"), do: "Always dark"
 
-  defp enabled_providers(%{enabled_providers: nil}, all), do: Enum.map(all, & &1.slug)
-  defp enabled_providers(%{enabled_providers: slugs}, _all), do: slugs
+  defp enabled_providers(app, all),
+    do: You.Admin.App.resolved_providers(app, Enum.map(all, & &1.slug))
 
-  defp enabled_methods(%{enabled_methods: nil}), do: You.Admin.App.auth_methods()
-  defp enabled_methods(%{enabled_methods: methods}), do: methods
+  defp enabled_methods(app),
+    do: You.Admin.App.resolved_methods(app, You.Admin.App.auth_methods())
 
   defp method_label("magic_link"), do: "Magic link"
   defp method_label(method), do: method |> String.capitalize()
@@ -473,6 +473,22 @@ defmodule YouWeb.AppLive.Show do
               value="true"
               checked={provider.slug in enabled_providers(@app, @providers)}
             />
+            <label :if={@providers != []} class="flex items-start gap-3 border-t border-border pt-3">
+              <input type="hidden" name="follow_instance" value="false" />
+              <input
+                type="checkbox"
+                name="follow_instance"
+                value="true"
+                checked={not You.Admin.App.restricts_providers?(@app)}
+                class="mt-0.5 size-4 rounded border-border"
+              />
+              <span>
+                <span class="block text-sm">Offer every provider this instance enables</span>
+                <span class="block text-xs text-muted-foreground">
+                  Follows You rather than pinning a list. Untick to restrict to the boxes above.
+                </span>
+              </span>
+            </label>
             <div :if={@providers != []} class="flex justify-end">
               <.button type="submit">Save</.button>
             </div>
@@ -492,9 +508,23 @@ defmodule YouWeb.AppLive.Show do
               value="true"
               checked={method in enabled_methods(@app)}
             />
-            <p class="text-xs text-muted-foreground">
-              Leaving every box ticked keeps the app on "all methods", so one added later reaches it too.
-            </p>
+            <label class="flex items-start gap-3 border-t border-border pt-3">
+              <input type="hidden" name="follow_instance" value="false" />
+              <input
+                type="checkbox"
+                name="follow_instance"
+                value="true"
+                checked={not You.Admin.App.restricts_methods?(@app)}
+                class="mt-0.5 size-4 rounded border-border"
+              />
+              <span>
+                <span class="block text-sm">Offer everything this instance supports</span>
+                <span class="block text-xs text-muted-foreground">
+                  Follows You rather than pinning a list, so a method added later reaches this app.
+                  Untick to restrict to the boxes above.
+                </span>
+              </span>
+            </label>
             <div class="flex justify-end">
               <.button type="submit">Save</.button>
             </div>
