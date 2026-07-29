@@ -60,35 +60,48 @@ defmodule YouWeb.Components.ConsoleChrome do
           <.wordmark size="sm" />
         </div>
 
-        <nav class="flex-1 space-y-0.5 px-2 pt-2">
+        <nav class="flex-1 space-y-px px-2 pt-3">
           <.link
             :for={n <- @nav}
             navigate={~p"/console?view=#{n.id}"}
+            aria-current={@active == n.id && "page"}
             class={[
-              "flex h-8 w-full items-center gap-2.5 rounded-md px-2.5 text-sm transition-colors",
+              "group relative flex h-8 w-full items-center gap-2.5 rounded-md pl-3 pr-2.5 text-sm transition-colors",
               if(@active == n.id,
-                do: "bg-sidebar-accent text-sidebar-accent-foreground",
+                do: "bg-sidebar-accent font-medium text-sidebar-accent-foreground",
                 else: "text-sidebar-foreground hover:bg-sidebar-muted hover:text-foreground"
               )
             ]}
           >
-            <span class={[n.icon, "size-4 block shrink-0"]} /> {n.label}
+            <%!-- The accent marks the current row rather than filling it. One
+                 saturated element in the column keeps it meaningful. --%>
+            <span
+              :if={@active == n.id}
+              class="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-full bg-sidebar-indicator"
+            />
+            <span class={[
+              n.icon,
+              "size-4 block shrink-0 transition-opacity",
+              if(@active == n.id, do: "opacity-100", else: "opacity-60 group-hover:opacity-100")
+            ]} /> {n.label}
           </.link>
         </nav>
 
-        <div class="space-y-1 border-t border-sidebar-border px-2 py-2">
+        <div class="space-y-px border-t border-sidebar-border px-2 py-2">
           <.link
             navigate={~p"/users/settings"}
-            class="flex h-8 items-center gap-2.5 rounded-md px-2.5 text-sm text-sidebar-foreground transition-colors hover:bg-sidebar-muted hover:text-foreground"
+            class="group flex h-8 items-center gap-2.5 rounded-md px-3 text-sm text-sidebar-foreground transition-colors hover:bg-sidebar-muted hover:text-foreground"
           >
-            <span class="lucide-user size-4 block shrink-0" /> My account
+            <span class="lucide-user size-4 block shrink-0 opacity-60 group-hover:opacity-100" />
+            My account
           </.link>
           <.link
             href={~p"/users/log-out"}
             method="delete"
-            class="flex h-8 items-center gap-2.5 rounded-md px-2.5 text-sm text-sidebar-foreground transition-colors hover:bg-sidebar-muted hover:text-foreground"
+            class="group flex h-8 items-center gap-2.5 rounded-md px-3 text-sm text-sidebar-foreground transition-colors hover:bg-sidebar-muted hover:text-foreground"
           >
-            <span class="lucide-log-out size-4 block shrink-0" /> Sign out
+            <span class="lucide-log-out size-4 block shrink-0 opacity-60 group-hover:opacity-100" />
+            Sign out
           </.link>
         </div>
       </aside>

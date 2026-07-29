@@ -122,13 +122,16 @@
   --signal-warn: 38 92% 45%;
   --signal-down: 0 72% 51%;
 
-  /* Sidebar */
-  --sidebar-background: 255 26% 97%;
-  --sidebar-foreground: 255 18% 38%;
-  --sidebar-muted: 255 20% 92%;
-  --sidebar-accent: 210 90% 48%;
-  --sidebar-accent-foreground: 0 0% 100%;
-  --sidebar-border: 258 18% 88%;
+  /* Sidebar. The active row is a tint plus an indicator rather than a
+     saturated fill: at this density a solid block of brand colour reads as an
+     alert, and the accent is worth more when it marks one thing. */
+  --sidebar-background: 255 24% 96%;
+  --sidebar-foreground: 255 14% 45%;
+  --sidebar-muted: 255 20% 91%;
+  --sidebar-accent: 255 26% 88%;
+  --sidebar-accent-foreground: 260 35% 12%;
+  --sidebar-indicator: 210 90% 48%;
+  --sidebar-border: 258 18% 89%;
   --sidebar-ring: 210 90% 48%;
 }
 
@@ -165,12 +168,13 @@
   --signal-down: 0 72% 56%;
 
   /* Sidebar — ink panel, one step darker than --card */
-  --sidebar-background: 255 12% 8%;
-  --sidebar-foreground: 255 14% 62%;
-  --sidebar-muted: 255 9% 14%;
-  --sidebar-accent: 210 92% 62%;
-  --sidebar-accent-foreground: 260 35% 12%;
-  --sidebar-border: 255 9% 18%;
+  --sidebar-background: 255 10% 9%;
+  --sidebar-foreground: 255 12% 58%;
+  --sidebar-muted: 255 9% 15%;
+  --sidebar-accent: 255 9% 18%;
+  --sidebar-accent-foreground: 250 20% 96%;
+  --sidebar-indicator: 210 92% 62%;
+  --sidebar-border: 255 9% 17%;
   --sidebar-ring: 210 92% 62%;
 }
 
@@ -212,6 +216,7 @@
   --color-sidebar-muted: hsl(var(--sidebar-muted));
   --color-sidebar-accent: hsl(var(--sidebar-accent));
   --color-sidebar-accent-foreground: hsl(var(--sidebar-accent-foreground));
+  --color-sidebar-indicator: hsl(var(--sidebar-indicator));
   --color-sidebar-border: hsl(var(--sidebar-border));
   --color-sidebar-ring: hsl(var(--sidebar-ring));
 
