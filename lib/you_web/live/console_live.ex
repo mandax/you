@@ -629,7 +629,9 @@ defmodule YouWeb.ConsoleLive do
           />
         <% "providers" -> %>
           <.providers_view
-            providers={@providers}
+            providers={search(@providers, @provider_filter, [:display_name, :slug])}
+            provider_filter={@provider_filter}
+            base_url={@base_url}
             editing_provider={@editing_provider}
             new_provider_open={@new_provider_open}
             new_provider_preset={@new_provider_preset}
@@ -1113,6 +1115,7 @@ defmodule YouWeb.ConsoleLive do
   # ── section: providers ────────────────────────────────────────
   attr :providers, :list, required: true
   attr :provider_filter, :string, default: ""
+  attr :base_url, :string, required: true
   attr :editing_provider, :any, default: nil
   attr :new_provider_open, :boolean, required: true
   attr :new_provider_preset, :string, required: true
@@ -1198,6 +1201,8 @@ defmodule YouWeb.ConsoleLive do
               params={%{}}
             />
           </div>
+
+          <.provider_setup preset={@new_provider_preset} base_url={@base_url} />
 
           <div
             :if={@new_provider_preset == "generic"}
@@ -1699,6 +1704,55 @@ defmodule YouWeb.ConsoleLive do
         {@count} {@noun}
       </span>
     </form>
+    """
+  end
+
+  attr :preset, :string, required: true
+  attr :base_url, :string, required: true
+
+  defp provider_setup(assigns) do
+    assigns = assign(assigns, guide: IdentityProviders.Setup.for_preset(assigns.preset))
+
+    ~H"""
+    <.disclosure
+      :if={@guide}
+      id={"provider-setup-#{@preset}"}
+      summary={"Where to get these credentials for #{String.capitalize(@preset)}"}
+    >
+      <ol class="list-decimal space-y-1.5 pl-5 text-sm text-muted-foreground">
+        <li :for={step <- @guide.steps}>{step}</li>
+      </ol>
+
+      <dl class="mt-3 space-y-1.5 border-t border-border pt-3 text-xs">
+        <div class="flex gap-2">
+          <dt class="shrink-0 text-muted-foreground">Callback URL</dt>
+          <dd class="min-w-0 flex-1 text-right">
+            <span class="font-mono break-all text-primary">
+              {@base_url}/auth/{@preset}/callback
+            </span>
+            <span class="mt-0.5 block text-muted-foreground">
+              paste into “{@guide.redirect_field}”
+            </span>
+          </dd>
+        </div>
+        <div class="flex justify-between gap-2">
+          <dt class="shrink-0 text-muted-foreground">Scopes</dt>
+          <dd class="text-right">{@guide.scopes}</dd>
+        </div>
+      </dl>
+
+      <p class="mt-3 rounded-md border border-signal-warn/40 bg-signal-warn/10 px-3 py-2 text-xs">
+        {@guide.caveat}
+      </p>
+
+      <p class="mt-2 text-[11px] text-muted-foreground">
+        From
+        <.link href={@guide.source} target="_blank" class="underline underline-offset-2">
+          {URI.parse(@guide.source).host}
+        </.link>
+        — vendor consoles change, so check there if a step no longer matches.
+      </p>
+    </.disclosure>
     """
   end
 

@@ -11,9 +11,14 @@ defmodule You.IdentityProviders.Presets do
   provider without also writing its adapter produces a provider that configures
   cleanly and then fails at login.
 
-  Deliberately absent: X/Twitter. Its API returns no email address without
-  elevated access, and You requires one to create an account, so a preset for
-  it would be configurable and unusable.
+  Deliberately absent, both for the same reason — a preset that configures
+  cleanly and then cannot authenticate is worse than none:
+
+    * X/Twitter returns no email address without elevated access, and You needs
+      one to create an account.
+    * Sign in with Apple issues no static secret. You download a .p8 key and
+      sign an ES256 JWT that expires within six months; there is no fixed
+      secret to store, and You has no JWT signing for it.
 
   Tenant-hosted providers (Auth0, Okta, Keycloak, Authentik, Zitadel) are not
   listed either — their endpoints differ per install, which is what the generic
@@ -44,17 +49,6 @@ defmodule You.IdentityProviders.Presets do
        userinfo_url: "https://graph.microsoft.com/oidc/userinfo",
        scopes: "openid email profile",
        icon: "microsoft"
-     }},
-    {"apple",
-     %{
-       display_name: "Apple",
-       kind: "apple",
-       issuer: "https://appleid.apple.com",
-       authorize_url: "https://appleid.apple.com/auth/authorize",
-       token_url: "https://appleid.apple.com/auth/token",
-       userinfo_url: nil,
-       scopes: "openid email name",
-       icon: "apple"
      }},
     {"github",
      %{

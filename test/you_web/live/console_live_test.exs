@@ -165,6 +165,37 @@ defmodule YouWeb.ConsoleLiveTest do
     end
   end
 
+  describe "provider setup guidance" do
+    test "the new-provider dialog shows steps and the callback URL", %{conn: conn} do
+      {:ok, lv, _} = live(conn, ~p"/console?view=providers")
+
+      html = render_click(lv, "select_new_provider_preset", %{"value" => "github"})
+
+      assert html =~ "Where to get these credentials for Github"
+      assert html =~ "Developer settings"
+      # The exact field to paste into, and the URL to paste.
+      assert html =~ "Authorization callback URL"
+      assert html =~ "/auth/github/callback"
+      assert html =~ "docs.github.com"
+    end
+
+    test "guidance changes with the selected preset", %{conn: conn} do
+      {:ok, lv, _} = live(conn, ~p"/console?view=providers")
+
+      html = render_click(lv, "select_new_provider_preset", %{"value" => "slack"})
+      assert html =~ "OAuth &amp; Permissions"
+      refute html =~ "Developer settings"
+    end
+
+    # The generic preset has no vendor console to describe.
+    test "the generic preset shows no guidance", %{conn: conn} do
+      {:ok, lv, _} = live(conn, ~p"/console?view=providers")
+
+      html = render_click(lv, "select_new_provider_preset", %{"value" => "generic"})
+      refute html =~ "Where to get these credentials"
+    end
+  end
+
   describe "list search" do
     test "apps list filters by name and client id", %{conn: conn} do
       {:ok, _, _} =

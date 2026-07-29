@@ -97,6 +97,7 @@ defmodule YouWeb do
       import YouWeb.Components.Base.ColorPicker
       import YouWeb.Components.Base.CopyButton
       import YouWeb.Components.Base.Dialog
+      import YouWeb.Components.Base.Disclosure
       import YouWeb.Components.Base.DropdownMenu
       import YouWeb.Components.Base.Input
       import YouWeb.Components.Base.Select
