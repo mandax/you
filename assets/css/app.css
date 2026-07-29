@@ -441,3 +441,21 @@
   from { opacity: 0; transform: translateX(1rem); }
   to { opacity: 1; transform: translateX(0); }
 }
+
+/* Per-app login branding. The values arrive as inline custom properties on
+   .app-branded (validated hex, set by the login controller); these rules pick
+   the right pair for the active theme and apply them. */
+.dark .app-branded {
+  --app-brand: var(--app-brand-dark);
+  --app-on-brand: var(--app-on-brand-dark);
+}
+
+.app-branded [data-brand-bg] {
+  background-color: var(--app-brand);
+  color: var(--app-on-brand);
+  border-color: var(--app-brand);
+}
+
+.app-branded [data-brand-text] {
+  color: var(--app-brand);
+}

@@ -19,7 +19,19 @@
     </div>
 
     <%!-- form panel --%>
-    <div class="flex items-center justify-center px-5 py-16">
+    <%!-- Brand values ride in an inline custom property; the light/dark switch
+         and the rules that consume them live in app.css, so operator input
+         never reaches a stylesheet. --%>
+    <div
+      class={[
+        "flex items-center justify-center px-5 py-16",
+        assigns[:app_brand_color] && "app-branded"
+      ]}
+      style={
+        assigns[:app_brand_color] &&
+          "--app-brand: #{@app_brand_color}; --app-on-brand: #{@app_on_brand}; --app-brand-dark: #{@app_brand_color_dark || @app_brand_color}; --app-on-brand-dark: #{@app_on_brand_dark}"
+      }
+    >
       <div class="w-full max-w-sm animate-rise-in space-y-6">
         <div class="text-center">
           <%= if assigns[:app_name] do %>
@@ -52,6 +64,7 @@
                   else: ~p"/users/register"
               }
               class="font-medium text-foreground hover:underline"
+              data-brand-text
             >
               Create an account
             </.link>
@@ -113,11 +126,12 @@
                     else: ~p"/users/reset-password"
                 }
                 class="font-medium text-foreground hover:underline"
+                data-brand-text
               >
                 Forgot password?
               </.link>
             </div>
-            <.button type="submit" class="w-full" size="lg">
+            <.button type="submit" class="w-full" size="lg" data-brand-bg>
               Log in <span class="lucide-arrow-right block size-4" />
             </.button>
           </div>

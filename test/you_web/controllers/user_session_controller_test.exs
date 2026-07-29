@@ -220,6 +220,71 @@ defmodule YouWeb.UserSessionControllerTest do
     end
   end
 
+  describe "brand colour on buttons and links" do
+    test "the submit button and links pick up the brand colour in both themes", %{conn: conn} do
+      {:ok, app, _} =
+        You.Admin.create_app(%{
+          slug: "branded-btn",
+          name: "Branded",
+          callback_url: "https://bb.example.com/cb",
+          brand_color: "#7c3aed",
+          brand_color_dark: "#a78bfa"
+        })
+
+      html = conn |> get(~p"/users/log-in?callback_url=#{app.callback_url}") |> html_response(200)
+
+      assert html =~ "app-branded"
+      assert html =~ "--app-brand: #7c3aed"
+      assert html =~ "--app-brand-dark: #a78bfa"
+      assert html =~ "data-brand-bg"
+      assert html =~ "data-brand-text"
+    end
+
+    # The operator picks a background; the text on it has to stay legible, so
+    # the foreground is derived rather than configured.
+    test "the on-brand foreground is derived from luminance", %{conn: conn} do
+      {:ok, dark_bg, _} =
+        You.Admin.create_app(%{
+          slug: "darkbg",
+          name: "Dark BG",
+          callback_url: "https://darkbg.example.com/cb",
+          brand_color: "#111111"
+        })
+
+      html =
+        conn |> get(~p"/users/log-in?callback_url=#{dark_bg.callback_url}") |> html_response(200)
+
+      assert html =~ "--app-on-brand: #ffffff"
+
+      {:ok, light_bg, _} =
+        You.Admin.create_app(%{
+          slug: "lightbg",
+          name: "Light BG",
+          callback_url: "https://lightbg.example.com/cb",
+          brand_color: "#fefefe"
+        })
+
+      html =
+        conn |> get(~p"/users/log-in?callback_url=#{light_bg.callback_url}") |> html_response(200)
+
+      assert html =~ "--app-on-brand: #000000"
+    end
+
+    test "an unbranded app gets no style block", %{conn: conn} do
+      {:ok, app, _} =
+        You.Admin.create_app(%{
+          slug: "plainbtn",
+          name: "Plain",
+          callback_url: "https://plainbtn.example.com/cb"
+        })
+
+      html = conn |> get(~p"/users/log-in?callback_url=#{app.callback_url}") |> html_response(200)
+
+      refute html =~ "app-branded"
+      refute html =~ "--app-brand"
+    end
+  end
+
   describe "per-app theme mode" do
     test "an app pinned to dark forces it at the document root", %{conn: conn} do
       {:ok, app, _} =

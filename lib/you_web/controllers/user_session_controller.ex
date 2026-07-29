@@ -55,6 +55,10 @@ defmodule YouWeb.UserSessionController do
         app_logo_url: app && app.logo_url,
         app_brand_color: app && app.brand_color,
         app_brand_color_dark: app && app.brand_color_dark,
+        app_on_brand: app && app.brand_color && You.Admin.App.contrast_on(app.brand_color),
+        app_on_brand_dark:
+          app && app.brand_color &&
+            You.Admin.App.contrast_on(app.brand_color_dark || app.brand_color),
         app_accent_color_dark: app && app.accent_color_dark,
         app_accent_color: app && app.accent_color,
         app_headline: app && app.headline,

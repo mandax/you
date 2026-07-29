@@ -36,6 +36,31 @@ defmodule You.Admin.App do
   @doc "How an app's login page picks a theme. `system` follows the visitor."
   def theme_modes, do: @theme_modes
 
+  @doc """
+  Black or white, whichever stays legible on `hex`.
+
+  An operator picking a brand colour is choosing a background; the text on top
+  of it has to be readable either way, so it is derived rather than configured.
+  Uses WCAG relative luminance with the standard 0.179 crossover.
+  """
+  def contrast_on("#" <> <<r::binary-2, g::binary-2, b::binary-2>>) do
+    if luminance(r) * 0.2126 + luminance(g) * 0.7152 + luminance(b) * 0.0722 > 0.179 do
+      "#000000"
+    else
+      "#ffffff"
+    end
+  end
+
+  def contrast_on(_), do: "#ffffff"
+
+  defp luminance(component) do
+    channel = String.to_integer(component, 16) / 255
+
+    if channel <= 0.03928,
+      do: channel / 12.92,
+      else: :math.pow((channel + 0.055) / 1.055, 2.4)
+  end
+
   @doc "The auth methods an app may enable. `nil` on the column means all of them."
   def auth_methods, do: @auth_methods
 
