@@ -30,7 +30,9 @@ _Avoid_: Service, client, integration
 
 **Identity Provider**:
 An upstream OIDC or non-OIDC service (Google, Microsoft, GitHub, Discord, etc.) that users can authenticate through. Each provider has its own row in the `identity_providers` table with an encrypted `client_secret`, editable at runtime rather than through config. Providers were migrated from `config :you, :oidc_providers` (which is still seeded on boot for backward compatibility). Non-OIDC providers (GitHub, Discord) route through dedicated adapters instead of the generic userinfo fetch.
-_Avoid_: OIDC provider, social login, federation, upstream IdP
+_Avoid_: IdP, connection, social provider, SSO provider
+
+"Social login" is the *method* a user picks on the login page (one of password, magic link, passkey, social); an Identity Provider is the upstream service behind it. "OIDC provider" narrows to the subset that speaks OIDC, so it is wrong for GitHub and Discord — use it only where the OIDC-ness is the point (`oidc_providers`, `feature_social_login`, `FederatedAuthController` predate this entry and keep their names).
 
 **Team** (future):
 A group of users that share billing, settings, and app access. A user can belong to multiple teams. Teams have a billing plan.

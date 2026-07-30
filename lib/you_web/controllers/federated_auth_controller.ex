@@ -1,6 +1,8 @@
 defmodule YouWeb.FederatedAuthController do
   use YouWeb, :controller
 
+  import YouWeb.AuthMethods, only: [app_for: 1, enabled?: 2]
+
   alias You.{Accounts, Admin, IdentityProviders}
 
   @doc """
@@ -145,48 +147,16 @@ defmodule YouWeb.FederatedAuthController do
   # `enabled_providers: nil` on the app means every provider is allowed;
   # a login with no in-flight app (not an OAuth handoff) is unrestricted too.
   #
-  # The method-level and instance-level checks mirror UserSessionController:
-  # social login can be switched off instance-wide via Settings, or per-app
-  # by omitting "social" from the app's enabled_methods.
+  # The same two switches gate it as any other method: social login can be
+  # turned off instance-wide via Settings, or per-app by omitting "social"
+  # from the app's enabled_methods.
   defp authorize_for_app(conn, provider) do
     app = app_for(conn)
 
-    with :ok <- check_method_enabled(app),
-         :ok <- check_provider_enabled(app, provider) do
+    if enabled?(conn, "social") and provider in Admin.App.resolved_providers(app, [provider]) do
       :ok
     else
-      _ -> :error
-    end
-  end
-
-  defp check_method_enabled(app) do
-    if "social" in enabled_methods(app), do: :ok, else: :error
-  end
-
-  defp check_provider_enabled(app, provider) do
-    if provider in Admin.App.resolved_providers(app, [provider]),
-      do: :ok,
-      else: :error
-  end
-
-  defp enabled_methods(app) do
-    You.Admin.App.auth_methods()
-    |> Enum.filter(&instance_offers?/1)
-    |> then(&You.Admin.App.resolved_methods(app, &1))
-  end
-
-  defp instance_offers?("social"), do: You.Settings.enabled?(:feature_social_login)
-  defp instance_offers?(_), do: true
-
-  # The registered app the in-flight OAuth handoff is for, resolved the same
-  # way as `YouWeb.OAuthFlow.safe_callback_url/1`. `nil` for a plain sign-in
-  # to You itself.
-  defp app_for(conn) do
-    with url when is_binary(url) <- get_session(conn, :callback_url),
-         {:ok, app} <- Admin.lookup_app_by_callback(url) do
-      app
-    else
-      _ -> nil
+      :error
     end
   end
 
@@ -212,17 +182,15 @@ defmodule YouWeb.FederatedAuthController do
   end
 
   defp exchange_code(config, code, conn, provider) do
-    secret =
-      try do
-        IdentityProviders.decrypt_secret(config)
-      rescue
-        _ -> nil
-      end
+    case IdentityProviders.fetch_secret(config) do
+      {:ok, client_secret} ->
+        do_exchange_code(config, code, conn, provider, client_secret)
 
-    if is_nil(secret) do
-      {:error, :provider_misconfigured}
-    else
-      do_exchange_code(config, code, conn, provider, secret)
+      # The stored ciphertext will not open under the current secret_key_base.
+      # A rotated key makes every provider unusable until its secret is
+      # re-entered, so say so rather than 500 on the login page.
+      {:error, :undecryptable} ->
+        {:error, :provider_misconfigured}
     end
   end
 

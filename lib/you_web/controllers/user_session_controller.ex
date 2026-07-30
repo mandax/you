@@ -1,6 +1,8 @@
 defmodule YouWeb.UserSessionController do
   use YouWeb, :controller
 
+  import YouWeb.AuthMethods, only: [app_for: 1, enabled_methods: 1, enabled?: 2]
+
   alias You.Accounts
   alias YouWeb.UserAuth
 
@@ -68,18 +70,6 @@ defmodule YouWeb.UserSessionController do
     end
   end
 
-  # Registered app in an OAuth login flow ("sign in to continue to <app>");
-  # nil for a plain login. Its branding (logo_url, brand_color) optionally
-  # customizes the login page.
-  defp app_for(conn) do
-    with url when is_binary(url) <- get_session(conn, :callback_url),
-         {:ok, app} <- You.Admin.lookup_app_by_callback(url) do
-      app
-    else
-      _ -> nil
-    end
-  end
-
   # Enabled upstream OIDC providers, as a sorted list of slugs ("google", …),
   # filtered to the ones the in-flight `app` allows. Hiding the button here is
   # a UX nicety only — `FederatedAuthController` is what actually gates access.
@@ -90,8 +80,6 @@ defmodule YouWeb.UserSessionController do
     |> Enum.sort()
   end
 
-  # The auth methods the in-flight app allows. `nil` means every method, so an
-  # app registered before a method existed still gets it.
   # "system" leaves the visitor's own preference alone; only an explicit
   # light/dark is pinned onto the document root.
   defp forced_theme(%{theme_mode: mode}) when mode in ["light", "dark"], do: mode
@@ -104,26 +92,6 @@ defmodule YouWeb.UserSessionController do
       %{email_from_name: name} when is_binary(name) and name != "" -> name
       _ -> nil
     end
-  end
-
-  defp enabled_methods(app) do
-    You.Admin.App.auth_methods()
-    |> Enum.filter(&instance_offers?/1)
-    |> then(&You.Admin.App.resolved_methods(app, &1))
-  end
-
-  # An instance-level switch beats a per-app one: if an admin turned magic
-  # links off entirely, no app can opt back in.
-  defp instance_offers?("magic_link"), do: You.Settings.enabled?(:feature_magic_link)
-  defp instance_offers?("passkey"), do: You.Settings.enabled?(:feature_passkeys)
-  defp instance_offers?("social"), do: You.Settings.enabled?(:feature_social_login)
-  defp instance_offers?(_), do: true
-
-  # Rendering is not gating: the login page hides a disabled method's control,
-  # but anyone can POST to this action directly, so the method has to be
-  # rejected here too.
-  defp method_enabled?(conn, method) do
-    method in enabled_methods(app_for(conn))
   end
 
   defp reject_disabled_method(conn) do
@@ -192,14 +160,14 @@ defmodule YouWeb.UserSessionController do
           form: Phoenix.Component.to_form(%{}, as: "user"),
           callback_url: get_session(conn, :callback_url),
           providers: oidc_providers(app_for(conn)),
-          methods: enabled_methods(app_for(conn))
+          methods: enabled_methods(conn)
         )
     end
   end
 
   # email + password login
   def create(conn, %{"user" => %{"email" => email, "password" => password} = user_params}) do
-    if not method_enabled?(conn, "password") do
+    if not enabled?(conn, "password") do
       reject_disabled_method(conn)
     else
       do_password_login(conn, email, password, user_params)
@@ -208,7 +176,7 @@ defmodule YouWeb.UserSessionController do
 
   # magic link request
   def create(conn, %{"user" => %{"email" => email}}) do
-    if not method_enabled?(conn, "magic_link") do
+    if not enabled?(conn, "magic_link") do
       reject_disabled_method(conn)
     else
       do_magic_link_request(conn, email)
@@ -258,7 +226,7 @@ defmodule YouWeb.UserSessionController do
         form: form,
         callback_url: get_session(conn, :callback_url),
         providers: oidc_providers(app_for(conn)),
-        methods: enabled_methods(app_for(conn))
+        methods: enabled_methods(conn)
       )
     end
   end

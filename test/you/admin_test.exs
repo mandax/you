@@ -131,6 +131,21 @@ defmodule You.AdminTest do
       assert "has an invalid entry" in errors_on(changeset).enabled_methods
     end
 
+    # An empty list is a lockout: no method reaches the login page and nothing
+    # says why. nil is the way to say "follow the instance".
+    test "rejects an empty enabled_methods list", %{app: app} do
+      assert {:error, changeset} = Admin.update_app(app, %{"enabled_methods" => []})
+
+      assert "must offer at least one sign-in method" in errors_on(changeset).enabled_methods
+    end
+
+    test "still accepts nil enabled_methods", %{app: app} do
+      {:ok, app} = Admin.update_app(app, %{"enabled_methods" => ["password"]})
+      assert {:ok, app} = Admin.update_app(app, %{"enabled_methods" => nil})
+
+      assert app.enabled_methods == nil
+    end
+
     test "accent_color must be a 6-digit hex color", %{app: app} do
       assert {:error, changeset} = Admin.update_app(app, %{"accent_color" => "red"})
       assert "has invalid format" in errors_on(changeset).accent_color

@@ -1,6 +1,8 @@
 defmodule YouWeb.WebAuthnController do
   use YouWeb, :controller
 
+  import YouWeb.AuthMethods, only: [enabled?: 2]
+
   alias You.Accounts
   alias You.Accounts.Passkey
 
@@ -102,7 +104,7 @@ defmodule YouWeb.WebAuthnController do
   `allowCredentials`. Otherwise the browser may use any discoverable credential.
   """
   def start_authentication(conn, params) do
-    if not method_enabled?(conn, "passkey") do
+    if not enabled?(conn, "passkey") do
       conn
       |> put_status(403)
       |> json(%{error: "Passkey authentication is not available for this application."})
@@ -163,7 +165,7 @@ defmodule YouWeb.WebAuthnController do
   establishes a session.
   """
   def finish_authentication(conn, params) do
-    if not method_enabled?(conn, "passkey") do
+    if not enabled?(conn, "passkey") do
       conn
       |> put_status(403)
       |> json(%{error: "Passkey authentication is not available for this application."})
@@ -260,29 +262,6 @@ defmodule YouWeb.WebAuthnController do
     case You.Repo.get(Accounts.User, user_id) do
       %Accounts.User{} = user -> {:ok, user}
       nil -> {:error, :user_not_found}
-    end
-  end
-
-  # ── method gating (same pattern as UserSessionController) ──────
-
-  defp method_enabled?(conn, method) do
-    method in enabled_methods(app_for(conn))
-  end
-
-  defp enabled_methods(app) do
-    You.Admin.App.auth_methods()
-    |> Enum.filter(&instance_offers?/1)
-    |> then(&You.Admin.App.resolved_methods(app, &1))
-  end
-
-  defp instance_offers?("passkey"), do: You.Settings.enabled?(:feature_passkeys)
-  defp instance_offers?(_), do: true
-
-  defp app_for(conn) do
-    with url when is_binary(url) <- get_session(conn, :callback_url) do
-      You.Admin.lookup_app_by_callback(url)
-    else
-      _ -> nil
     end
   end
 end

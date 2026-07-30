@@ -113,6 +113,83 @@ defmodule YouWeb.FederatedAuthControllerTest do
     end
   end
 
+  # Social is gated by the same two switches as every other method, and by the
+  # per-app provider list on top. Turning the method off has to reject the
+  # endpoint, not merely drop the button from the login page.
+  describe "social as a gated sign-in method" do
+    test "an app that omits \"social\" from enabled_methods is rejected", %{conn: conn} do
+      create_provider!()
+
+      {:ok, _app, _secret} =
+        You.Admin.create_app(%{
+          slug: "no-social",
+          name: "No Social",
+          callback_url: "https://no-social.example.com/cb",
+          enabled_methods: ["password", "magic_link"]
+        })
+
+      conn =
+        conn
+        |> init_test_session(callback_url: "https://no-social.example.com/cb")
+        |> get(~p"/auth/google")
+
+      assert redirected_to(conn) == ~p"/users/log-in"
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "Unknown authentication provider."
+    end
+
+    test "an app that keeps \"social\" is allowed", %{conn: conn} do
+      create_provider!()
+
+      {:ok, _app, _secret} =
+        You.Admin.create_app(%{
+          slug: "yes-social",
+          name: "Yes Social",
+          callback_url: "https://yes-social.example.com/cb",
+          enabled_methods: ["password", "social"]
+        })
+
+      conn =
+        conn
+        |> init_test_session(callback_url: "https://yes-social.example.com/cb")
+        |> get(~p"/auth/google")
+
+      assert redirected_to(conn, 302) =~ "accounts.google.com"
+    end
+
+    test "the instance switch beats an app that allows social", %{conn: conn} do
+      create_provider!()
+
+      {:ok, _app, _secret} =
+        You.Admin.create_app(%{
+          slug: "inst-social",
+          name: "Inst Social",
+          callback_url: "https://inst-social.example.com/cb",
+          enabled_methods: ["password", "social"]
+        })
+
+      You.Settings.set(:feature_social_login, false)
+      on_exit(fn -> You.Settings.set(:feature_social_login, true) end)
+
+      conn =
+        conn
+        |> init_test_session(callback_url: "https://inst-social.example.com/cb")
+        |> get(~p"/auth/google")
+
+      assert redirected_to(conn) == ~p"/users/log-in"
+    end
+
+    test "the instance switch also rejects a plain sign-in with no app in flight", %{conn: conn} do
+      create_provider!()
+
+      You.Settings.set(:feature_social_login, false)
+      on_exit(fn -> You.Settings.set(:feature_social_login, true) end)
+
+      conn = get(conn, ~p"/auth/google")
+
+      assert redirected_to(conn) == ~p"/users/log-in"
+    end
+  end
+
   describe "GET /auth/:provider/callback" do
     test "rejects an unknown provider slug without raising", %{conn: conn} do
       conn = get(conn, ~p"/auth/does-not-exist/callback", %{"code" => "x", "state" => "y"})
