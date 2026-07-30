@@ -5,17 +5,15 @@ defmodule YouWeb.ConsoleLive do
   A single LiveView shell (sidebar + topbar + section views) with a dense,
   mono-accented design: cards and tables, a live
   connection indicator, and `?view=` navigation. Every section is wired to the
-  real domain (`You.Admin`, `You.Organizations`, `You.Settings`,
+  real domain (`You.Admin`, `You.Settings`,
   `You.Audit.Streamer`). No fabricated data.
   """
   use YouWeb, :live_view
 
   import YouWeb.Components.ConsoleChrome
 
-  alias You.{Admin, Organizations, Accounts, Settings, Webhooks, Roles, IdentityProviders}
+  alias You.{Admin, Accounts, Settings, Webhooks, Roles, IdentityProviders}
   alias You.Audit.Streamer
-
-  @roles ~w(owner admin member)
 
   # Shown but locked. An admin should be able to see that password login
   # exists and cannot be switched off, rather than wonder where it went.
@@ -37,7 +35,6 @@ defmodule YouWeb.ConsoleLive do
       "Services that delegate authentication to You. Each one gets a client id, a secret, and its own roles and login branding.",
     "providers" =>
       "Upstream identity providers users can sign in with. Configured once here, then enabled per app. A provider switched off is refused everywhere, not just hidden.",
-    "orgs" => "Groups of users that share app access.",
     "audit" =>
       "Privileged actions, newest first. This is the live in-memory view; configure the audit webhook for retention.",
     "webhooks" =>
@@ -52,7 +49,6 @@ defmodule YouWeb.ConsoleLive do
     feature_passkeys: {"Passkeys", "WebAuthn sign-in and per-user passkey management."},
     feature_magic_link: {"Magic links", "Passwordless sign-in by emailed link."},
     feature_social_login: {"Social sign-in", "Upstream identity providers on the login page."},
-    feature_organizations: {"Organizations", "Teams that share app access. Still incomplete."},
     feature_webhooks: {"Webhooks", "Signed outbound events."}
   }
 
@@ -83,11 +79,8 @@ defmodule YouWeb.ConsoleLive do
        nav: nav(),
        view: "overview",
        node_name: Node.self(),
-       roles: @roles,
        new_secret: nil,
        secret_app: nil,
-       selected_org: nil,
-       members: [],
        audit_filter: "",
        audit_app_filter: "",
        webhook_secret: nil,
@@ -335,49 +328,6 @@ defmodule YouWeb.ConsoleLive do
   def handle_event("dismiss_secret", _params, socket),
     do: {:noreply, assign(socket, new_secret: nil, secret_app: nil)}
 
-  # ── orgs ──────────────────────────────────────────────────────
-  def handle_event("create_org", params, socket) do
-    case Organizations.create_organization(Map.take(params, ["name", "slug"])) do
-      {:ok, _org} ->
-        {:noreply, socket |> load_data() |> put_flash(:info, "Organization created.")}
-
-      {:error, cs} ->
-        {:noreply, put_flash(socket, :error, "Could not create org: #{error_summary(cs)}")}
-    end
-  end
-
-  def handle_event("select_org", %{"id" => id}, socket), do: {:noreply, select_org(socket, id)}
-
-  def handle_event("add_member", %{"email" => email, "role" => role}, socket) do
-    org = socket.assigns.selected_org
-
-    case Accounts.get_user_by_email(email) do
-      nil ->
-        {:noreply, put_flash(socket, :error, "No user with email #{email}.")}
-
-      user ->
-        case Organizations.add_member(org, user, role) do
-          {:ok, _} ->
-            {:noreply, socket |> select_org(org.id) |> put_flash(:info, "Member added.")}
-
-          {:error, cs} ->
-            {:noreply, put_flash(socket, :error, "Could not add: #{error_summary(cs)}")}
-        end
-    end
-  end
-
-  def handle_event("update_role", %{"user_id" => uid} = params, socket) do
-    org = socket.assigns.selected_org
-    Organizations.update_member_role(org, Admin.get_user!(uid), params["value"] || params["role"])
-    {:noreply, select_org(socket, org.id)}
-  end
-
-  def handle_event("remove_member", %{"user_id" => uid}, socket) do
-    org = socket.assigns.selected_org
-    Organizations.remove_member(org, Admin.get_user!(uid))
-    {:noreply, socket |> select_org(org.id) |> put_flash(:info, "Member removed.")}
-  end
-
   # ── settings ──────────────────────────────────────────────────
   def handle_event("filter_apps", %{"query" => query}, socket) do
     {:noreply, assign(socket, app_filter: query)}
@@ -538,19 +488,14 @@ defmodule YouWeb.ConsoleLive do
   end
 
   defp load_data(socket) do
-    org = socket.assigns[:selected_org]
-
-    socket
-    |> assign(
+    assign(socket,
       users: Admin.list_users_with_stats(),
       apps: Admin.list_apps(),
-      orgs: Organizations.list_organizations_with_counts(),
       events: Streamer.recent(),
       endpoints: Webhooks.list_endpoints(),
       assignments: Roles.all_assignments(),
       providers: IdentityProviders.list_providers()
     )
-    |> assign(members: if(org, do: Organizations.list_members(org), else: []))
   end
 
   # Drops blank/missing keys so a preset's endpoint template (or, on edit, the
@@ -580,13 +525,6 @@ defmodule YouWeb.ConsoleLive do
   defp load_settings(socket),
     do: assign(socket, settings: Settings.all())
 
-  defp select_org(socket, id) do
-    case Organizations.get_organization(id) do
-      nil -> assign(socket, selected_org: nil, members: [])
-      org -> assign(socket, selected_org: org, members: Organizations.list_members(org))
-    end
-  end
-
   defp parse_value(raw) do
     if raw =~ ~r/^\d+$/, do: String.to_integer(raw), else: raw
   end
@@ -609,7 +547,7 @@ defmodule YouWeb.ConsoleLive do
 
       <%= case @view do %>
         <% "overview" -> %>
-          <.overview users={@users} apps={@apps} orgs={@orgs} events={@events} />
+          <.overview users={@users} apps={@apps} events={@events} />
         <% "users" -> %>
           <.users_view
             users={@users}
@@ -636,8 +574,6 @@ defmodule YouWeb.ConsoleLive do
             new_provider_preset={@new_provider_preset}
             discovery={@discovery}
           />
-        <% "orgs" -> %>
-          <.orgs_view orgs={@orgs} selected={@selected_org} members={@members} roles={@roles} />
         <% "audit" -> %>
           <.audit_view
             events={@events}
@@ -672,17 +608,15 @@ defmodule YouWeb.ConsoleLive do
   # ── section: overview ─────────────────────────────────────────
   attr :users, :list, required: true
   attr :apps, :list, required: true
-  attr :orgs, :list, required: true
   attr :events, :list, required: true
 
   defp overview(assigns) do
     ~H"""
     <div class="space-y-6">
-      <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <.metric_card label="Users" value={to_string(length(@users))} />
         <.metric_card label="Admins" value={to_string(Enum.count(@users, & &1.user.is_admin))} />
         <.metric_card label="Apps" value={to_string(length(@apps))} />
-        <.metric_card label="Organizations" value={to_string(length(@orgs))} />
       </div>
 
       <div class="rounded-lg border border-border bg-card p-4">
@@ -1340,121 +1274,6 @@ defmodule YouWeb.ConsoleLive do
           </div>
         </form>
       </.sheet>
-    </div>
-    """
-  end
-
-  # ── section: orgs ─────────────────────────────────────────────
-  attr :orgs, :list, required: true
-  attr :selected, :map, default: nil
-  attr :members, :list, required: true
-  attr :roles, :list, required: true
-
-  defp orgs_view(assigns) do
-    ~H"""
-    <div class="grid gap-4 lg:grid-cols-[16rem_1fr]">
-      <div class="space-y-2">
-        <div class="flex items-center justify-between">
-          <span class="font-mono text-xs text-muted-foreground">{length(@orgs)} orgs</span>
-          <.dialog id="new-org">
-            <:trigger>
-              <.button size="xs" variant="outline">
-                <span class="lucide-plus size-3.5 block" /> New
-              </.button>
-            </:trigger>
-            <:title>Create organization</:title>
-            <form phx-submit="create_org" class="space-y-4">
-              <.input type="text" name="name" label="Name" value="" required />
-              <.input type="text" name="slug" label="Slug" value="" required />
-              <div class="flex justify-end">
-                <.button type="submit">Create</.button>
-              </div>
-            </form>
-          </.dialog>
-        </div>
-
-        <div class="overflow-hidden rounded-lg border border-border">
-          <button
-            :for={{org, count} <- @orgs}
-            type="button"
-            phx-click="select_org"
-            phx-value-id={org.id}
-            class={[
-              "flex w-full items-center justify-between border-b border-border/60 px-3 py-2 text-left text-sm transition-colors last:border-0",
-              if(@selected && @selected.id == org.id,
-                do: "bg-muted/60 text-foreground",
-                else: "text-muted-foreground hover:bg-muted/40 hover:text-foreground"
-              )
-            ]}
-          >
-            <span class="truncate">{org.name}</span>
-            <span class="font-mono text-xs text-muted-foreground/70">{count}</span>
-          </button>
-          <div :if={@orgs == []} class="px-3 py-8 text-center text-xs text-muted-foreground">
-            No organizations.
-          </div>
-        </div>
-      </div>
-
-      <div :if={@selected} class="space-y-4">
-        <div>
-          <div class="text-sm font-medium">{@selected.name}</div>
-          <div class="font-mono text-xs text-muted-foreground">{@selected.slug}</div>
-        </div>
-
-        <form phx-submit="add_member" class="flex items-end gap-2 [&_>div]:mb-0">
-          <div class="flex-1">
-            <.input type="email" name="email" label="Add member by email" value="" required />
-          </div>
-          <div class="space-y-1.5">
-            <span class="block font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-              Role
-            </span>
-            <.select
-              id="add-member-role"
-              name="role"
-              value="member"
-              options={Enum.map(@roles, &%{value: &1, label: String.capitalize(&1)})}
-            />
-          </div>
-          <.button type="submit">Add</.button>
-        </form>
-
-        <.data_table cols={~w(Email Role) ++ [""]} empty={@members == []}>
-          <tr
-            :for={{user, role} <- @members}
-            class="border-b border-border/60 last:border-0 hover:bg-muted/40"
-          >
-            <td class="px-3 py-2 font-mono text-xs text-foreground/90">{user.email}</td>
-            <td class="px-3 py-2">
-              <.select
-                id={"member-role-#{user.id}"}
-                value={role}
-                options={Enum.map(@roles, &%{value: &1, label: String.capitalize(&1)})}
-                on_change="update_role"
-                params={%{"user_id" => user.id}}
-              />
-            </td>
-            <td class="px-3 py-2 text-right">
-              <button
-                type="button"
-                phx-click="remove_member"
-                phx-value-user_id={user.id}
-                class="rounded px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-destructive hover:text-destructive-foreground"
-              >
-                Remove
-              </button>
-            </td>
-          </tr>
-        </.data_table>
-      </div>
-
-      <div
-        :if={@selected == nil}
-        class="grid place-items-center rounded-lg border border-dashed border-border text-sm text-muted-foreground"
-      >
-        Select an organization to manage members.
-      </div>
     </div>
     """
   end

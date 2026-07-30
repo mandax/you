@@ -19,11 +19,6 @@ defmodule YouWeb.LandingContent do
         body: "Promote admins, force a user logged out everywhere, anonymize on request."
       },
       %{
-        icon: "lucide-building-2",
-        title: "Organizations",
-        body: "Group users into orgs with per-member roles, ready for team billing later."
-      },
-      %{
         icon: "lucide-scroll-text",
         title: "Live audit trail",
         body:
@@ -113,12 +108,6 @@ defmodule YouWeb.LandingContent do
         title: "Magic links",
         body:
           "Email a one-time sign-in link, without taking passwords away from the users who prefer them."
-      },
-      %{
-        icon: "lucide-building-2",
-        audience: :user,
-        title: "Organizations",
-        body: "Group users into orgs with per-member roles, separate from their per-app roles."
       },
       # ── what an app or a script talks to ──
       %{

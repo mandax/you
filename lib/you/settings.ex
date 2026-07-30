@@ -31,7 +31,6 @@ defmodule You.Settings do
     feature_passkeys: true,
     feature_magic_link: true,
     feature_social_login: true,
-    feature_organizations: false,
     feature_webhooks: true
   }
 
@@ -46,7 +45,6 @@ defmodule You.Settings do
     :feature_passkeys,
     :feature_magic_link,
     :feature_social_login,
-    :feature_organizations,
     :feature_webhooks
   ]
 
