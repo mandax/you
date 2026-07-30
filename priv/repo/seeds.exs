@@ -1,5 +1,5 @@
 # Populates the database with a realistic demo dataset: users, apps,
-# organizations, role assignments, passkeys, federated identities, consents,
+# role assignments, passkeys, federated identities, consents,
 # webhook endpoints and instance settings.
 #
 #     mix run priv/repo/seeds.exs
@@ -12,7 +12,6 @@ import Ecto.Query
 alias You.Accounts.{Consent, FederatedIdentity, Passkey, User}
 alias You.Admin
 alias You.Admin.App
-alias You.Organizations
 alias You.Repo
 alias You.Roles
 alias You.Settings
@@ -169,68 +168,6 @@ apps =
 
 IO.puts("  #{length(apps)} apps")
 
-# ── organizations + memberships ────────────────────────────────────────
-IO.puts("→ organizations")
-
-org_specs = [
-  {"Northwind Trading", "northwind"},
-  {"Acme Labs", "acme-labs"},
-  {"Meridian Financial", "meridian"},
-  {"Kestrel Security", "kestrel"},
-  {"BEAM Works", "beamworks"},
-  {"Harbor Technologies", "harbor-tech"},
-  {"Orbital Studio", "orbital"},
-  {"Lumen IO", "lumen-io"},
-  {"Vertex Cloud", "vertex-cloud"}
-]
-
-orgs =
-  Enum.map(org_specs, fn {name, slug} ->
-    case Repo.get_by(You.Organizations.Organization, slug: slug) do
-      nil ->
-        {:ok, org} = Organizations.create_organization(%{"name" => name, "slug" => slug})
-        org
-
-      existing ->
-        existing
-    end
-  end)
-
-# Members are drawn from the email domain when it matches an org slug, so the
-# memberships line up with the user list; everyone else lands in Acme Labs.
-by_slug = Map.new(orgs, &{&1.slug, &1})
-
-# Memberships are uniquely indexed on (org, user): on a rerun, set the role
-# instead of failing the insert.
-ensure_member = fn org, user, role ->
-  case Organizations.add_member(org, user, role) do
-    {:ok, membership} -> membership
-    {:error, _} -> Organizations.update_member_role(org, user, role)
-  end
-end
-
-Enum.each(users, fn user ->
-  [_, domain] = String.split(user.email, "@")
-  slug = domain |> String.replace(".com", "") |> String.replace(~r/\.(io|dev|co|net|studio)$/, "")
-
-  org = Map.get(by_slug, slug, by_slug["acme-labs"])
-
-  role =
-    cond do
-      user.is_admin -> "owner"
-      rem(user.id, 4) == 0 -> "admin"
-      true -> "member"
-    end
-
-  ensure_member.(org, user, role)
-end)
-
-ensure_member.(by_slug["northwind"], admin, "owner")
-
-IO.puts(
-  "  #{length(orgs)} orgs, #{Repo.aggregate(You.Organizations.Membership, :count)} memberships"
-)
-
 # ── app role assignments ───────────────────────────────────────────────
 IO.puts("→ role assignments")
 
@@ -364,7 +301,6 @@ Seed complete.
 
   users ........... #{Repo.aggregate(User, :count)}
   apps ............ #{Repo.aggregate(App, :count)}
-  organizations ... #{Repo.aggregate(You.Organizations.Organization, :count)}
   assignments ..... #{Repo.aggregate(You.Roles.Assignment, :count)}
   webhooks ........ #{Repo.aggregate(You.Webhooks.Endpoint, :count)}
 

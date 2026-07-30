@@ -34,13 +34,13 @@ _Avoid_: IdP, connection, social provider, SSO provider
 
 "Social login" is the *method* a user picks on the login page (one of password, magic link, passkey, social); an Identity Provider is the upstream service behind it. "OIDC provider" narrows to the subset that speaks OIDC, so it is wrong for GitHub and Discord — use it only where the OIDC-ness is the point (`oidc_providers`, `feature_social_login`, `FederatedAuthController` predate this entry and keep their names).
 
-**Team** (future):
-A group of users that share billing, settings, and app access. A user can belong to multiple teams. Teams have a billing plan.
-_Avoid_: Organization, workspace, group
+**Tenant** (deliberately absent):
+There is no grouping of users above the App. An `organizations` table and console screen existed briefly and were removed: they carried no JWT claim, took no part in role resolution, and gated nothing, so membership meant only that two users appeared in the same list.
 
-**Billing Plan** (future):
-A subscription tier that determines per-team quotas: max users, max apps, API rate limits, storage. Reserved in the schema but not active until payment integration is built.
-_Avoid_: Tier, subscription, pricing plan
+The App is the isolation boundary. A user's access is `(app_slug, user_id) → role_name` and nothing else; a consumer app that needs to scope its own data by customer holds that in its own schema. Reintroduce a tenant only for the case that actually requires one: two customer companies signing in through You to the same app deployment, needing their data kept apart. That means an `org` claim in the App JWT and a rule for which tenant a session is acting for — decide both before adding a table, since the claim is a contract that consumer apps will depend on.
+
+Billing follows the same reasoning: per-team quotas and plans need a tenant to hang off, so they are out of scope until one exists.
+_Avoid_: Organization, workspace, group, team
 
 **API Key** (machine-to-machine):
 A Bearer token used by apps to call You's internal endpoints (token validation, user lookup). Not to be confused with an app's own API keys (e.g., `sk_` keys for content extraction).

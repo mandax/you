@@ -84,19 +84,6 @@ erDiagram
         utc_datetime expires_at
     }
 
-    organizations {
-        int id PK
-        string name
-        string slug "unique"
-    }
-
-    memberships {
-        int id PK
-        int organization_id FK "not null, on_delete: delete_all"
-        int user_id FK "not null, on_delete: delete_all"
-        string role "owner|admin|member, default member"
-    }
-
     settings {
         int id PK
         string key "unique"
@@ -115,8 +102,6 @@ erDiagram
     users ||--o{ recovery_codes : ""
     users ||--o{ user_passkeys : ""
     users ||--o{ federated_identities : ""
-    users ||--o{ memberships : ""
-    organizations ||--o{ memberships : ""
     apps ||--o{ app_user_roles : ""
     users ||--o{ app_user_roles : ""
     apps ||--o{ consents : ""
@@ -134,7 +119,6 @@ erDiagram
 | `apps` | `apps_slug_index` | `slug` | Yes |
 | `app_user_roles` | `app_user_roles_app_id_user_id_index` | `app_id, user_id` | Yes |
 | `consents` | `consents_user_id_app_id_index` | `user_id, app_id` | Yes |
-| `organizations` | `organizations_slug_index` | `slug` | Yes |
 | `settings` | `settings_key_index` | `key` | Yes |
 
 ## Context values

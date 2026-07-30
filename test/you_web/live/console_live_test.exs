@@ -12,7 +12,7 @@ defmodule YouWeb.ConsoleLiveTest do
   end
 
   test "every view mounts", %{conn: conn} do
-    for view <- ~w(overview users apps providers orgs audit webhooks settings) do
+    for view <- ~w(overview users apps providers audit webhooks settings) do
       {:ok, _lv, html} = live(conn, "/console?view=#{view}")
       assert html =~ "you"
     end
