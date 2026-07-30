@@ -1,6 +1,8 @@
 defmodule YouWeb.WebAuthnController do
   use YouWeb, :controller
 
+  import YouWeb.AuthMethods, only: [enabled?: 2]
+
   alias You.Accounts
   alias You.Accounts.Passkey
 
@@ -102,6 +104,16 @@ defmodule YouWeb.WebAuthnController do
   `allowCredentials`. Otherwise the browser may use any discoverable credential.
   """
   def start_authentication(conn, params) do
+    if not enabled?(conn, "passkey") do
+      conn
+      |> put_status(403)
+      |> json(%{error: "Passkey authentication is not available for this application."})
+    else
+      do_start_authentication(conn, params)
+    end
+  end
+
+  defp do_start_authentication(conn, params) do
     passkeys =
       if email = params["email"] do
         case Accounts.get_user_by_email(email) do
@@ -153,6 +165,16 @@ defmodule YouWeb.WebAuthnController do
   establishes a session.
   """
   def finish_authentication(conn, params) do
+    if not enabled?(conn, "passkey") do
+      conn
+      |> put_status(403)
+      |> json(%{error: "Passkey authentication is not available for this application."})
+    else
+      do_finish_authentication(conn, params)
+    end
+  end
+
+  defp do_finish_authentication(conn, params) do
     with challenge when not is_nil(challenge) <- get_session(conn, :webauthn_challenge),
          raw_id <- decode_param(params["rawId"] || params["id"]),
          {:ok, raw_id} <- raw_id,

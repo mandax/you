@@ -49,6 +49,7 @@ defmodule You.Roles do
       with {:ok, _} <- result do
         :telemetry.execute([:you, :audit, :admin, :action], %{}, %{
           action: "set_role",
+          app_slug: app.slug,
           target: "#{app.slug}:#{user.email}",
           role: role
         })
@@ -132,6 +133,7 @@ defmodule You.Roles do
       # forensically as the per-user events `set_role/3` emits.
       :telemetry.execute([:you, :audit, :admin, :action], %{}, %{
         action: "set_roles",
+        app_slug: app.slug,
         target: app.slug,
         role: role,
         user_ids: ids,

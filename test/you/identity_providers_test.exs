@@ -365,5 +365,67 @@ defmodule You.IdentityProvidersTest do
       assert attrs.display_name == "Our GitLab"
       assert attrs.token_url == "https://gitlab.com/oauth/token"
     end
+
+    # A console form or an API caller can send anything; an unrecognised key
+    # must not take the whole request down.
+    test "expanding drops keys that are not provider fields" do
+      assert {:ok, attrs} =
+               You.IdentityProviders.Presets.expand("google", %{
+                 "client_id" => "cid",
+                 "not_a_field" => "junk",
+                 "_csrf_token" => "…"
+               })
+
+      assert attrs.client_id == "cid"
+      refute Map.has_key?(attrs, :not_a_field)
+      refute Map.has_key?(attrs, "not_a_field")
+    end
+
+    test "expanding accepts atom keys as well as string ones" do
+      assert {:ok, attrs} =
+               You.IdentityProviders.Presets.expand("google", %{client_id: "cid"})
+
+      assert attrs.client_id == "cid"
+    end
+  end
+
+  describe "fetch_secret/1" do
+    test "returns the plaintext secret" do
+      {:ok, provider} = IdentityProviders.create_provider(@valid_attrs)
+
+      assert IdentityProviders.fetch_secret(provider) == {:ok, "s3cr3t"}
+    end
+
+    test "a provider with no secret is not a misconfiguration" do
+      {:ok, provider} =
+        IdentityProviders.create_provider(Map.delete(@valid_attrs, "client_secret"))
+
+      assert IdentityProviders.fetch_secret(provider) == {:ok, nil}
+    end
+
+    # What a rotated secret_key_base looks like from here: ciphertext that will
+    # not open. Reported, not raised, so the login page can say so.
+    test "an unreadable secret reports :undecryptable instead of raising" do
+      {:ok, provider} = IdentityProviders.create_provider(@valid_attrs)
+      stale = %{provider | client_secret: :crypto.strong_rand_bytes(48)}
+
+      assert IdentityProviders.fetch_secret(stale) == {:error, :undecryptable}
+    end
+
+    test "a truncated ciphertext reports :undecryptable too" do
+      {:ok, provider} = IdentityProviders.create_provider(@valid_attrs)
+      stale = %{provider | client_secret: <<1, 2, 3>>}
+
+      assert IdentityProviders.fetch_secret(stale) == {:error, :undecryptable}
+    end
+
+    test "decrypt_secret/1 still raises on the same input" do
+      {:ok, provider} = IdentityProviders.create_provider(@valid_attrs)
+      stale = %{provider | client_secret: :crypto.strong_rand_bytes(48)}
+
+      assert_raise RuntimeError, ~r/failed to decrypt/, fn ->
+        IdentityProviders.decrypt_secret(stale)
+      end
+    end
   end
 end

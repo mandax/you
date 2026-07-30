@@ -415,6 +415,45 @@ defmodule YouWeb.ConsoleLiveTest do
       assert reset =~ "app_slug=&quot;audit-app-b&quot;"
       assert reset =~ "action=&quot;promote_admin&quot;"
     end
+
+    # Role events predating the app_slug metadata carry the slug only in
+    # `target`. The filter recovers it from there — but only for those actions,
+    # so an unrelated event whose target happens to equal a slug stays out.
+    test "the app filter catches legacy role events and nothing else", %{conn: conn} do
+      {:ok, _app, _secret} =
+        Admin.create_app(%{
+          "name" => "Legacy",
+          "slug" => "legacy-app",
+          "callback_url" => "https://legacy-app.example.com/cb"
+        })
+
+      :telemetry.execute([:you, :audit, :admin, :action], %{}, %{
+        action: "set_role",
+        target: "legacy-app:someone@example.com",
+        role: "admin"
+      })
+
+      :telemetry.execute([:you, :audit, :admin, :action], %{}, %{
+        action: "set_roles",
+        target: "legacy-app",
+        role: "user"
+      })
+
+      # Same target string, unrelated action: must not be swept in.
+      :telemetry.execute([:you, :audit, :admin, :action], %{}, %{
+        action: "delete_webhook",
+        target: "legacy-app"
+      })
+
+      _ = :sys.get_state(You.Audit.Streamer)
+      {:ok, lv, _html} = live(conn, "/console?view=audit")
+
+      filtered = render_click(lv, "filter_audit_app", %{"value" => "legacy-app"})
+
+      assert filtered =~ "action=&quot;set_role&quot;"
+      assert filtered =~ "action=&quot;set_roles&quot;"
+      refute filtered =~ "action=&quot;delete_webhook&quot;"
+    end
   end
 
   describe "settings" do

@@ -23,16 +23,31 @@ defmodule You.IdentityProviders.Crypto do
   end
 
   @doc """
-  Decrypts a binary produced by `encrypt/1`. Returns the plaintext secret.
-  Raises `MatchError` if the ciphertext is malformed or the auth tag fails
-  to verify (tampered or encrypted under a different key).
-  """
-  def decrypt(<<iv::binary-12, tag::binary-16, ciphertext::binary>>) do
-    plaintext =
-      :crypto.crypto_one_time_aead(:aes_256_gcm, key(), iv, ciphertext, @aad, tag, false)
+  Decrypts a binary produced by `encrypt/1`, returning `{:ok, plaintext}`.
 
-    case plaintext do
-      plaintext when is_binary(plaintext) ->
+  Returns `:error` for anything that does not decrypt: a binary that is not the
+  12+16+N layout, a failed auth tag (tampered ciphertext), or a secret written
+  under a different `secret_key_base`. Key rotation makes every stored secret
+  permanently undecryptable, and that is a misconfiguration to be reported, not
+  an exception to be caught — see `You.IdentityProviders.fetch_secret/1`.
+  """
+  def fetch(<<iv::binary-12, tag::binary-16, ciphertext::binary>>) do
+    case :crypto.crypto_one_time_aead(:aes_256_gcm, key(), iv, ciphertext, @aad, tag, false) do
+      plaintext when is_binary(plaintext) -> {:ok, plaintext}
+      :error -> :error
+    end
+  end
+
+  def fetch(_ciphertext), do: :error
+
+  @doc """
+  Decrypts a binary produced by `encrypt/1`. Returns the plaintext secret and
+  raises if it does not decrypt. Use `fetch/1` on any path that has to stay up
+  when a secret is unreadable.
+  """
+  def decrypt(ciphertext) do
+    case fetch(ciphertext) do
+      {:ok, plaintext} ->
         plaintext
 
       :error ->

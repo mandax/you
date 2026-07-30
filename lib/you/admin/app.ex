@@ -140,6 +140,12 @@ defmodule You.Admin.App do
     |> validate_change(:privacy_url, &validate_http_url/2)
     |> validate_change(:background_image_url, &validate_http_url/2)
     |> validate_length(:email_from_name, max: 100)
+    # An empty list would lock every user out of the app with no way back in
+    # through the login page. `nil` is the way to say "follow the instance".
+    |> validate_length(:enabled_methods,
+      min: 1,
+      message: "must offer at least one sign-in method"
+    )
     |> validate_subset(:enabled_methods, @auth_methods)
     |> unique_constraint(:slug)
   end

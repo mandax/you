@@ -21,12 +21,18 @@ A per-app credential issued to a specific service. Carries `sub` (user ID), `ema
 _Avoid_: Session token, bearer token, access token
 
 **Role**:
-A named set of permissions scoped to a specific app. Example: `(myapp, user-42) → admin`. Roles are always `(app_slug, user_id) → role_name`, never global.
+A named set of permissions scoped to a specific app. Example: `(myapp, user-42) → admin`. Roles are always `(app_slug, user_id) → role_name`, never global. Each app has a `default_role` (`"user"` by default) that unassigned users resolve to — a fallback for users who have no explicit tuple.
 _Avoid_: Permission, scope, privilege
 
 **App**:
 A service that integrates with You for authentication. Each app has an API key for server-to-server communication and a configured set of allowed roles.
 _Avoid_: Service, client, integration
+
+**Identity Provider**:
+An upstream OIDC or non-OIDC service (Google, Microsoft, GitHub, Discord, etc.) that users can authenticate through. Each provider has its own row in the `identity_providers` table with an encrypted `client_secret`, editable at runtime rather than through config. Providers were migrated from `config :you, :oidc_providers` (which is still seeded on boot for backward compatibility). Non-OIDC providers (GitHub, Discord) route through dedicated adapters instead of the generic userinfo fetch.
+_Avoid_: IdP, connection, social provider, SSO provider
+
+"Social login" is the *method* a user picks on the login page (one of password, magic link, passkey, social); an Identity Provider is the upstream service behind it. "OIDC provider" narrows to the subset that speaks OIDC, so it is wrong for GitHub and Discord — use it only where the OIDC-ness is the point (`oidc_providers`, `feature_social_login`, `FederatedAuthController` predate this entry and keep their names).
 
 **Team** (future):
 A group of users that share billing, settings, and app access. A user can belong to multiple teams. Teams have a billing plan.

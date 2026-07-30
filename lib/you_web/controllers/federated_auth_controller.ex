@@ -1,6 +1,8 @@
 defmodule YouWeb.FederatedAuthController do
   use YouWeb, :controller
 
+  import YouWeb.AuthMethods, only: [app_for: 1, enabled?: 2]
+
   alias You.{Accounts, Admin, IdentityProviders}
 
   @doc """
@@ -82,6 +84,11 @@ defmodule YouWeb.FederatedAuthController do
         |> put_flash(:error, "Authentication failed. Please try again.")
         |> redirect(to: ~p"/users/log-in")
 
+      {:error, :provider_misconfigured} ->
+        conn
+        |> put_flash(:error, "That provider is misconfigured.")
+        |> redirect(to: ~p"/users/log-in")
+
       {:error, :email_not_verified} ->
         # The IdP didn't assert the email is verified, so we refuse to link it to
         # an existing account (takeover protection). The user must sign in with
@@ -139,23 +146,17 @@ defmodule YouWeb.FederatedAuthController do
   # hidden from the login page — anyone can hit /auth/:provider directly.
   # `enabled_providers: nil` on the app means every provider is allowed;
   # a login with no in-flight app (not an OAuth handoff) is unrestricted too.
+  #
+  # The same two switches gate it as any other method: social login can be
+  # turned off instance-wide via Settings, or per-app by omitting "social"
+  # from the app's enabled_methods.
   defp authorize_for_app(conn, provider) do
-    if provider in Admin.App.resolved_providers(app_for(conn), [provider]) do
+    app = app_for(conn)
+
+    if enabled?(conn, "social") and provider in Admin.App.resolved_providers(app, [provider]) do
       :ok
     else
       :error
-    end
-  end
-
-  # The registered app the in-flight OAuth handoff is for, resolved the same
-  # way as `YouWeb.OAuthFlow.safe_callback_url/1`. `nil` for a plain sign-in
-  # to You itself.
-  defp app_for(conn) do
-    with url when is_binary(url) <- get_session(conn, :callback_url),
-         {:ok, app} <- Admin.lookup_app_by_callback(url) do
-      app
-    else
-      _ -> nil
     end
   end
 
@@ -181,12 +182,25 @@ defmodule YouWeb.FederatedAuthController do
   end
 
   defp exchange_code(config, code, conn, provider) do
+    case IdentityProviders.fetch_secret(config) do
+      {:ok, client_secret} ->
+        do_exchange_code(config, code, conn, provider, client_secret)
+
+      # The stored ciphertext will not open under the current secret_key_base.
+      # A rotated key makes every provider unusable until its secret is
+      # re-entered, so say so rather than 500 on the login page.
+      {:error, :undecryptable} ->
+        {:error, :provider_misconfigured}
+    end
+  end
+
+  defp do_exchange_code(config, code, conn, provider, client_secret) do
     body = %{
       grant_type: "authorization_code",
       code: code,
       redirect_uri: redirect_uri(conn, provider),
       client_id: config.client_id,
-      client_secret: IdentityProviders.decrypt_secret(config)
+      client_secret: client_secret
     }
 
     # GitHub returns a form-encoded body unless asked for JSON; every OIDC

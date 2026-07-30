@@ -99,8 +99,7 @@ defmodule YouWeb.ConsoleLive do
        new_provider_preset: "generic",
        discovery: nil,
        base_url: YouWeb.Endpoint.url(),
-       oidc_providers:
-         Application.get_env(:you, :oidc_providers, %{}) |> Map.keys() |> Enum.sort(),
+       oidc_providers: IdentityProviders.list_providers() |> Enum.map(& &1.slug) |> Enum.sort(),
        saved: false,
        app_filter: "",
        provider_filter: "",
@@ -1532,8 +1531,21 @@ defmodule YouWeb.ConsoleLive do
 
   defp audit_app_matches?(_event, ""), do: true
 
-  defp audit_app_matches?(event, app_slug),
-    do: to_string(event.metadata[:app_slug]) == app_slug
+  defp audit_app_matches?(event, app_slug) do
+    to_string(event.metadata[:app_slug]) == app_slug or legacy_role_event?(event, app_slug)
+  end
+
+  # `set_role`/`set_roles` emitted target: "app_slug" or "app_slug:user@email"
+  # before app_slug joined the metadata, so filtering by app would drop every
+  # historic role event. Recover the slug from the target prefix — but only for
+  # those two actions, since any other event whose target happened to equal a
+  # slug would otherwise be swept in.
+  defp legacy_role_event?(%{metadata: %{action: action, target: target}}, app_slug)
+       when action in ["set_role", "set_roles"] and is_binary(target) do
+    target == app_slug or String.starts_with?(target, app_slug <> ":")
+  end
+
+  defp legacy_role_event?(_event, _app_slug), do: false
 
   # ── section: webhooks ─────────────────────────────────────────
   attr :endpoints, :list, required: true

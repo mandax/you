@@ -25,6 +25,8 @@ defmodule You.IdentityProviders.Presets do
   preset plus discovery autofill is for.
   """
 
+  alias You.IdentityProviders.IdentityProvider
+
   # An ordered list, not a map: `names/0` drives the console's preset picker
   # and a map would reorder it.
   @presets [
@@ -153,6 +155,10 @@ defmodule You.IdentityProviders.Presets do
   whatever `attrs` already supplies (client_id, client_secret, and any
   explicit overrides win over the preset).
 
+  Only keys that name an `IdentityProvider` field are kept from `attrs`;
+  anything else is dropped, so a console form or an API caller sending a
+  stray key gets a provider rather than a crash.
+
   Returns `{:ok, expanded_attrs}` or `{:error, :unknown_preset}`.
   """
   def expand(name, attrs) when is_binary(name) and is_map(attrs) do
@@ -162,10 +168,19 @@ defmodule You.IdentityProviders.Presets do
     end
   end
 
+  # The schema's own field list, so a column added later is accepted without
+  # anyone remembering to update a second list here. Anything outside it is
+  # dropped rather than converted, so a new or hostile key cannot crash
+  # expand/2 (and cannot leak atoms — see String.to_atom/1 in AGENTS.md).
+  @known_keys IdentityProvider.__schema__(:fields) |> Enum.map(&Atom.to_string/1)
+
   defp atomize(attrs) do
-    Map.new(attrs, fn
-      {k, v} when is_atom(k) -> {k, v}
-      {k, v} when is_binary(k) -> {String.to_existing_atom(k), v}
+    attrs
+    |> Enum.flat_map(fn
+      {k, v} when is_atom(k) -> [{k, v}]
+      {k, v} when is_binary(k) and k in @known_keys -> [{String.to_existing_atom(k), v}]
+      _ -> []
     end)
+    |> Map.new()
   end
 end

@@ -106,6 +106,23 @@ defmodule You.IdentityProviders do
   def decrypt_secret(%IdentityProvider{client_secret: ciphertext}), do: Crypto.decrypt(ciphertext)
 
   @doc """
+  Like `decrypt_secret/1`, but reports an unreadable secret instead of raising.
+
+  `{:ok, nil}` is a provider that legitimately has no secret (a public client);
+  `{:error, :undecryptable}` is one whose stored ciphertext will not open under
+  the current `secret_key_base`, which happens after a key rotation and needs
+  the admin to re-enter the secret. Login paths must distinguish the two.
+  """
+  def fetch_secret(%IdentityProvider{client_secret: nil}), do: {:ok, nil}
+
+  def fetch_secret(%IdentityProvider{client_secret: ciphertext}) do
+    case Crypto.fetch(ciphertext) do
+      {:ok, secret} -> {:ok, secret}
+      :error -> {:error, :undecryptable}
+    end
+  end
+
+  @doc """
   Fetches and parses the discovery document at `issuer` (see
   `You.IdentityProviders.Discovery`). Returns `{:ok, attrs}` or
   `{:error, reason}`.
