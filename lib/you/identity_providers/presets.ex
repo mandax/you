@@ -153,7 +153,9 @@ defmodule You.IdentityProviders.Presets do
   whatever `attrs` already supplies (client_id, client_secret, and any
   explicit overrides win over the preset).
 
-  Returns `{:ok, expanded_attrs}` or `{:error, :unknown_preset}`.
+  Only known preset keys (atoms in the preset template) are kept from
+  `attrs`; unknown string keys that would raise in `atomize/1` are silently
+  dropped. Returns `{:ok, expanded_attrs}` or `{:error, :unknown_preset}`.
   """
   def expand(name, attrs) when is_binary(name) and is_map(attrs) do
     case fetch(name) do
@@ -162,10 +164,18 @@ defmodule You.IdentityProviders.Presets do
     end
   end
 
+  # Known preset keys that atomize is allowed to convert. Anything outside this
+  # list is dropped silently so a new or malicious key cannot crash expand/2.
+  @known_keys ~w(
+    slug display_name kind client_id client_secret issuer
+    authorize_url token_url userinfo_url scopes icon enabled
+  )
+
   defp atomize(attrs) do
     Map.new(attrs, fn
       {k, v} when is_atom(k) -> {k, v}
-      {k, v} when is_binary(k) -> {String.to_existing_atom(k), v}
+      {k, v} when is_binary(k) and k in @known_keys -> {String.to_existing_atom(k), v}
+      _ -> :skip
     end)
   end
 end

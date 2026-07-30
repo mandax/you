@@ -167,15 +167,21 @@ defmodule YouWeb.AppLive.Show do
   # ── members ───────────────────────────────────────────────────
   def handle_event("set_member_role", %{"user_id" => user_id} = params, socket) do
     app = socket.assigns.app
-    user = Admin.get_user!(user_id)
-    role = params["value"] || params["role"]
 
-    case Roles.set_role(app, user, role) do
-      {:ok, _} ->
-        {:noreply, assign_app(socket, app)}
+    with {:ok, id} <- safe_parse_id(user_id),
+         %{} = user <- Admin.get_user!(id) do
+      role = params["value"] || params["role"]
 
-      {:error, _} ->
-        {:noreply, put_flash(socket, :error, "Role is not allowed for this app.")}
+      case Roles.set_role(app, user, role) do
+        {:ok, _} ->
+          {:noreply, assign_app(socket, app)}
+
+        {:error, _} ->
+          {:noreply, put_flash(socket, :error, "Role is not allowed for this app.")}
+      end
+    else
+      _ ->
+        {:noreply, put_flash(socket, :error, "Invalid user.")}
     end
   end
 
@@ -288,6 +294,20 @@ defmodule YouWeb.AppLive.Show do
 
     Enum.filter(members, fn {user, _} -> String.contains?(String.downcase(user.email), needle) end)
   end
+
+  # Parses a user id that arrives over the socket from a <.select> hook's params.
+  # The client can push any payload, so reject non-integer values rather than
+  # raising Ecto.Query.CastError in Repo.get!.
+  defp safe_parse_id(id) when is_integer(id), do: {:ok, id}
+
+  defp safe_parse_id(id) when is_binary(id) do
+    case Integer.parse(id) do
+      {parsed, ""} -> {:ok, parsed}
+      _ -> :error
+    end
+  end
+
+  defp safe_parse_id(_), do: :error
 
   defp theme_mode_label("system"), do: "Follow the visitor's preference"
   defp theme_mode_label("light"), do: "Always light"

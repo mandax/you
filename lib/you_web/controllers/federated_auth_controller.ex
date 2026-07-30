@@ -82,6 +82,11 @@ defmodule YouWeb.FederatedAuthController do
         |> put_flash(:error, "Authentication failed. Please try again.")
         |> redirect(to: ~p"/users/log-in")
 
+      {:error, :provider_misconfigured} ->
+        conn
+        |> put_flash(:error, "That provider is misconfigured.")
+        |> redirect(to: ~p"/users/log-in")
+
       {:error, :email_not_verified} ->
         # The IdP didn't assert the email is verified, so we refuse to link it to
         # an existing account (takeover protection). The user must sign in with
@@ -139,13 +144,39 @@ defmodule YouWeb.FederatedAuthController do
   # hidden from the login page — anyone can hit /auth/:provider directly.
   # `enabled_providers: nil` on the app means every provider is allowed;
   # a login with no in-flight app (not an OAuth handoff) is unrestricted too.
+  #
+  # The method-level and instance-level checks mirror UserSessionController:
+  # social login can be switched off instance-wide via Settings, or per-app
+  # by omitting "social" from the app's enabled_methods.
   defp authorize_for_app(conn, provider) do
-    if provider in Admin.App.resolved_providers(app_for(conn), [provider]) do
+    app = app_for(conn)
+
+    with :ok <- check_method_enabled(app),
+         :ok <- check_provider_enabled(app, provider) do
       :ok
     else
-      :error
+      _ -> :error
     end
   end
+
+  defp check_method_enabled(app) do
+    if "social" in enabled_methods(app), do: :ok, else: :error
+  end
+
+  defp check_provider_enabled(app, provider) do
+    if provider in Admin.App.resolved_providers(app, [provider]),
+      do: :ok,
+      else: :error
+  end
+
+  defp enabled_methods(app) do
+    You.Admin.App.auth_methods()
+    |> Enum.filter(&instance_offers?/1)
+    |> then(&You.Admin.App.resolved_methods(app, &1))
+  end
+
+  defp instance_offers?("social"), do: You.Settings.enabled?(:feature_social_login)
+  defp instance_offers?(_), do: true
 
   # The registered app the in-flight OAuth handoff is for, resolved the same
   # way as `YouWeb.OAuthFlow.safe_callback_url/1`. `nil` for a plain sign-in
@@ -181,12 +212,27 @@ defmodule YouWeb.FederatedAuthController do
   end
 
   defp exchange_code(config, code, conn, provider) do
+    secret =
+      try do
+        IdentityProviders.decrypt_secret(config)
+      rescue
+        _ -> nil
+      end
+
+    if is_nil(secret) do
+      {:error, :provider_misconfigured}
+    else
+      do_exchange_code(config, code, conn, provider, secret)
+    end
+  end
+
+  defp do_exchange_code(config, code, conn, provider, client_secret) do
     body = %{
       grant_type: "authorization_code",
       code: code,
       redirect_uri: redirect_uri(conn, provider),
       client_id: config.client_id,
-      client_secret: IdentityProviders.decrypt_secret(config)
+      client_secret: client_secret
     }
 
     # GitHub returns a form-encoded body unless asked for JSON; every OIDC

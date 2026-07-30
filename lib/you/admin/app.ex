@@ -140,6 +140,7 @@ defmodule You.Admin.App do
     |> validate_change(:privacy_url, &validate_http_url/2)
     |> validate_change(:background_image_url, &validate_http_url/2)
     |> validate_length(:email_from_name, max: 100)
+    |> validate_length(:enabled_methods, min: 1)
     |> validate_subset(:enabled_methods, @auth_methods)
     |> unique_constraint(:slug)
   end

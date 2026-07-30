@@ -99,8 +99,7 @@ defmodule YouWeb.ConsoleLive do
        new_provider_preset: "generic",
        discovery: nil,
        base_url: YouWeb.Endpoint.url(),
-       oidc_providers:
-         Application.get_env(:you, :oidc_providers, %{}) |> Map.keys() |> Enum.sort(),
+       oidc_providers: IdentityProviders.list_providers() |> Enum.map(& &1.slug) |> Enum.sort(),
        saved: false,
        app_filter: "",
        provider_filter: "",
@@ -1532,8 +1531,17 @@ defmodule YouWeb.ConsoleLive do
 
   defp audit_app_matches?(_event, ""), do: true
 
-  defp audit_app_matches?(event, app_slug),
-    do: to_string(event.metadata[:app_slug]) == app_slug
+  defp audit_app_matches?(event, app_slug) do
+    to_string(event.metadata[:app_slug]) == app_slug or
+      slug_prefix?(to_string(event.metadata[:target]), app_slug)
+  end
+
+  # Role events emitted target: "app_slug" or "app_slug:user@email" before
+  # app_slug was added to the metadata. Fall back to extracting the slug from
+  # the target prefix so filtering by app still catches those historic events.
+  defp slug_prefix?(target, app_slug) do
+    String.starts_with?(target, app_slug <> ":") or target == app_slug
+  end
 
   # ── section: webhooks ─────────────────────────────────────────
   attr :endpoints, :list, required: true

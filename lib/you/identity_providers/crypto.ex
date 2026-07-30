@@ -24,8 +24,14 @@ defmodule You.IdentityProviders.Crypto do
 
   @doc """
   Decrypts a binary produced by `encrypt/1`. Returns the plaintext secret.
-  Raises `MatchError` if the ciphertext is malformed or the auth tag fails
-  to verify (tampered or encrypted under a different key).
+  Raises `MatchError` if the ciphertext does not match the 12+16+N layout, or
+  `FunctionClauseError` if it is a short or malformed binary.
+  Raises on auth-tag verification failure (tampered or encrypted under a
+  different key).
+
+  When `secret_key_base` has rotated, every stored secret becomes permanently
+  undecryptable. The login path (`FederatedAuthController`) rescues this and
+  renders "provider misconfigured" rather than a 500.
   """
   def decrypt(<<iv::binary-12, tag::binary-16, ciphertext::binary>>) do
     plaintext =

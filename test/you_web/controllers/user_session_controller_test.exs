@@ -287,7 +287,7 @@ defmodule YouWeb.UserSessionControllerTest do
 
   describe "instance feature switches" do
     # An instance switch beats a per-app one: an app cannot opt back into a
-    # method the operator turned off entirely.
+    # method the admin turned off entirely.
     test "a disabled instance feature removes the control even if the app allows it",
          %{conn: conn} do
       You.Settings.set(:feature_magic_link, false)
