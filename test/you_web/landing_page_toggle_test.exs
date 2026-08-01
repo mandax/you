@@ -47,7 +47,6 @@ defmodule YouWeb.LandingPageToggleTest do
       assert conn |> get(~p"/") |> redirected_to() == ~p"/users/settings"
     end
 
-    # Advertising a path that answers 302 spends crawl budget on a login form.
     test "the sitemap stops advertising it", %{conn: conn} do
       refute conn |> get(~p"/sitemap.xml") |> response(200) =~ "<loc>"
     end

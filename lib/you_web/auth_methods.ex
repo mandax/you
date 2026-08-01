@@ -35,12 +35,26 @@ defmodule YouWeb.AuthMethods do
   @doc """
   The registered app the in-flight OAuth handoff is for, or `nil` for a plain
   sign-in to You itself.
+
+  In single-app mode there is no such thing as a plain sign-in to You: every
+  visitor to the login page is signing in to the one app, whether they arrived
+  through an OAuth handoff or typed the URL. Falling back to it is what makes
+  the branding an admin sets in the console show up on the page people
+  actually see — without this, `/users/log-in` renders unbranded and the
+  console's settings look broken.
   """
   def app_for(%Plug.Conn{} = conn) do
     with url when is_binary(url) <- get_session(conn, :callback_url),
          {:ok, app} <- Admin.lookup_app_by_callback(url) do
       app
     else
+      _ -> branding_app(conn) || You.Mode.app()
+    end
+  end
+
+  defp branding_app(conn) do
+    case get_session(conn, :branding_app_slug) do
+      slug when is_binary(slug) and slug != "" -> Admin.get_app_by_slug(slug)
       _ -> nil
     end
   end

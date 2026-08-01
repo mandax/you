@@ -31,8 +31,6 @@ services:
       # The public hostname, used for generated URLs (magic links, OIDC
       # discovery, WebAuthn relying party id). Must match what users type.
       PHX_HOST: ${PHX_HOST:?set PHX_HOST to the public hostname}
-      # https unless you are evaluating on localhost; see .env.example.
-      PHX_SCHEME: ${PHX_SCHEME:-https}
       DATABASE_PATH: /data/you/you.db
 
       # The one app this instance serves. These seed the app on FIRST boot

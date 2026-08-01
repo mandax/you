@@ -62,17 +62,11 @@ for `docker compose exec` (against the running container) rather than
 
 ## 3. Put a reverse proxy in front
 
-> **Just evaluating?** Skip this step. Set `PHX_HOST=localhost` and
-> `PHX_SCHEME=http` in `.env` and reach You at `http://localhost:4000` —
-> generated links resolve, the fallback mailbox's magic links are clickable,
-> and passkeys work, because browsers treat `http://localhost` as a secure
-> context. Come back here before anyone else uses it.
-
 You listens on plain HTTP on `127.0.0.1:4000` and expects TLS to be terminated
-in front of it for any real deployment. Over `https`, You marks its session
-cookie `secure` and `force_ssl` redirects plaintext requests and sets HSTS;
-callback URLs are `https`; and passkeys refuse to work over an insecure origin
-on any host other than localhost.
+in front of it — Cloudflare, Caddy, nginx, a load balancer, whichever you run.
+This is not optional: You marks its session cookie `secure`, `force_ssl`
+redirects plaintext requests and sets HSTS, callback URLs are `https`, and
+passkeys refuse to work over an insecure origin.
 
 Caddy, which handles certificates for you:
 

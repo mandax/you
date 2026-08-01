@@ -5,8 +5,6 @@ defmodule You.ModeTest do
   alias You.Mode
   alias You.Repo
 
-  # Mode is read from application config, so every test that wants single mode
-  # sets it and puts it back. Not async for the same reason.
   defp single_mode(config) do
     Application.put_env(:you, :mode, :single)
     Application.put_env(:you, :single_app, config)
@@ -49,7 +47,6 @@ defmodule You.ModeTest do
       assert app.name == "Solo"
       assert app.callback_url == "https://solo.example.com/cb"
       assert app.launch_url == "https://solo.example.com"
-      # The single app is the instance, so it can use the headless API.
       assert app.first_party
     end
 
@@ -60,9 +57,6 @@ defmodule You.ModeTest do
       assert Mode.app().name == "solo"
     end
 
-    # The environment seeds the app; it does not own it. An operator who fixes
-    # their callback URL in the console must not have it reverted by the next
-    # `docker compose up`.
     test "never overwrites the console once the app exists" do
       single_mode(slug: "solo", name: "Solo", callback_url: "https://solo.example.com/cb")
       assert :ok = Mode.Provisioner.run()
@@ -89,14 +83,32 @@ defmodule You.ModeTest do
       assert Mode.app().brand_color == "#7c3aed"
     end
 
-    # Nothing may be required to reach a login page: the epic's user has not
-    # written their callback route yet.
     test "boots without a callback URL, pointing at this instance" do
       single_mode(slug: "solo", name: "Solo")
 
       assert :ok = Mode.Provisioner.run()
 
       assert Mode.app().callback_url == YouWeb.Endpoint.url() <> "/users/settings"
+    end
+
+    test "a changed slug never provisions a second app" do
+      single_mode(slug: "solo", name: "Solo", callback_url: "https://solo.example.com/cb")
+      assert :ok = Mode.Provisioner.run()
+
+      single_mode(slug: "renamed", name: "Solo", callback_url: "https://solo.example.com/cb")
+      assert :ok = Mode.Provisioner.run()
+
+      assert Repo.aggregate(Admin.App, :count) == 1
+      assert {:ok, _app} = Admin.lookup_app_by_callback("https://solo.example.com/cb")
+    end
+
+    test "resolves the app even when the configured slug has drifted" do
+      single_mode(slug: "solo", name: "Solo", callback_url: "https://solo.example.com/cb")
+      assert :ok = Mode.Provisioner.run()
+
+      single_mode(slug: "does-not-exist", callback_url: "https://solo.example.com/cb")
+
+      assert %{slug: "solo"} = Mode.app()
     end
 
     test "is a no-op in multi mode" do

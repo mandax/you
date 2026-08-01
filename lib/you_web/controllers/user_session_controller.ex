@@ -30,13 +30,12 @@ defmodule YouWeb.UserSessionController do
     # auth code minted after login and verified at exchange time.
     conn = put_session(conn, :code_challenge, params["code_challenge"])
 
+    conn = put_session(conn, :branding_app_slug, params["app"])
+
     if conn.assigns[:current_scope] && conn.assigns.current_scope.user &&
          get_session(conn, :callback_url) do
       user = conn.assigns.current_scope.user
 
-      # Single-app mode has nothing to consent to: the app is the instance, so
-      # the user is signing in rather than authorizing a third party. Consent
-      # is still recorded, so flipping to multi-app mode leaves no gap.
       case You.Mode.single?() && YouWeb.OAuthFlow.authorize_signed_in(conn, user) do
         %Plug.Conn{} = conn ->
           conn

@@ -534,8 +534,6 @@ defmodule YouWeb.ConsoleLive do
     if raw =~ ~r/^\d+$/, do: String.to_integer(raw), else: raw
   end
 
-  # Single-app mode drops the app dimension from the UI, so the copy that
-  # points at it has to go too.
   @single_section_copy %{
     "users" =>
       "Everyone with an account here. Filter by role or status, and manage a user's access from their row."
@@ -640,9 +638,6 @@ defmodule YouWeb.ConsoleLive do
   defp overview(assigns) do
     ~H"""
     <div class="space-y-6">
-      <%!-- Every emailed flow (magic link, email 2FA, confirmation, reset) is
-            broken from the user's side without SMTP, and the failure is
-            invisible from here. Say so on the first screen an admin sees. --%>
       <div
         :if={!@mail_ready}
         class="rounded-lg border border-signal-warn/40 bg-signal-warn/5 p-4 text-sm"
@@ -655,7 +650,6 @@ defmodule YouWeb.ConsoleLive do
           2FA, address confirmation and password resets will not reach users. Set
           <span class="font-mono text-xs">SMTP_HOST</span>
           and restart, or read the queued mail at
-          <%!-- href, not navigate: the mailbox is a forwarded plug, not a LiveView. --%>
           <.link href={~p"/console/mailbox"} class="text-primary underline">
             /console/mailbox
           </.link>
@@ -729,7 +723,6 @@ defmodule YouWeb.ConsoleLive do
             on_change="filter_users"
             params={%{"filter_key" => "status"}}
           />
-          <%!-- One app means the filter can only ever select everything. --%>
           <.select
             :if={!@single_mode}
             id="filter-app"

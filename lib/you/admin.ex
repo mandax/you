@@ -190,6 +190,12 @@ defmodule You.Admin do
   def get_app_by_slug!(slug) when is_binary(slug), do: Repo.get_by!(App, slug: slug)
 
   @doc """
+  Fetches a single app by slug, or nil. For callers where an unknown slug is
+  an ordinary outcome rather than a bug — a preview link someone edited, say.
+  """
+  def get_app_by_slug(slug) when is_binary(slug), do: Repo.get_by(App, slug: slug)
+
+  @doc """
   Updates an existing app's attributes.
 
   Returns `{:ok, app}` or `{:error, changeset}`.

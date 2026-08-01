@@ -23,8 +23,6 @@ defmodule YouWeb.Router do
     plug YouWeb.SCIM.BearerAuth
   end
 
-  # The in-memory mailbox only exists while mail is unconfigured; see the
-  # /console/mailbox scope below.
   pipeline :require_local_mailbox do
     plug :ensure_local_mailbox
   end
@@ -84,13 +82,8 @@ defmodule YouWeb.Router do
     end
   end
 
-  # The fallback mailbox for an instance with no SMTP configured. Admin-only:
-  # it holds magic links and 2FA codes, which are bearer credentials.
-  #
-  # Gated on the transport as well as on the role. Swoosh only runs the local
-  # storage process when mail is actually being kept in memory, so on an
-  # instance with SMTP configured this plug would not 500 politely — it would
-  # exit `:noproc`. There is also nothing there to show.
+  # Admin-only and local-transport-only: it holds magic links and 2FA codes,
+  # and Swoosh runs no storage process when mail goes out over SMTP.
   scope "/console" do
     pipe_through [:browser, :require_authenticated_user, :require_admin, :require_local_mailbox]
 

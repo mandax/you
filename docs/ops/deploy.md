@@ -14,8 +14,8 @@ All runtime configuration is read from environment variables in
 | `DATABASE_PATH` | Yes | (none) | Path to the SQLite database file (e.g. `/data/you/prod.db`) |
 | `SECRET_KEY_BASE` | No | generated | Phoenix secret key. When unset it is generated on first boot and persisted to `$(dirname DATABASE_PATH)/secret_key_base` with mode 0600. Set it explicitly if you manage secrets outside the data volume |
 | `PHX_HOST` | Yes | `example.com` | Public hostname. Drives generated URLs (magic links, OIDC discovery, WebAuthn origin) |
-| `PHX_SCHEME` | No | `https` | Scheme for generated URLs. `http` is for evaluating on localhost only: it also turns off the `secure` flag on the session cookie, since a `secure` cookie is never sent over plaintext |
-| `PHX_URL_PORT` | No | `443`/`80` | Port in generated URLs, when the public port is not the scheme default |
+| `PHX_SCHEME` | No | `https` | Scheme for generated URLs. Leave unset behind Cloudflare or any TLS proxy. `http` is for localhost or a private network; it also drops the `secure` flag from the session cookie, since a `secure` cookie is never sent over plaintext. Anything else aborts the boot |
+| `PHX_URL_PORT` | No | `443`/`80` | Port in generated URLs, when the public port is not the scheme's default |
 | `PORT` | No | `4000` | HTTP port the app listens on |
 | `POOL_SIZE` | No | `10` | Ecto connection pool size |
 | `PHX_SERVER` | No | (none) | Set to `true` to start the HTTP server (already set in the Docker image) |
@@ -84,10 +84,9 @@ The endpoint is compiled with `force_ssl` using
 - `localhost` / `127.0.0.1` are excluded from the redirect (health checks).
 
 `config/runtime.exs` sets the endpoint URL from `PHX_SCHEME`/`PHX_HOST`
-(`https://<PHX_HOST>:443` by default), so all generated links are HTTPS
-regardless of the internal port, and the session cookie is marked `secure`.
-Setting `PHX_SCHEME=http` drops that flag — it exists for localhost evaluation
-and is not a supported production configuration.
+(`https://<PHX_HOST>:443` unless you say otherwise), so all generated links use
+that scheme regardless of the internal port, and the session cookie is marked
+`secure` whenever the scheme is https.
 
 ## Database
 

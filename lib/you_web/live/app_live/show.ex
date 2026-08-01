@@ -465,12 +465,6 @@ defmodule YouWeb.AppLive.Show do
               label="Accent color — dark mode (optional)"
               value={@draft.accent_color_dark}
             />
-            <.input
-              type="url"
-              name="background_image_url"
-              label="Background image URL (optional)"
-              value={@draft.background_image_url}
-            />
             <div class="flex justify-end">
               <.button type="submit">Save</.button>
             </div>
@@ -600,7 +594,7 @@ defmodule YouWeb.AppLive.Show do
         </.panel>
       </div>
 
-      <.panel title="Preview" description="The real login header, with unsaved values applied.">
+      <.panel title="Preview" description="The login page, with unsaved values applied.">
         <div class="flex items-center justify-end">
           <button
             type="button"
@@ -612,16 +606,10 @@ defmodule YouWeb.AppLive.Show do
             <span :if={@preview_theme == "dark"} class="lucide-sun block size-4" />
           </button>
         </div>
-        <div
-          class={[
-            "mt-2 rounded-lg border border-border bg-background bg-cover bg-center px-5 py-8 text-center",
-            @preview_theme == "dark" && "dark"
-          ]}
-          style={
-            presence(@draft.background_image_url) &&
-              "background-image: url(#{presence(@draft.background_image_url)})"
-          }
-        >
+        <div class={[
+          "mt-2 rounded-lg border border-border bg-background px-5 py-8 text-center",
+          @preview_theme == "dark" && "dark"
+        ]}>
           <.login_header
             app_name={@app.name}
             logo_url={presence(@draft.logo_url)}
@@ -632,16 +620,40 @@ defmodule YouWeb.AppLive.Show do
             headline={presence(@draft.headline)}
             subtitle={presence(@draft.subtitle)}
           />
+
+          <div class="mx-auto mt-6 max-w-xs space-y-3 text-left">
+            <div>
+              <label class="mb-1 block text-xs font-medium text-muted-foreground">Email</label>
+              <div class="h-9 rounded-md border border-input bg-background px-3 text-sm leading-9 text-muted-foreground/60">
+                you@example.com
+              </div>
+            </div>
+            <div>
+              <label class="mb-1 block text-xs font-medium text-muted-foreground">Password</label>
+              <div class="h-9 rounded-md border border-input bg-background px-3 text-sm leading-9 text-muted-foreground/60">
+                ••••••••••
+              </div>
+            </div>
+            <div
+              class="grid h-9 place-items-center rounded-md text-sm font-medium"
+              style={preview_button_style(@draft, @preview_theme)}
+            >
+              Sign in
+            </div>
+            <p class="text-center text-xs text-muted-foreground">
+              {preview_methods_label(@app)}
+            </p>
+          </div>
         </div>
         <p class="mt-3 text-xs text-muted-foreground">
           <.link
-            href={~p"/users/log-in?#{[callback_url: @app.callback_url]}"}
+            href={~p"/users/log-in?#{[app: @app.slug]}"}
             target="_blank"
             class="underline underline-offset-2 hover:text-foreground"
           >
-            Open the full login page
+            Open the real login page
           </.link>
-          — saved values only.
+          — saved values only, no callback URL needed.
         </p>
       </.panel>
     </div>
@@ -652,6 +664,25 @@ defmodule YouWeb.AppLive.Show do
   # empty src and an empty style attribute.
   defp presence(""), do: nil
   defp presence(value), do: value
+
+  defp preview_button_style(draft, theme) do
+    color =
+      if theme == "dark",
+        do: presence(draft.brand_color_dark) || presence(draft.brand_color),
+        else: presence(draft.brand_color)
+
+    case safe_brand_color(color) do
+      nil -> "background-color: var(--color-primary); color: var(--color-primary-foreground)"
+      hex -> "background-color: #{hex}; color: #{You.Admin.App.contrast_on(hex)}"
+    end
+  end
+
+  defp preview_methods_label(app) do
+    case YouWeb.AuthMethods.enabled_methods(app) -- ["password"] do
+      [] -> "Password sign-in only"
+      others -> "Also: " <> Enum.map_join(others, ", ", &String.replace(&1, "_", " "))
+    end
+  end
 
   # The preview renders straight from form params, so it never passes through
   # `App.changeset/2`. Apply the same two guards here: HEEx escaping stops the

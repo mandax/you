@@ -14,8 +14,6 @@ defmodule YouWeb.LandingLive do
     if You.Settings.enabled?(:feature_landing_page) do
       {:ok, mount_landing(socket)}
     else
-      # An instance that is infrastructure for one app has no homepage to
-      # show: an admin wants the console, and anyone else wants to sign in.
       {:ok, redirect(socket, to: destination(socket.assigns[:current_scope]))}
     end
   end

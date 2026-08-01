@@ -14,8 +14,6 @@ defmodule YouWeb.SessionCookieTest do
   alias YouWeb.Endpoint
 
   setup do
-    # The wrapper plug caches the initialised options, so a test that changes
-    # the setting has to drop the cache with it.
     on_exit(fn ->
       Application.delete_env(:you, :secure_cookies)
       :persistent_term.erase({Endpoint, :session})

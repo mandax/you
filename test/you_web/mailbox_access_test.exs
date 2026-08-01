@@ -37,8 +37,6 @@ defmodule YouWeb.MailboxAccessTest do
         |> log_in_user(You.AccountsFixtures.user_fixture())
         |> get(~p"/console/mailbox")
 
-      # `require_admin` renders a 404 rather than a 403: the console does not
-      # confirm its own existence to someone who may not use it.
       assert html_response(conn, 404)
     end
 
@@ -58,8 +56,6 @@ defmodule YouWeb.MailboxAccessTest do
 
       conn = get(conn, ~p"/console/mailbox")
 
-      # Swoosh does not run the local storage process on an SMTP instance, so
-      # reaching the plug at all would exit :noproc rather than 404.
       assert redirected_to(conn) == "/console"
     end
   end

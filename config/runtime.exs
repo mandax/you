@@ -6,10 +6,8 @@ if System.get_env("PHX_SERVER") do
   config :you, YouWeb.Endpoint, server: true
 end
 
-# Blank counts as unset. Compose substitutes an unset `${VAR}` as an empty
-# string, so every variable a compose file mentions is always *present* in the
-# container — reading them with `System.get_env/1` alone would configure an
-# empty SMTP username or an empty From address rather than falling back.
+# Blank counts as unset: compose substitutes an unset `${VAR}` as an empty
+# string, so every variable it mentions is always present in the container.
 env = fn name ->
   case System.get_env(name) do
     nil ->
@@ -41,10 +39,9 @@ end
 # Sender address for transactional emails (magic links, 2FA codes, resets).
 config :you, :mail_from, env.("MAIL_FROM") || "no-reply@#{phx_host || "example.com"}"
 
-# Deployment mode. `single` provisions one app from the environment on boot and
-# hides the multi-app surface; anything else is the default fleet deployment.
-# It is a runtime flag over the same schema: flipping it is a restart, not a
-# migration.
+# Deployment mode. `single` seeds one app on first boot and hides the
+# multi-app surface. A runtime flag over the same schema: flipping it is a
+# restart, not a migration.
 if env.("YOU_MODE") == "single" do
   config :you, :mode, :single
 
@@ -69,25 +66,13 @@ if config_env() == :prod do
     database: database_path,
     pool_size: String.to_integer(System.get_env("POOL_SIZE") || "10")
 
-  # Secrets are generated on first boot and persisted beside the database, so a
-  # published compose file never has to ship one. A baked-in default would mean
-  # every install on earth shares a signing key.
+  # Generated on first boot and persisted beside the database, so no compose
+  # file ever ships a shared signing key. The environment still wins when set.
   #
-  # The environment still wins where it is set: an operator who manages secrets
-  # outside the volume keeps doing that, and the generated file is ignored.
-  #
-  # Generation has to survive two *processes* racing it. `runtime.exs` is
-  # evaluated by every `bin/you eval` and `bin/you rpc` invocation in its own
-  # VM, and the documented first-boot sequence runs one of those against a
-  # container that has just started — so a plain read-then-write would let the
-  # second process overwrite the key the first is already signing with, and
-  # every token and session would die at the next restart. The write is made
-  # exclusive via a hard link, which either wins or tells us someone else did:
-  # the loser reads the winner's value instead of clobbering it.
-  #
-  # The secret is never in a world-readable file, not even briefly: the
-  # temporary file is created empty, narrowed to 0600, and only then written.
-  # `/data/you` is world-writable in the image (any UID can own the volume).
+  # `runtime.exs` runs in its own VM for every `bin/you eval` and `rpc`, so two
+  # processes can race first boot: the write is published with a hard link, and
+  # the loser reads the winner's value rather than clobbering it. The temp file
+  # is narrowed to 0600 before the secret goes in.
   persisted_secret = fn name, generate ->
     dir = Path.dirname(database_path)
     path = Path.join(dir, name)
@@ -112,11 +97,8 @@ if config_env() == :prod do
     else
       File.mkdir_p!(dir)
 
-      # Random, not `System.unique_integer/1`: that is unique within a VM, and
-      # this race is *between* VMs, where fresh nodes hand out the same values.
-      # Two processes picking the same temp name defeats the whole scheme —
-      # once the winner has linked it, the loser's write lands inside the
-      # published file rather than beside it.
+      # Random, not `System.unique_integer/1`: that repeats across VMs, and a
+      # shared temp name would put the loser's write inside the published file.
       tmp = "#{path}.#{Base.url_encode64(:crypto.strong_rand_bytes(9), padding: false)}.tmp"
 
       try do
@@ -129,8 +111,7 @@ if config_env() == :prod do
           :ok ->
             secret
 
-          # Another process generated one between the check and the link. Its
-          # value is the one the instance is already using.
+          # Another process won; its value is the one already in use.
           {:error, :eexist} ->
             read.()
 
@@ -156,20 +137,28 @@ if config_env() == :prod do
 
   host = env.("PHX_HOST") || "example.com"
 
-  # https on a real host is the deployment this is built for, and the default.
-  # `PHX_SCHEME=http` exists for one case: evaluating the image on localhost
-  # before there is a domain or a certificate. Without it every generated URL
-  # — magic links, OIDC discovery, the links in the fallback mailbox — comes
-  # out as https://localhost and cannot be opened, which breaks exactly the
-  # flows the mailbox exists to let people try.
-  scheme = env.("PHX_SCHEME") || "https"
+  # https unless told otherwise; `http` is for localhost or a private network.
+  # Validated, not trusted: a typo would silently drop the `secure` cookie flag
+  # on a deployment that is in fact behind TLS.
+  scheme =
+    case env.("PHX_SCHEME") || "https" do
+      valid when valid in ["http", "https"] ->
+        valid
+
+      other ->
+        raise """
+        PHX_SCHEME must be "http" or "https", got: #{inspect(other)}
+
+        Leave it unset unless You is served over plain http (localhost, or a
+        private network). Getting it wrong drops the `secure` flag from the
+        session cookie.
+        """
+    end
+
   default_url_port = if scheme == "https", do: "443", else: "80"
   url_port = String.to_integer(env.("PHX_URL_PORT") || default_url_port)
 
-  # A session cookie marked `secure` is not sent over http at all, so this
-  # follows the scheme rather than being pinned on. Over https it means the
-  # cookie cannot leak to a plaintext request to the same host before
-  # `force_ssl` gets a chance to redirect.
+  # Follows the scheme: a `secure` cookie is not sent over http at all.
   config :you, :secure_cookies, scheme == "https"
 
   config :you, :dns_cluster_query, System.get_env("DNS_CLUSTER_QUERY")
@@ -181,12 +170,8 @@ if config_env() == :prod do
     ],
     secret_key_base: secret_key_base
 
-  # Email is load-bearing: magic links, email 2FA, confirmation and password
-  # reset all go through it. Without SMTP those flows are visibly broken with
-  # no obvious cause, so an unconfigured instance falls back to an in-memory
-  # mailbox readable by admins at /console/mailbox rather than dropping mail on
-  # the floor. It is an evaluation aid — `You.Mailer.production_ready?/0` stays
-  # false and the console says so.
+  # No SMTP falls back to an in-memory mailbox at /console/mailbox rather than
+  # dropping mail silently. `You.Mailer.production_ready?/0` stays false.
   case env.("SMTP_HOST") do
     smtp_host when is_binary(smtp_host) ->
       smtp_auth =
@@ -220,9 +205,8 @@ if config_env() == :prod do
       )
   end
 
-  # Persistent JWT signing keys. Generated on first boot and persisted beside
-  # the database if unset — an ephemeral key would kill every issued token on
-  # restart, silently. Generate one yourself with:
+  # Persistent JWT signing keys, generated on first boot if unset — an
+  # ephemeral key kills every issued token on restart. Generate one with:
   #   mix run -e ':crypto.strong_rand_bytes(32) |> Base.url_encode64(padding: false) |> IO.puts()'
   # Rotation: move the old kid:seed pair to JWT_PREVIOUS_KEYS (comma-separated)
   # and point JWT_KEY_ID/JWT_SIGNING_KEY at the new key; drop the old pair once
@@ -271,11 +255,10 @@ if config_env() == :prod do
       :ok
   end
 
-  # Passkeys bind to an exact origin, so this has to track the scheme and port
-  # the browser actually used. `http://localhost` is a secure context, so
-  # passkeys work while evaluating locally; `http://` on any other host is not,
-  # and the browser will refuse regardless of what we put here.
+  # Passkeys bind to an exact origin, so the port is omitted only when it is
+  # the scheme's default.
   config :wax_,
-    origin: "#{scheme}://#{host}#{if url_port in [80, 443], do: "", else: ":#{url_port}"}",
+    origin:
+      "#{scheme}://#{host}#{if url_port == String.to_integer(default_url_port), do: "", else: ":#{url_port}"}",
     rp_id: :auto
 end

@@ -19,9 +19,6 @@ defmodule YouWeb.SEOController do
   # spending the budget on pages that only ever answer 302 or 401.
   @disallowed ~w(/console /users /oauth /api /scim /.well-known)
 
-  # An instance serving the console at `/` has nothing public to crawl: the
-  # landing page redirects, and advertising it in the sitemap would point
-  # crawlers at a 302 to a login form.
   defp crawlable_pages do
     if You.Settings.enabled?(:feature_landing_page), do: @pages, else: []
   end

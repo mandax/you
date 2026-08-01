@@ -69,12 +69,8 @@ defmodule YouWeb.Components.ConsoleChrome do
   def app_nav_id, do: if(You.Mode.single?(), do: "app", else: "apps")
 
   @doc """
-  Nav ids that name a section the console itself renders.
-
-  An entry carrying `:href` points somewhere else (the single app's own page),
-  so it is a valid nav id but not a valid `?view=`. The console validates
-  against this rather than against `nav/0`, or a link that leaves the console
-  would resolve to a section that does not exist.
+  Nav ids naming a section the console renders. Entries carrying `:href` point
+  elsewhere, so they are valid nav ids but not valid `?view=` values.
   """
   def section_ids do
     nav() |> Enum.reject(&Map.has_key?(&1, :href)) |> Enum.map(& &1.id)

@@ -76,6 +76,41 @@ defmodule YouWeb.SingleModeTest do
     end
   end
 
+  describe "login page branding" do
+    setup :single_mode
+
+    test "picks up the app with no callback_url in the URL", %{conn: conn, app: app} do
+      {:ok, _} =
+        Admin.update_app(app, %{
+          "headline" => "Welcome back to Solo",
+          "subtitle" => "the one and only",
+          "brand_color" => "#7c3aed"
+        })
+
+      html = conn |> get(~p"/users/log-in") |> html_response(200)
+
+      assert html =~ "Welcome back to Solo"
+      assert html =~ "the one and only"
+      assert html =~ "#7c3aed"
+    end
+
+    test "console edits show up on the next page load", %{conn: conn, app: app} do
+      assert conn |> get(~p"/users/log-in") |> html_response(200) =~ "Solo"
+
+      {:ok, _} = Admin.update_app(app, %{"name" => "Renamed In Console"})
+
+      assert conn |> get(~p"/users/log-in") |> html_response(200) =~ "Renamed In Console"
+    end
+  end
+
+  describe "login page branding in multi mode" do
+    test "stays unbranded without a callback_url", %{conn: conn, app: app} do
+      {:ok, _} = Admin.update_app(app, %{"headline" => "Welcome back to Solo"})
+
+      refute conn |> get(~p"/users/log-in") |> html_response(200) =~ "Welcome back to Solo"
+    end
+  end
+
   describe "account hub" do
     setup [:register_and_log_in_user, :single_mode]
 
@@ -112,13 +147,9 @@ defmodule YouWeb.SingleModeTest do
     test "refuses to render the apps registry", %{conn: conn} do
       {:ok, _lv, html} = live(conn, ~p"/console?view=apps")
 
-      # Falls back to the overview rather than a registry with one row in it.
       refute html =~ "Register app"
     end
 
-    # The single-app nav entry links out of the console, so its id is a valid
-    # nav id but not a section the console can render. Reaching it via ?view=
-    # used to raise.
     test "survives ?view= naming the single-app nav entry", %{conn: conn} do
       {:ok, _lv, html} = live(conn, ~p"/console?view=app")
 
@@ -138,8 +169,6 @@ defmodule YouWeb.SingleModeTest do
     end
   end
 
-  # Controls for the refutes above: without these, renaming the registry button
-  # or the filter placeholder would make the single-mode tests pass vacuously.
   describe "console in multi mode" do
     setup %{conn: conn} do
       user = You.AccountsFixtures.user_fixture()
