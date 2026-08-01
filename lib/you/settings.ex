@@ -31,7 +31,8 @@ defmodule You.Settings do
     feature_passkeys: true,
     feature_magic_link: true,
     feature_social_login: true,
-    feature_webhooks: true
+    feature_webhooks: true,
+    feature_landing_page: true
   }
 
   # Toggled from the feature screen. Everything else in @defaults is a tuning
@@ -45,7 +46,8 @@ defmodule You.Settings do
     :feature_passkeys,
     :feature_magic_link,
     :feature_social_login,
-    :feature_webhooks
+    :feature_webhooks,
+    :feature_landing_page
   ]
 
   @doc "The optional features an admin can switch off."

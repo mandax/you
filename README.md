@@ -40,6 +40,10 @@ mix phx.server
 
 Visit [`localhost:4000`](http://localhost:4000).
 
+Running it rather than developing on it? [docs/quickstart.md](docs/quickstart.md)
+is `docker compose up` to a working login for a single app, with the multi-app
+surface hidden.
+
 ## Tests
 
 ```bash
@@ -119,6 +123,7 @@ headlessly at `/api/auth/*` (client_id + client_secret).
 
 ## Documentation
 
+- [Quickstart](docs/quickstart.md): single-app install with `docker compose`
 - [Integrating an app](docs/integration.md): OIDC and `You.SDK` integration guide
 - [Management REST API](docs/api.md): `/api/v1` for automating users and apps
 - [Webhooks](docs/webhooks.md): signed outbound events (Stripe recipe included)

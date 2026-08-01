@@ -144,7 +144,10 @@ defmodule YouWeb.Layouts do
     <div class="text-[11px] font-medium text-muted-foreground uppercase tracking-widest mb-1">
       Account
     </div>
+    <%!-- One app is not a grid to pick from: single-app mode drops the entry
+          and the hub redirects to the account itself. --%>
     <.account_link
+      :if={!You.Mode.single?()}
       navigate={~p"/users/dashboard"}
       icon="lucide-grid-2x2"
       active={@active == "dashboard"}

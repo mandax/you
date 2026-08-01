@@ -47,6 +47,9 @@ you_dev.db
 # Environment files
 .env
 .env.*
+# ...except the template docker-compose.yml tells people to copy. It holds
+# placeholders only; every real secret is generated on first boot.
+!.env.example
 
 # Node.js dependencies (used by Tailwind CLI build pipeline)
 /node_modules/
@@ -62,3 +65,8 @@ priv/static/**/*-????????????????????????????????.*
 
 # Agent worktrees, created at runtime
 .claude/worktrees/
+
+# Secrets generated on first boot next to the database file
+/priv/repo/secret_key_base
+/priv/repo/jwt_signing_key
+/priv/repo/single_app_client_secret

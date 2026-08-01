@@ -32,16 +32,27 @@ defmodule YouWeb.UserSessionController do
 
     if conn.assigns[:current_scope] && conn.assigns.current_scope.user &&
          get_session(conn, :callback_url) do
-      app = app_for(conn)
-      app_name = if app, do: app.name, else: get_session(conn, :callback_url)
+      user = conn.assigns.current_scope.user
 
-      render(conn, :authorize,
-        app_name: app_name,
-        user_email: conn.assigns.current_scope.user.email,
-        scopes: get_session(conn, :scopes) || ["email"],
-        tos_url: app && app.tos_url,
-        privacy_url: app && app.privacy_url
-      )
+      # Single-app mode has nothing to consent to: the app is the instance, so
+      # the user is signing in rather than authorizing a third party. Consent
+      # is still recorded, so flipping to multi-app mode leaves no gap.
+      case You.Mode.single?() && YouWeb.OAuthFlow.authorize_signed_in(conn, user) do
+        %Plug.Conn{} = conn ->
+          conn
+
+        _ ->
+          app = app_for(conn)
+          app_name = if app, do: app.name, else: get_session(conn, :callback_url)
+
+          render(conn, :authorize,
+            app_name: app_name,
+            user_email: user.email,
+            scopes: get_session(conn, :scopes) || ["email"],
+            tos_url: app && app.tos_url,
+            privacy_url: app && app.privacy_url
+          )
+      end
     else
       email = get_in(conn.assigns, [:current_scope, Access.key(:user), Access.key(:email)])
       form = Phoenix.Component.to_form(%{"email" => email}, as: "user")
@@ -348,26 +359,15 @@ defmodule YouWeb.UserSessionController do
 
   def authorize_action(conn, _params) do
     user = conn.assigns.current_scope.user
-    callback_url = safe_callback_url(conn)
 
-    if user && callback_url do
-      record_consent_for_app(conn, user)
-      scopes = get_session(conn, :scopes) || ["email"]
-      state = get_session(conn, :state)
+    case user && YouWeb.OAuthFlow.authorize_signed_in(conn, user) do
+      %Plug.Conn{} = conn ->
+        conn
 
-      {:ok, code} =
-        Accounts.generate_auth_code(
-          user,
-          scopes,
-          get_session(conn, :code_challenge),
-          YouWeb.OAuthFlow.app_slug_for_callback(conn)
-        )
-
-      redirect_with_code(conn, callback_url, code, state)
-    else
-      conn
-      |> put_flash(:error, "Session expired, please log in again.")
-      |> redirect(to: ~p"/users/log-in")
+      _ ->
+        conn
+        |> put_flash(:error, "Session expired, please log in again.")
+        |> redirect(to: ~p"/users/log-in")
     end
   end
 

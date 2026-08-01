@@ -29,14 +29,55 @@ defmodule YouWeb.Components.ConsoleChrome do
 
   A section that is off disappears from the nav; the LiveView also refuses to
   render its view, since a nav entry is presentation and not a gate.
+
+  In single-app mode the apps registry is replaced by a direct link to the one
+  app: there is no list to navigate, and no second app to register.
   """
   def nav do
-    Enum.reject(@nav, fn entry ->
+    @nav
+    |> Enum.reject(fn entry ->
       case entry.id do
         "webhooks" -> not You.Settings.enabled?(:feature_webhooks)
         _ -> false
       end
     end)
+    |> Enum.map(fn
+      %{id: "apps"} = entry -> apps_entry(entry)
+      entry -> entry
+    end)
+  end
+
+  defp apps_entry(entry) do
+    case You.Mode.single?() && You.Mode.app_slug() do
+      slug when is_binary(slug) ->
+        %{
+          id: app_nav_id(),
+          label: "Application",
+          icon: "lucide-box",
+          href: ~p"/console/apps/#{slug}"
+        }
+
+      _ ->
+        entry
+    end
+  end
+
+  @doc """
+  The nav id the per-app page highlights: `"apps"` under the registry,
+  `"app"` when the single app has replaced it.
+  """
+  def app_nav_id, do: if(You.Mode.single?(), do: "app", else: "apps")
+
+  @doc """
+  Nav ids that name a section the console itself renders.
+
+  An entry carrying `:href` points somewhere else (the single app's own page),
+  so it is a valid nav id but not a valid `?view=`. The console validates
+  against this rather than against `nav/0`, or a link that leaves the console
+  would resolve to a section that does not exist.
+  """
+  def section_ids do
+    nav() |> Enum.reject(&Map.has_key?(&1, :href)) |> Enum.map(& &1.id)
   end
 
   @doc """
@@ -62,7 +103,7 @@ defmodule YouWeb.Components.ConsoleChrome do
         <nav class="flex-1 space-y-px px-2 pt-3">
           <.link
             :for={n <- @nav}
-            navigate={~p"/console?view=#{n.id}"}
+            navigate={n[:href] || ~p"/console?view=#{n.id}"}
             aria-current={@active == n.id && "page"}
             class={[
               "group flex h-8 w-full items-center gap-2.5 rounded-md px-3 text-sm transition-colors",

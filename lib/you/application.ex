@@ -27,6 +27,10 @@ defmodule You.Application do
         children
       end
 
+    # Provisions the single app from the environment. A no-op in multi mode;
+    # appended so it runs after You.Repo is up.
+    children = children ++ [You.Mode.Provisioner]
+
     # Always include the Streamer; it is a no-op when unconfigured. Appended
     # (not prepended) because it reads the audit-webhook setting from the DB at
     # init, so it must start after You.Repo. Same for the webhook Dispatcher,

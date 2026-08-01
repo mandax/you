@@ -53,6 +53,40 @@ defmodule YouWeb.OAuthFlow do
   end
 
   @doc """
+  Finishes an authorization for a user who is already signed in to You: record
+  consent, mint a code, redirect back to the consumer.
+
+  This is what the consent screen posts to, and what single-app mode calls
+  instead of rendering that screen. Consent is recorded either way, so an
+  instance that later flips to multi-app mode has no gap in its consent
+  records.
+
+  Returns `{:error, :no_callback}` when the session carries no registered
+  callback URL, which is the caller's cue to send the user back to log in.
+  """
+  def authorize_signed_in(conn, user) do
+    case safe_callback_url(conn) do
+      nil ->
+        {:error, :no_callback}
+
+      callback_url ->
+        record_consent_for_app(conn, user)
+        scopes = get_session(conn, :scopes) || ["email"]
+        state = get_session(conn, :state)
+
+        {:ok, code} =
+          Accounts.generate_auth_code(
+            user,
+            scopes,
+            get_session(conn, :code_challenge),
+            app_slug_for_callback(conn)
+          )
+
+        redirect_with_code(conn, callback_url, code, state)
+    end
+  end
+
+  @doc """
   The session `callback_url`, but only if it exactly matches a registered app
   (exact match blocks open-redirect via a lookalike callback).
   """

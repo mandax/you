@@ -49,7 +49,10 @@ defmodule YouWeb.ConsoleLive do
     feature_passkeys: {"Passkeys", "WebAuthn sign-in and per-user passkey management."},
     feature_magic_link: {"Magic links", "Passwordless sign-in by emailed link."},
     feature_social_login: {"Social sign-in", "Upstream identity providers on the login page."},
-    feature_webhooks: {"Webhooks", "Signed outbound events."}
+    feature_webhooks: {"Webhooks", "Signed outbound events."},
+    feature_landing_page:
+      {"Public landing page",
+       "What visitors see at /. Switched off, / goes to the console for admins and to the login page for everyone else — the right shape when this instance is infrastructure for your own app rather than a product with a homepage."}
   }
 
   # Write-only in the console: never rendered into the DOM, blank on save
@@ -98,7 +101,9 @@ defmodule YouWeb.ConsoleLive do
        provider_filter: "",
        webhook_filter: "",
        features: Settings.features() |> Map.new(&{&1, Settings.get(&1)}),
-       onboarding: not Settings.get(:onboarding_completed)
+       onboarding: not Settings.get(:onboarding_completed),
+       single_mode: You.Mode.single?(),
+       mail_ready: You.Mailer.production_ready?()
      )
      |> load_data()
      |> load_settings()}
@@ -110,7 +115,7 @@ defmodule YouWeb.ConsoleLive do
     # they have not shaped yet.
     default = if socket.assigns.onboarding, do: "features", else: "overview"
     view = params["view"] || default
-    view = if Enum.any?(nav(), &(&1.id == view)), do: view, else: default
+    view = if view in section_ids(), do: view, else: default
     {:noreply, assign(socket, view: view, saved: false)}
   end
 
@@ -529,7 +534,17 @@ defmodule YouWeb.ConsoleLive do
     if raw =~ ~r/^\d+$/, do: String.to_integer(raw), else: raw
   end
 
-  defp section_copy(view), do: Map.get(@section_copy, view)
+  # Single-app mode drops the app dimension from the UI, so the copy that
+  # points at it has to go too.
+  @single_section_copy %{
+    "users" =>
+      "Everyone with an account here. Filter by role or status, and manage a user's access from their row."
+  }
+
+  defp section_copy(view, true),
+    do: Map.get(@single_section_copy, view) || Map.get(@section_copy, view)
+
+  defp section_copy(view, false), do: Map.get(@section_copy, view)
 
   defp nav_label(view), do: Enum.find_value(nav(), "", &if(&1.id == view, do: &1.label))
 
@@ -540,14 +555,23 @@ defmodule YouWeb.ConsoleLive do
     <.console_shell nav={@nav} active={@view} title={nav_label(@view)} node_name={@node_name}>
       <div class="mb-5">
         <h1 class="text-lg font-medium">{nav_label(@view)}</h1>
-        <p :if={section_copy(@view)} class="mt-1 max-w-2xl text-sm text-muted-foreground">
-          {section_copy(@view)}
+        <p
+          :if={section_copy(@view, @single_mode)}
+          class="mt-1 max-w-2xl text-sm text-muted-foreground"
+        >
+          {section_copy(@view, @single_mode)}
         </p>
       </div>
 
       <%= case @view do %>
         <% "overview" -> %>
-          <.overview users={@users} apps={@apps} events={@events} />
+          <.overview
+            users={@users}
+            apps={@apps}
+            events={@events}
+            single_mode={@single_mode}
+            mail_ready={@mail_ready}
+          />
         <% "users" -> %>
           <.users_view
             users={@users}
@@ -556,6 +580,7 @@ defmodule YouWeb.ConsoleLive do
             filters={@user_filters}
             current_scope={@current_scope}
             editing_user={@editing_user}
+            single_mode={@single_mode}
           />
         <% "apps" -> %>
           <.apps_view
@@ -609,14 +634,39 @@ defmodule YouWeb.ConsoleLive do
   attr :users, :list, required: true
   attr :apps, :list, required: true
   attr :events, :list, required: true
+  attr :single_mode, :boolean, default: false
+  attr :mail_ready, :boolean, default: true
 
   defp overview(assigns) do
     ~H"""
     <div class="space-y-6">
+      <%!-- Every emailed flow (magic link, email 2FA, confirmation, reset) is
+            broken from the user's side without SMTP, and the failure is
+            invisible from here. Say so on the first screen an admin sees. --%>
+      <div
+        :if={!@mail_ready}
+        class="rounded-lg border border-signal-warn/40 bg-signal-warn/5 p-4 text-sm"
+      >
+        <div class="flex items-center gap-2 font-medium">
+          <span class="lucide-triangle-alert size-4 block text-signal-warn" /> Email is not configured
+        </div>
+        <p class="mt-1 text-muted-foreground">
+          Mail is being kept in an in-memory mailbox instead of being delivered. Magic links, email
+          2FA, address confirmation and password resets will not reach users. Set
+          <span class="font-mono text-xs">SMTP_HOST</span>
+          and restart, or read the queued mail at
+          <%!-- href, not navigate: the mailbox is a forwarded plug, not a LiveView. --%>
+          <.link href={~p"/console/mailbox"} class="text-primary underline">
+            /console/mailbox
+          </.link>
+          while evaluating.
+        </p>
+      </div>
+
       <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <.metric_card label="Users" value={to_string(length(@users))} />
         <.metric_card label="Admins" value={to_string(Enum.count(@users, & &1.user.is_admin))} />
-        <.metric_card label="Apps" value={to_string(length(@apps))} />
+        <.metric_card :if={!@single_mode} label="Apps" value={to_string(length(@apps))} />
       </div>
 
       <div class="rounded-lg border border-border bg-card p-4">
@@ -643,6 +693,7 @@ defmodule YouWeb.ConsoleLive do
   attr :filters, :map, required: true
   attr :current_scope, :map, required: true
   attr :editing_user, :map, default: nil
+  attr :single_mode, :boolean, default: false
 
   defp users_view(assigns) do
     assigns =
@@ -678,7 +729,9 @@ defmodule YouWeb.ConsoleLive do
             on_change="filter_users"
             params={%{"filter_key" => "status"}}
           />
+          <%!-- One app means the filter can only ever select everything. --%>
           <.select
+            :if={!@single_mode}
             id="filter-app"
             value={@filters["app"]}
             placeholder="all apps"

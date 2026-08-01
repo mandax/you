@@ -23,6 +23,12 @@ defmodule YouWeb.Router do
     plug YouWeb.SCIM.BearerAuth
   end
 
+  # The in-memory mailbox only exists while mail is unconfigured; see the
+  # /console/mailbox scope below.
+  pipeline :require_local_mailbox do
+    plug :ensure_local_mailbox
+  end
+
   pipeline :rate_limit_login do
     plug YouWeb.Plugs.RateLimit, key: :login
   end
@@ -75,6 +81,33 @@ defmodule YouWeb.Router do
     live_session :admin, on_mount: {YouWeb.UserAuth, :default} do
       live "/", ConsoleLive, :index
       live "/apps/:slug", AppLive.Show, :show
+    end
+  end
+
+  # The fallback mailbox for an instance with no SMTP configured. Admin-only:
+  # it holds magic links and 2FA codes, which are bearer credentials.
+  #
+  # Gated on the transport as well as on the role. Swoosh only runs the local
+  # storage process when mail is actually being kept in memory, so on an
+  # instance with SMTP configured this plug would not 500 politely — it would
+  # exit `:noproc`. There is also nothing there to show.
+  scope "/console" do
+    pipe_through [:browser, :require_authenticated_user, :require_admin, :require_local_mailbox]
+
+    forward "/mailbox", Plug.Swoosh.MailboxPreview
+  end
+
+  defp ensure_local_mailbox(conn, _opts) do
+    if You.Mailer.transport() == :local do
+      conn
+    else
+      conn
+      |> Phoenix.Controller.put_flash(
+        :error,
+        "The mailbox only exists while mail is unconfigured; this instance delivers over SMTP."
+      )
+      |> Phoenix.Controller.redirect(to: "/console")
+      |> halt()
     end
   end
 

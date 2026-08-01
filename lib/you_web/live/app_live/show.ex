@@ -326,7 +326,7 @@ defmodule YouWeb.AppLive.Show do
   @impl true
   def render(assigns) do
     ~H"""
-    <.console_shell nav={@nav} active="apps" title="Apps" node_name={@node_name}>
+    <.console_shell nav={@nav} active={app_nav_id()} title="Apps" node_name={@node_name}>
       <div class="space-y-5">
         <div>
           <.link
