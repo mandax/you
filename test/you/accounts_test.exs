@@ -69,6 +69,51 @@ defmodule You.AccountsTest do
     end
   end
 
+  describe "recovery codes" do
+    setup do
+      user = AccountsFixtures.user_fixture()
+      {:ok, setup} = Accounts.generate_totp_setup(user)
+      valid_code = NimbleTOTP.verification_code(setup.secret)
+      {:ok, result} = Accounts.enable_totp(setup.user, valid_code)
+
+      %{user: result.user, recovery_codes: result.recovery_codes}
+    end
+
+    test "a valid recovery code succeeds", %{user: user, recovery_codes: [code | _]} do
+      assert {:ok, verified_user} = Accounts.verify_recovery_code(user, code)
+      assert verified_user.id == user.id
+    end
+
+    test "the same recovery code cannot be used twice", %{
+      user: user,
+      recovery_codes: [code | _]
+    } do
+      assert {:ok, _} = Accounts.verify_recovery_code(user, code)
+      assert {:error, :invalid_code} = Accounts.verify_recovery_code(user, code)
+    end
+
+    test "an invalid recovery code fails", %{user: user} do
+      assert {:error, :invalid_code} = Accounts.verify_recovery_code(user, "not-a-real-code")
+    end
+
+    test "a used code does not block a different valid one", %{
+      user: user,
+      recovery_codes: [first, second | _]
+    } do
+      assert {:ok, _} = Accounts.verify_recovery_code(user, first)
+      assert {:ok, _} = Accounts.verify_recovery_code(user, second)
+    end
+
+    test "count_unused_recovery_codes decrements as codes are used", %{
+      user: user,
+      recovery_codes: [code | _]
+    } do
+      assert Accounts.count_unused_recovery_codes(user) == 8
+      {:ok, _} = Accounts.verify_recovery_code(user, code)
+      assert Accounts.count_unused_recovery_codes(user) == 7
+    end
+  end
+
   describe "anonymize_user/1" do
     test "anonymizes personal data" do
       user = AccountsFixtures.user_fixture()

@@ -706,6 +706,45 @@ defmodule You.Accounts do
     NimbleTOTP.valid?(secret, code)
   end
 
+  @doc """
+  Verifies a recovery code for a user and consumes it on success (single-use).
+
+  Checks the code against every unused recovery code the user has, since each
+  is hashed with its own bcrypt salt and cannot be looked up directly. Runs a
+  dummy `Bcrypt.no_user_verify/0` whenever there is no match — including when
+  the user has no unused codes left — so a failed attempt takes the same time
+  either way and doesn't leak whether the user has recovery codes remaining.
+
+  Returns `{:ok, user}` or `{:error, :invalid_code}`.
+  """
+  def verify_recovery_code(%User{} = user, code) when is_binary(code) do
+    unused_codes =
+      Repo.all(from r in RecoveryCode, where: r.user_id == ^user.id and r.used == false)
+
+    case Enum.find(unused_codes, &Bcrypt.verify_pass(code, &1.code_hash)) do
+      nil ->
+        Bcrypt.no_user_verify()
+        {:error, :invalid_code}
+
+      matched_code ->
+        matched_code
+        |> Ecto.Changeset.change(used: true)
+        |> Repo.update!()
+
+        {:ok, user}
+    end
+  end
+
+  @doc """
+  Returns how many unused recovery codes a user has left.
+  """
+  def count_unused_recovery_codes(%User{} = user) do
+    Repo.aggregate(
+      from(r in RecoveryCode, where: r.user_id == ^user.id and r.used == false),
+      :count
+    )
+  end
+
   defp generate_recovery_codes(%User{} = user) do
     codes = for _ <- 1..8, do: generate_code()
 

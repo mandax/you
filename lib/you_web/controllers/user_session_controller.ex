@@ -362,6 +362,91 @@ defmodule YouWeb.UserSessionController do
     end
   end
 
+  @doc """
+  Renders the recovery-code form for a user mid-TOTP login who has lost
+  access to their authenticator app.
+  """
+  def recovery_code(conn, _params) do
+    user_id = get_session(conn, :totp_user_id)
+
+    if user_id do
+      render(
+        conn,
+        :recovery_code,
+        [form: Phoenix.Component.to_form(%{}, as: "recovery")] ++
+          YouWeb.AppBranding.assigns(conn)
+      )
+    else
+      conn
+      |> put_flash(:error, "Session expired, please log in again.")
+      |> redirect(to: ~p"/users/log-in")
+    end
+  end
+
+  def verify_recovery_code(conn, %{"recovery" => %{"code" => code}}) do
+    user_id = get_session(conn, :totp_user_id)
+
+    if user_id do
+      user = Accounts.get_user!(user_id)
+
+      case Accounts.verify_recovery_code(user, code) do
+        {:ok, user} ->
+          :telemetry.execute([:you, :audit, :login, :attempt], %{}, %{
+            user_id: user.id,
+            email: user.email,
+            method: "recovery_code",
+            result: :success
+          })
+
+          callback_url = safe_callback_url(conn)
+
+          if callback_url do
+            record_consent_for_app(conn, user)
+            scopes = get_session(conn, :scopes) || ["email"]
+            state = get_session(conn, :state)
+
+            {:ok, auth_code} =
+              Accounts.generate_auth_code(
+                user,
+                scopes,
+                get_session(conn, :code_challenge),
+                YouWeb.OAuthFlow.app_slug_for_callback(conn)
+              )
+
+            conn
+            |> UserAuth.create_user_session(user, %{})
+            |> put_session(:totp_user_id, nil)
+            |> redirect_with_code(callback_url, auth_code, state)
+          else
+            conn
+            |> put_flash(:info, "Welcome back!")
+            |> UserAuth.log_in_user(user, %{})
+          end
+
+        {:error, :invalid_code} ->
+          :telemetry.execute([:you, :audit, :login, :attempt], %{}, %{
+            user_id: user.id,
+            email: user.email,
+            method: "recovery_code",
+            result: :failure
+          })
+
+          render(
+            conn,
+            :recovery_code,
+            [
+              form: Phoenix.Component.to_form(%{}, as: "recovery"),
+              error: "Invalid or already-used recovery code."
+            ] ++ YouWeb.AppBranding.assigns(conn)
+          )
+      end
+    else
+      conn
+      |> put_flash(:error, "Session expired, please log in again.")
+      |> redirect(to: ~p"/users/log-in")
+    end
+  end
+
   def authorize_action(conn, _params) do
     user = conn.assigns.current_scope.user
 
