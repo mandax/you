@@ -200,12 +200,16 @@ defmodule YouWeb.UserSettingsController do
   defp assign_email_and_password_changesets(conn, _opts) do
     user = conn.assigns.current_scope.user
 
+    recovery_codes_remaining =
+      if user.totp_enabled, do: Accounts.count_unused_recovery_codes(user)
+
     conn
     |> assign(:email_changeset, Accounts.change_user_email(user))
     |> assign(:password_changeset, Accounts.change_user_password(user))
     |> assign(:sessions, Accounts.list_user_sessions(user))
     |> assign(:current_token, get_session(conn, :user_token))
     |> assign(:federated_identities, Accounts.list_federated_identities_for_user(user))
+    |> assign(:recovery_codes_remaining, recovery_codes_remaining)
   end
 
   defp get_user_consents(user_id) do

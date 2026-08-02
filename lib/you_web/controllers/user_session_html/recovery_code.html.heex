@@ -6,9 +6,9 @@
 >
   <div class="text-center">
     <Layouts.auth_mark bare={@bare} app_name={@app_name} app_logo_url={@app_logo_url} />
-    <h1 class="text-xl font-medium tracking-tight">Two-Factor Authentication</h1>
+    <h1 class="text-xl font-medium tracking-tight">Recovery Code</h1>
     <p class="text-sm text-muted-foreground mt-2">
-      Enter the code from your authenticator app.
+      Enter one of the recovery codes you saved when you set up two-factor authentication.
     </p>
   </div>
 
@@ -20,12 +20,18 @@
     {@error}
   </div>
 
-  <.form :let={f} for={@form} as={:totp} id="totp_form" action={~p"/users/log-in/totp"}>
+  <.form
+    :let={f}
+    for={@form}
+    as={:recovery}
+    id="recovery_code_form"
+    action={~p"/users/log-in/totp/recovery"}
+  >
     <div class="space-y-4">
       <.input
         field={f[:code]}
         type="text"
-        label="Authentication Code"
+        label="Recovery Code"
         autocomplete="off"
         spellcheck="false"
         required
@@ -37,10 +43,10 @@
 
   <div class="text-center">
     <.link
-      navigate={~p"/users/log-in/totp/recovery"}
+      navigate={~p"/users/log-in/totp"}
       class="text-sm text-muted-foreground hover:text-foreground hover:underline"
     >
-      Lost your device? Use a recovery code
+      Use your authenticator app instead
     </.link>
   </div>
 </Layouts.auth>

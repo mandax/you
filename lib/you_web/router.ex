@@ -236,6 +236,7 @@ defmodule YouWeb.Router do
     # (magic-link) route. Phoenix matches in definition order, so otherwise
     # e.g. /users/log-in/totp is captured as token="totp".
     get "/users/log-in/totp", UserSessionController, :totp
+    get "/users/log-in/totp/recovery", UserSessionController, :recovery_code
     get "/users/log-in/email-2fa", UserSessionController, :email_2fa
     post "/users/log-in/authorize", UserSessionController, :authorize_action
     get "/users/log-in/:token", UserSessionController, :confirm
@@ -246,6 +247,7 @@ defmodule YouWeb.Router do
     scope "/" do
       pipe_through :rate_limit_totp
       post "/users/log-in/totp", UserSessionController, :verify_totp
+      post "/users/log-in/totp/recovery", UserSessionController, :verify_recovery_code
     end
 
     scope "/" do

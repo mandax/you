@@ -151,7 +151,7 @@
           <h2 class="text-lg font-medium">Two-factor authentication</h2>
           <p class="text-sm text-muted-foreground">
             <%= if @current_scope.user.totp_enabled do %>
-              Authenticator app is enabled.
+              Authenticator app is enabled. {@recovery_codes_remaining} recovery code(s) remaining.
             <% else %>
               Add an extra layer of security by requiring a code from your authenticator app.
             <% end %>
