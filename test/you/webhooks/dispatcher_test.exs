@@ -3,8 +3,6 @@ defmodule You.Webhooks.DispatcherTest do
 
   alias You.Webhooks
 
-  @port 45_917
-
   setup do
     test_pid = self()
     failures = :counters.new(1, [])
@@ -25,10 +23,12 @@ defmodule You.Webhooks.DispatcherTest do
       Plug.Conn.send_resp(conn, status, "")
     end
 
-    server = start_supervised!({Bandit, plug: plug, port: @port, ip: :loopback})
+    server = start_supervised!({Bandit, plug: plug, port: 0, ip: :loopback})
     on_exit(fn -> Process.unlink(server) end)
 
-    %{failures: failures, url: "http://localhost:#{@port}/hook"}
+    {:ok, {_ip, port}} = ThousandIsland.listener_info(server)
+
+    %{failures: failures, url: "http://localhost:#{port}/hook"}
   end
 
   defp create_endpoint(url, events) do

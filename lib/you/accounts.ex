@@ -727,12 +727,21 @@ defmodule You.Accounts do
         {:error, :invalid_code}
 
       matched_code ->
-        matched_code
-        |> Ecto.Changeset.change(used: true)
-        |> Repo.update!()
-
-        {:ok, user}
+        claim_recovery_code(matched_code, user)
     end
+  end
+
+  # Single-use is decided by the update itself, not by the read above: two
+  # requests carrying the same code can both see it unused, and only the one
+  # that flips the row may be let through.
+  defp claim_recovery_code(matched_code, user) do
+    {claimed, _} =
+      Repo.update_all(
+        from(r in RecoveryCode, where: r.id == ^matched_code.id and r.used == false),
+        set: [used: true]
+      )
+
+    if claimed == 1, do: {:ok, user}, else: {:error, :invalid_code}
   end
 
   @doc """
