@@ -136,16 +136,4 @@ defmodule You.Webhooks do
     with {:ok, _} <- result, do: You.Webhooks.Dispatcher.reload()
     result
   end
-
-  @doc """
-  Returns enabled endpoints subscribed to the given event type.
-  """
-  def enabled_for_event(event_type) when is_binary(event_type) do
-    Repo.all(
-      from e in Endpoint,
-        where:
-          e.enabled and
-            fragment("EXISTS (SELECT 1 FROM json_each(?) WHERE value = ?)", e.events, ^event_type)
-    )
-  end
 end

@@ -30,22 +30,6 @@ defmodule You.WebhooksTest do
     end
   end
 
-  describe "enabled_for_event/1" do
-    test "returns only enabled endpoints subscribed to the event" do
-      {:ok, match} =
-        Webhooks.create_endpoint(%{"url" => "https://a.example", "events" => ["user.registered"]})
-
-      {:ok, other} =
-        Webhooks.create_endpoint(%{"url" => "https://b.example", "events" => ["login:attempt"]})
-
-      {:ok, _} = Webhooks.update_endpoint(other, %{"enabled" => false})
-
-      assert [endpoint] = Webhooks.enabled_for_event("user.registered")
-      assert endpoint.id == match.id
-      assert Webhooks.enabled_for_event("login:attempt") == []
-    end
-  end
-
   describe "rotate_secret/1" do
     test "changes the secret" do
       {:ok, endpoint} =
