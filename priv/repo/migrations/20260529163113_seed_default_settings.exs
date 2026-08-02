@@ -1,4 +1,22 @@
 defmodule You.Repo.Migrations.SeedDefaultSettings do
+  @moduledoc """
+  Historical migration, left unedited on purpose.
+
+  Its `INSERT` is built with `\#{setting.key}`/`\#{setting.value}` string
+  interpolation rather than bound parameters. The values here are hardcoded
+  literals, so there is no injection today, but do not copy this pattern —
+  use `repo().insert_all/3` or parameter binding instead (see
+  `20260802173000_drop_settings_seed_duplicates.exs` for an example).
+
+  This migration has already run against every existing database, and
+  editing an applied migration does not re-run it, so rewriting it here
+  would not change any live installation's data and would only make the
+  file disagree with what actually executed. `@defaults` in
+  `lib/you/settings.ex` is the source of truth for these values; the rows
+  this migration seeded (when they still match the seeded value) are
+  removed by `20260802173000_drop_settings_seed_duplicates.exs`.
+  """
+
   use Ecto.Migration
 
   def up do
