@@ -35,14 +35,12 @@ defmodule YouWeb.Components.LoginChrome do
         :if={@logo_url}
         src={@logo_url}
         alt={@app_name}
-        class="mx-auto mb-4 size-11 rounded-xl border border-border object-cover"
+        class="mx-auto mb-4 h-12 w-auto max-w-[200px] object-contain"
       />
-      <div
+      <span
         :if={!@logo_url}
-        class="mx-auto mb-4 flex size-11 items-center justify-center rounded-xl border border-border"
-      >
-        <span class="lucide-lock block size-5 text-muted-foreground" />
-      </div>
+        class="lucide-lock mx-auto mb-4 block size-8 text-muted-foreground"
+      />
       <h1 class="text-2xl font-bold tracking-tight">
         <%= if @headline do %>
           {@headline}

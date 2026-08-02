@@ -44,40 +44,48 @@ defmodule YouWeb.UserSessionController do
           app = app_for(conn)
           app_name = if app, do: app.name, else: get_session(conn, :callback_url)
 
-          render(conn, :authorize,
-            app_name: app_name,
-            user_email: user.email,
-            scopes: get_session(conn, :scopes) || ["email"],
-            tos_url: app && app.tos_url,
-            privacy_url: app && app.privacy_url
+          render(
+            conn,
+            :authorize,
+            [
+              app_name: app_name,
+              user_email: user.email,
+              scopes: get_session(conn, :scopes) || ["email"],
+              tos_url: app && app.tos_url,
+              privacy_url: app && app.privacy_url
+            ] ++ Keyword.drop(YouWeb.AppBranding.assigns(conn), [:app_name])
           )
       end
     else
       email = get_in(conn.assigns, [:current_scope, Access.key(:user), Access.key(:email)])
       form = Phoenix.Component.to_form(%{"email" => email}, as: "user")
-      app = app_for(conn)
 
-      conn
-      |> assign(:forced_theme, forced_theme(app))
-      |> render(:new,
+      render_login(conn, form)
+    end
+  end
+
+  @doc """
+  Renders the login page.
+
+  An app's login page is rendered bare — no site chrome, no brand panel, just
+  the form — because it belongs to that app, not to You. Every path that
+  re-renders the page after an error goes through here, or a failed login on a
+  branded page would come back as You's own.
+  """
+  def render_login(conn, form) do
+    app = app_for(conn)
+
+    conn
+    |> assign(:forced_theme, forced_theme(app))
+    |> render(
+      :new,
+      [
         form: form,
         callback_url: get_session(conn, :callback_url),
         providers: oidc_providers(app),
-        app_name: app && app.name,
-        app_logo_url: app && app.logo_url,
-        app_brand_color: app && app.brand_color,
-        app_brand_color_dark: app && app.brand_color_dark,
-        app_on_brand: app && app.brand_color && You.Admin.App.contrast_on(app.brand_color),
-        app_on_brand_dark:
-          app && app.brand_color &&
-            You.Admin.App.contrast_on(app.brand_color_dark || app.brand_color),
-        app_accent_color_dark: app && app.accent_color_dark,
-        app_accent_color: app && app.accent_color,
-        app_headline: app && app.headline,
-        app_subtitle: app && app.subtitle,
         methods: enabled_methods(app)
-      )
-    end
+      ] ++ YouWeb.AppBranding.assigns(conn)
+    )
   end
 
   # Enabled upstream OIDC providers, as a sorted list of slugs ("google", …),
@@ -166,12 +174,7 @@ defmodule YouWeb.UserSessionController do
       {:error, :not_found} ->
         conn
         |> put_flash(:error, "The link is invalid or it has expired.")
-        |> render(:new,
-          form: Phoenix.Component.to_form(%{}, as: "user"),
-          callback_url: get_session(conn, :callback_url),
-          providers: oidc_providers(app_for(conn)),
-          methods: enabled_methods(conn)
-        )
+        |> render_login(Phoenix.Component.to_form(%{}, as: "user"))
     end
   end
 
@@ -232,12 +235,7 @@ defmodule YouWeb.UserSessionController do
       # In order to prevent user enumeration attacks, don't disclose whether the email is disclosed.
       conn
       |> put_flash(:error, "Invalid email or password")
-      |> render(:new,
-        form: form,
-        callback_url: get_session(conn, :callback_url),
-        providers: oidc_providers(app_for(conn)),
-        methods: enabled_methods(conn)
-      )
+      |> render_login(form)
     end
   end
 
@@ -292,7 +290,7 @@ defmodule YouWeb.UserSessionController do
       conn
       |> assign(:user, user)
       |> assign(:form, form)
-      |> render(:confirm)
+      |> render(:confirm, YouWeb.AppBranding.assigns(conn))
     else
       conn
       |> put_flash(:error, "Magic link is invalid or it has expired.")
@@ -304,7 +302,11 @@ defmodule YouWeb.UserSessionController do
     user_id = get_session(conn, :totp_user_id)
 
     if user_id do
-      render(conn, :totp, form: Phoenix.Component.to_form(%{}, as: "totp"))
+      render(
+        conn,
+        :totp,
+        [form: Phoenix.Component.to_form(%{}, as: "totp")] ++ YouWeb.AppBranding.assigns(conn)
+      )
     else
       conn
       |> put_flash(:error, "Session expired, please log in again.")
@@ -344,9 +346,13 @@ defmodule YouWeb.UserSessionController do
           |> UserAuth.log_in_user(user, %{})
         end
       else
-        render(conn, :totp,
-          form: Phoenix.Component.to_form(%{}, as: "totp"),
-          error: "Invalid code. Please try again."
+        render(
+          conn,
+          :totp,
+          [
+            form: Phoenix.Component.to_form(%{}, as: "totp"),
+            error: "Invalid code. Please try again."
+          ] ++ YouWeb.AppBranding.assigns(conn)
         )
       end
     else
@@ -374,7 +380,12 @@ defmodule YouWeb.UserSessionController do
 
   def email_2fa(conn, _params) do
     if get_session(conn, :email_2fa_user_id) do
-      render(conn, :email_2fa, form: Phoenix.Component.to_form(%{}, as: "email_2fa"))
+      render(
+        conn,
+        :email_2fa,
+        [form: Phoenix.Component.to_form(%{}, as: "email_2fa")] ++
+          YouWeb.AppBranding.assigns(conn)
+      )
     else
       conn
       |> put_flash(:error, "Session expired, please log in again.")
@@ -396,9 +407,13 @@ defmodule YouWeb.UserSessionController do
           |> YouWeb.OAuthFlow.complete_login(user)
 
         {:error, :invalid_code} ->
-          render(conn, :email_2fa,
-            form: Phoenix.Component.to_form(%{}, as: "email_2fa"),
-            error: "Invalid or expired code. Please try again."
+          render(
+            conn,
+            :email_2fa,
+            [
+              form: Phoenix.Component.to_form(%{}, as: "email_2fa"),
+              error: "Invalid or expired code. Please try again."
+            ] ++ YouWeb.AppBranding.assigns(conn)
           )
       end
     else

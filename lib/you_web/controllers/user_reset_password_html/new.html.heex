@@ -1,39 +1,42 @@
-<Layouts.public flash={@flash} current_scope={@current_scope}>
-  <div class="mx-auto max-w-sm pt-24 pb-32">
-    <div class="text-center mb-10">
-      <.wordmark size="lg" class="justify-center mb-4" />
-      <h1 class="text-xl font-medium tracking-tight">Forgot your password?</h1>
-      <p class="text-sm text-muted-foreground mt-2">
-        Enter your email and we'll send you a link to reset it.
-      </p>
-    </div>
-
-    <.form :let={f} for={%{}} as={:user} action={~p"/users/reset-password"}>
-      <div class="space-y-4">
-        <.input
-          field={f[:email]}
-          type="email"
-          label="Email"
-          required
-          phx-mounted={JS.focus()}
-        />
-        <.button type="submit" class="w-full">
-          Send reset instructions
-        </.button>
-      </div>
-    </.form>
-
-    <p class="text-center text-sm text-muted-foreground mt-6">
-      <.link
-        navigate={
-          if @callback_url,
-            do: ~p"/users/log-in?callback_url=#{URI.encode(@callback_url)}",
-            else: ~p"/users/log-in"
-        }
-        class="font-medium text-foreground hover:underline"
-      >
-        Back to log in
-      </.link>
+<Layouts.auth
+  flash={@flash}
+  current_scope={@current_scope}
+  bare={@bare}
+  brand_style={YouWeb.AppBranding.brand_style(assigns)}
+>
+  <div class="text-center mb-10">
+    <Layouts.auth_mark bare={@bare} app_name={@app_name} app_logo_url={@app_logo_url} />
+    <h1 class="text-xl font-medium tracking-tight">Forgot your password?</h1>
+    <p class="text-sm text-muted-foreground mt-2">
+      Enter your email and we'll send you a link to reset it.
     </p>
   </div>
-</Layouts.public>
+
+  <.form :let={f} for={%{}} as={:user} action={~p"/users/reset-password"}>
+    <div class="space-y-4">
+      <.input
+        field={f[:email]}
+        type="email"
+        label="Email"
+        required
+        phx-mounted={JS.focus()}
+      />
+      <.button type="submit" class="w-full">
+        Send reset instructions
+      </.button>
+    </div>
+  </.form>
+
+  <p class="text-center text-sm text-muted-foreground mt-6">
+    <.link
+      navigate={
+        if @callback_url,
+          do: ~p"/users/log-in?callback_url=#{URI.encode(@callback_url)}",
+          else: ~p"/users/log-in"
+      }
+      class="font-medium text-foreground hover:underline"
+    >
+      Back to log in
+    </.link>
+  </p>
+</Layouts.auth>

@@ -7,6 +7,70 @@ defmodule YouWeb.Layouts do
 
   embed_templates "layouts/*"
 
+  @doc """
+  Frame for the authentication flow: login, registration, password reset,
+  second factor, consent.
+
+  `bare` renders an app's page — the form centred and nothing else, since the
+  page belongs to that app rather than to You. Otherwise it is You's own page,
+  inside the public chrome.
+  """
+  attr :flash, :map, default: %{}
+  attr :current_scope, :map, default: nil
+  attr :bare, :boolean, default: false
+  attr :brand_style, :string, default: nil
+  slot :inner_block, required: true
+
+  def auth(assigns) do
+    ~H"""
+    <%= if @bare do %>
+      <div
+        class={[
+          "flex min-h-screen items-center justify-center px-5 py-16",
+          @brand_style && "app-branded"
+        ]}
+        style={@brand_style}
+      >
+        <div class="w-full max-w-sm animate-rise-in space-y-6">
+          {render_slot(@inner_block)}
+        </div>
+      </div>
+
+      <.flash_group flash={@flash} />
+    <% else %>
+      <.public flash={@flash} current_scope={@current_scope}>
+        <div class="mx-auto max-w-sm pt-24 pb-32 space-y-6">
+          {render_slot(@inner_block)}
+        </div>
+      </.public>
+    <% end %>
+    """
+  end
+
+  @doc """
+  Header for an authentication page: the app's logo and name when the flow
+  belongs to one, You's wordmark when it does not.
+  """
+  attr :bare, :boolean, default: false
+  attr :app_name, :string, default: nil
+  attr :app_logo_url, :string, default: nil
+
+  def auth_mark(assigns) do
+    ~H"""
+    <img
+      :if={@bare && @app_logo_url}
+      src={@app_logo_url}
+      alt={@app_name}
+      class="mx-auto mb-4 h-12 w-auto max-w-[200px] object-contain"
+    />
+    <span
+      :if={@bare && !@app_logo_url}
+      class="lucide-lock mx-auto mb-4 block size-8 text-muted-foreground"
+    />
+    <.wordmark :if={!@bare} size="lg" class="justify-center mb-4" />
+    """
+  end
+
   # ──────────────────────────────────────────────
   # Public layout: landing, docs, pricing, etc.
   # ──────────────────────────────────────────────
@@ -89,13 +153,35 @@ defmodule YouWeb.Layouts do
   slot :inner_block, required: true
 
   def app(assigns) do
+    panel_app = YouWeb.AppBranding.panel_app()
+
+    assigns =
+      assigns
+      |> assign(:panel_app, panel_app)
+      |> assign(:brand_style, YouWeb.AppBranding.app_brand_style(panel_app))
+
     ~H"""
-    <div class="min-h-screen flex flex-col">
+    <div
+      class={["min-h-screen flex flex-col", @brand_style && "app-branded"]}
+      style={@brand_style}
+    >
       <!-- Slim top bar -->
       <header class="h-12 shrink-0 border-b border-border bg-background/80 backdrop-blur-md flex items-center">
         <!-- Logo -->
         <div class="w-56 shrink-0 px-5 border-r border-border h-full flex items-center">
-          <.wordmark size="sm" />
+          <img
+            :if={@panel_app && @panel_app.logo_url}
+            src={@panel_app.logo_url}
+            alt={@panel_app.name}
+            class="h-6 w-auto max-w-[140px] object-contain"
+          />
+          <span
+            :if={@panel_app && !@panel_app.logo_url}
+            class="truncate text-sm font-semibold tracking-tight"
+          >
+            {@panel_app.name}
+          </span>
+          <.wordmark :if={!@panel_app} size="sm" />
         </div>
 
         <div class="px-4 text-sm font-medium text-muted-foreground">Account</div>

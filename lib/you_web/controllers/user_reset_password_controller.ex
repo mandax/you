@@ -19,7 +19,13 @@ defmodule YouWeb.UserResetPasswordController do
         conn
       end
 
-    render(conn, :new, callback_url: get_session(conn, :callback_url))
+    conn = YouWeb.AppBranding.put_app_param(conn, params)
+
+    render(
+      conn,
+      :new,
+      [callback_url: get_session(conn, :callback_url)] ++ YouWeb.AppBranding.assigns(conn)
+    )
   end
 
   def create(conn, %{"user" => %{"email" => email}}) do
@@ -80,7 +86,12 @@ defmodule YouWeb.UserResetPasswordController do
 
     if user = Accounts.get_user_by_reset_password_token(token) do
       changeset = Accounts.change_user_password(user)
-      render(conn, :edit, changeset: changeset, token: token)
+
+      render(
+        conn,
+        :edit,
+        [changeset: changeset, token: token] ++ YouWeb.AppBranding.assigns(conn)
+      )
     else
       conn
       |> put_flash(:error, "Reset password link is invalid or it has expired.")
@@ -119,10 +130,11 @@ defmodule YouWeb.UserResetPasswordController do
           end
 
         {:error, changeset} ->
-          render(conn, :edit,
-            changeset: changeset,
-            token: token,
-            callback_url: get_session(conn, :callback_url)
+          render(
+            conn,
+            :edit,
+            [changeset: changeset, token: token, callback_url: get_session(conn, :callback_url)] ++
+              YouWeb.AppBranding.assigns(conn)
           )
       end
     else

@@ -79,35 +79,17 @@ defmodule YouWeb.SingleModeTest do
   describe "login page branding" do
     setup :single_mode
 
-    test "picks up the app with no callback_url in the URL", %{conn: conn, app: app} do
-      {:ok, _} =
-        Admin.update_app(app, %{
-          "headline" => "Welcome back to Solo",
-          "subtitle" => "the one and only",
-          "brand_color" => "#7c3aed"
-        })
-
-      html = conn |> get(~p"/users/log-in") |> html_response(200)
-
-      assert html =~ "Welcome back to Solo"
-      assert html =~ "the one and only"
-      assert html =~ "#7c3aed"
-    end
-
-    test "console edits show up on the next page load", %{conn: conn, app: app} do
-      assert conn |> get(~p"/users/log-in") |> html_response(200) =~ "Solo"
-
-      {:ok, _} = Admin.update_app(app, %{"name" => "Renamed In Console"})
-
-      assert conn |> get(~p"/users/log-in") |> html_response(200) =~ "Renamed In Console"
-    end
-  end
-
-  describe "login page branding in multi mode" do
-    test "stays unbranded without a callback_url", %{conn: conn, app: app} do
+    test "the plain login page stays You's own", %{conn: conn, app: app} do
       {:ok, _} = Admin.update_app(app, %{"headline" => "Welcome back to Solo"})
 
       refute conn |> get(~p"/users/log-in") |> html_response(200) =~ "Welcome back to Solo"
+    end
+
+    test "?app= renders the app's page", %{conn: conn, app: app} do
+      {:ok, _} = Admin.update_app(app, %{"headline" => "Welcome back to Solo"})
+
+      assert conn |> get(~p"/users/log-in?app=solo") |> html_response(200) =~
+               "Welcome back to Solo"
     end
   end
 
