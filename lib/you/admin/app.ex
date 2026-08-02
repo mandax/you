@@ -2,6 +2,8 @@ defmodule You.Admin.App do
   use Ecto.Schema
   import Ecto.Changeset
 
+  @timestamps_opts [type: :utc_datetime]
+
   schema "apps" do
     field :slug, :string
     field :name, :string
