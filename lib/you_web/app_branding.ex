@@ -64,6 +64,25 @@ defmodule YouWeb.AppBranding do
   """
   def panel_app, do: You.Mode.app()
 
+  @doc """
+  Path back to the login page that keeps the flow's app.
+
+  The login page clears the remembered slug when it is asked for without one,
+  so redirecting to a bare `/users/log-in` after registering or requesting a
+  reset would drop the user onto You's own page mid-flow.
+  """
+  def login_path(conn) do
+    params =
+      %{
+        "app" => Plug.Conn.get_session(conn, :branding_app_slug),
+        "callback_url" => Plug.Conn.get_session(conn, :callback_url)
+      }
+      |> Enum.reject(fn {_k, v} -> is_nil(v) or v == "" end)
+      |> Map.new()
+
+    if params == %{}, do: "/users/log-in", else: "/users/log-in?" <> URI.encode_query(params)
+  end
+
   @doc "The inline custom properties an app's brand colours ride in."
   def app_brand_style(nil), do: nil
 

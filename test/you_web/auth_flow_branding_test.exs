@@ -59,6 +59,29 @@ defmodule YouWeb.AuthFlowBrandingTest do
     end
   end
 
+  describe "after submitting a form" do
+    test "registering redirects back to the app's login page", %{conn: conn} do
+      conn = get(conn, ~p"/users/log-in?app=branded")
+
+      conn =
+        post(conn, ~p"/users/register", %{
+          "user" => %{"email" => "new-user@example.com"}
+        })
+
+      assert redirected_to(conn) =~ "app=branded"
+      assert_bare(conn |> recycle() |> get(redirected_to(conn)) |> html_response(200))
+    end
+
+    test "requesting a password reset redirects back to the app's login page", %{conn: conn} do
+      conn = get(conn, ~p"/users/log-in?app=branded")
+
+      conn =
+        post(conn, ~p"/users/reset-password", %{"user" => %{"email" => "nobody@example.com"}})
+
+      assert redirected_to(conn) =~ "app=branded"
+    end
+  end
+
   describe "a flow started from a callback URL" do
     test "registration keeps the app", %{conn: conn} do
       conn = get(conn, ~p"/users/log-in?callback_url=https://branded.example.com/cb")

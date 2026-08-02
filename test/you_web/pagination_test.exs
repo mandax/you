@@ -24,8 +24,9 @@ defmodule YouWeb.PaginationTest do
   end
 
   test "management api paging", %{conn: conn} do
+    previous = Application.get_env(:you, :api_token)
     Application.put_env(:you, :api_token, "mgmt")
-    on_exit(fn -> Application.delete_env(:you, :api_token) end)
+    on_exit(fn -> Application.put_env(:you, :api_token, previous) end)
 
     body =
       conn

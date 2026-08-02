@@ -58,7 +58,7 @@ defmodule YouWeb.UserResetPasswordController do
       :info,
       "If your email is in our system, you will receive instructions to reset your password shortly."
     )
-    |> redirect(to: ~p"/users/log-in")
+    |> redirect(to: YouWeb.AppBranding.login_path(conn))
   end
 
   def edit(conn, %{"token" => token} = params) do
@@ -95,7 +95,7 @@ defmodule YouWeb.UserResetPasswordController do
     else
       conn
       |> put_flash(:error, "Reset password link is invalid or it has expired.")
-      |> redirect(to: ~p"/users/log-in")
+      |> redirect(to: YouWeb.AppBranding.login_path(conn))
     end
   end
 
@@ -126,7 +126,7 @@ defmodule YouWeb.UserResetPasswordController do
           else
             conn
             |> put_flash(:info, "Password reset successfully.")
-            |> redirect(to: ~p"/users/log-in")
+            |> redirect(to: YouWeb.AppBranding.login_path(conn))
           end
 
         {:error, changeset} ->
@@ -140,7 +140,7 @@ defmodule YouWeb.UserResetPasswordController do
     else
       conn
       |> put_flash(:error, "Reset password link is invalid or it has expired.")
-      |> redirect(to: ~p"/users/log-in")
+      |> redirect(to: YouWeb.AppBranding.login_path(conn))
     end
   end
 end
