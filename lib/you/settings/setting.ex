@@ -2,6 +2,8 @@ defmodule You.Settings.Setting do
   use Ecto.Schema
   import Ecto.Changeset
 
+  @timestamps_opts [type: :utc_datetime]
+
   schema "settings" do
     field :key, :string
     field :value, :string

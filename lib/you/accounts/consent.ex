@@ -2,6 +2,8 @@ defmodule You.Accounts.Consent do
   use Ecto.Schema
   import Ecto.Changeset
 
+  @timestamps_opts [type: :utc_datetime]
+
   schema "consents" do
     belongs_to :user, You.Accounts.User
     belongs_to :app, You.Admin.App

@@ -13,6 +13,8 @@ defmodule You.IdentityProviders.IdentityProvider do
 
   alias You.IdentityProviders.Crypto
 
+  @timestamps_opts [type: :utc_datetime]
+
   schema "identity_providers" do
     field :slug, :string
     field :display_name, :string
