@@ -124,6 +124,9 @@ defmodule You.Admin do
   @doc "How many users exist."
   def count_users, do: Repo.aggregate(User, :count)
 
+  @doc "How many users are You admins."
+  def count_admins, do: Repo.aggregate(from(u in User, where: u.is_admin), :count)
+
   @doc """
   Lists all users with their passkey and federated-identity counts.
 
@@ -192,6 +195,9 @@ defmodule You.Admin do
   def list_apps do
     Repo.all(App)
   end
+
+  @doc "How many apps are registered."
+  def count_apps, do: Repo.aggregate(App, :count)
 
   @doc """
   Fetches a single app by id, raising if it does not exist.
