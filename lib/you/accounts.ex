@@ -1024,9 +1024,8 @@ defmodule You.Accounts do
   defp update_user_and_delete_all_tokens(changeset) do
     Repo.transact(fn ->
       with {:ok, user} <- Repo.update(changeset) do
-        tokens_to_expire = Repo.all_by(UserToken, user_id: user.id)
-
-        Repo.delete_all(from(t in UserToken, where: t.id in ^Enum.map(tokens_to_expire, & &1.id)))
+        {_count, tokens_to_expire} =
+          Repo.delete_all(from(t in UserToken, where: t.user_id == ^user.id, select: t))
 
         {:ok, {user, tokens_to_expire}}
       end

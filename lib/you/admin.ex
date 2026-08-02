@@ -104,11 +104,25 @@ defmodule You.Admin do
   def get_user!(id), do: Repo.get!(User, id)
 
   @doc """
-  Lists all users.
+  Lists users, ordered by email.
+
+  `:limit` and `:offset` page the result; unpaged callers get everything, which
+  is fine for the console but not for an API answering an unbounded request.
   """
-  def list_users do
-    Repo.all(from u in User, order_by: [asc: u.email])
+  def list_users(opts \\ []) do
+    query = from(u in User, order_by: [asc: u.email])
+
+    query =
+      case opts[:limit] do
+        nil -> query
+        limit -> from(q in query, limit: ^limit, offset: ^(opts[:offset] || 0))
+      end
+
+    Repo.all(query)
   end
+
+  @doc "How many users exist."
+  def count_users, do: Repo.aggregate(User, :count)
 
   @doc """
   Lists all users with their passkey and federated-identity counts.

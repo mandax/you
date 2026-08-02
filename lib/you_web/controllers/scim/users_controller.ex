@@ -1,6 +1,8 @@
 defmodule YouWeb.SCIM.UsersController do
   use YouWeb, :controller
 
+  import Ecto.Query, only: [from: 2]
+
   alias You.Accounts
   alias You.Accounts.User
   alias You.Repo
@@ -9,27 +11,59 @@ defmodule YouWeb.SCIM.UsersController do
   @scim_error_schema "urn:ietf:params:scim:api:messages:2.0:Error"
   @scim_list_schema "urn:ietf:params:scim:schemas:core:2.0:ListResponse"
 
+  @default_page_size 100
+  @max_page_size 500
+
   @doc """
   GET /scim/v2/Users?filter=userName+eq+"value"
 
-  Returns a SCIM ListResponse. Supports an optional `filter` query param
-  for exact userName (email) matching.
+  Returns a SCIM ListResponse. Supports an optional `filter` query param for
+  exact userName (email) matching, and `startIndex`/`count` paging. Paging is
+  applied whether or not the client asks: a provisioning system doing a full
+  sync would otherwise materialise every account in one response.
   """
   def index(conn, params) do
-    users =
-      case parse_filter(params) do
-        {:userName, value} ->
-          case Accounts.get_user_by_email(value) do
-            nil -> []
-            user -> [user]
-          end
+    case parse_filter(params) do
+      {:userName, value} ->
+        users = Accounts.get_user_by_email(value) |> List.wrap()
+        list_response(conn, users, length(users), 1)
 
-        :none ->
-          Repo.all(User)
-      end
+      :none ->
+        {start_index, count} = paging(params)
 
-    list_response(conn, users)
+        users =
+          Repo.all(from u in User, order_by: u.id, limit: ^count, offset: ^(start_index - 1))
+
+        list_response(conn, users, Repo.aggregate(User, :count), start_index)
+    end
   end
+
+  # SCIM indexes from 1, not 0.
+  defp paging(params) do
+    start_index = params |> Map.get("startIndex") |> to_positive_integer(1)
+
+    count =
+      params
+      |> Map.get("count")
+      |> to_positive_integer(@default_page_size)
+      |> min(@max_page_size)
+
+    {start_index, count}
+  end
+
+  defp to_positive_integer(nil, default), do: default
+
+  defp to_positive_integer(value, default) when is_integer(value),
+    do: if(value > 0, do: value, else: default)
+
+  defp to_positive_integer(value, default) when is_binary(value) do
+    case Integer.parse(value) do
+      {parsed, ""} when parsed > 0 -> parsed
+      _ -> default
+    end
+  end
+
+  defp to_positive_integer(_value, default), do: default
 
   @doc """
   GET /scim/v2/Users/:id
@@ -189,14 +223,14 @@ defmodule YouWeb.SCIM.UsersController do
     end
   end
 
-  defp list_response(conn, users) do
+  defp list_response(conn, users, total, start_index) do
     resources = Enum.map(users, &UserMapper.to_scim/1)
 
     json(conn, %{
       "schemas" => [@scim_list_schema],
-      "totalResults" => length(resources),
+      "totalResults" => total,
       "itemsPerPage" => length(resources),
-      "startIndex" => 1,
+      "startIndex" => start_index,
       "Resources" => resources
     })
   end

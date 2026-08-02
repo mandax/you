@@ -1,6 +1,6 @@
 defmodule You.Settings do
   @moduledoc """
-  Reads and caches instance configuration from the `settings` table.
+  Reads instance configuration from the `settings` table, cached per node.
 
   Defaults:
   - `session_expiry_hours`: 24
@@ -64,18 +64,40 @@ defmodule You.Settings do
   end
 
   @doc """
-  Returns the value for a setting key, falling back to the default if not configured.
-  Returns the value cast to the same type as the default (integer or string).
+  Returns the value for a setting key, falling back to the default if not
+  configured, cast to the default's type.
+
+  Cached in `:persistent_term` and refreshed by `set/2`, because these are read
+  on hot paths — `enabled_methods/1` alone asks three times per login page
+  render, and session lookup asks on every authenticated request. The cache is
+  off under test, where the sandbox rolls writes back without telling us.
   """
   def get(key) when is_atom(key) do
-    key_str = Atom.to_string(key)
+    if cache?() do
+      case :persistent_term.get({__MODULE__, key}, :miss) do
+        :miss ->
+          value = load(key)
+          :persistent_term.put({__MODULE__, key}, value)
+          value
+
+        cached ->
+          cached
+      end
+    else
+      load(key)
+    end
+  end
+
+  defp load(key) do
     default = @defaults[key]
 
-    case Repo.get_by(Setting, key: key_str) do
+    case Repo.get_by(Setting, key: Atom.to_string(key)) do
       %{value: value} -> cast_value(value, default)
       nil -> default
     end
   end
+
+  defp cache?, do: Application.get_env(:you, :settings_cache, true)
 
   @doc """
   Returns all setting keys with their current values.
@@ -112,6 +134,8 @@ defmodule You.Settings do
       existing ->
         existing |> Ecto.Changeset.change(value: value_str) |> Repo.update!()
     end
+
+    if cache?(), do: :persistent_term.put({__MODULE__, key}, load(key))
 
     :ok
   end
