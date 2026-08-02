@@ -4,7 +4,7 @@ defmodule YouWeb.AuthFlowBrandingTest do
   login, registration, password reset and the second factor all render bare and
   branded, and none of them shows You's own chrome.
   """
-  use YouWeb.ConnCase, async: true
+  use YouWeb.ConnCase, async: false
 
   alias You.Admin
 

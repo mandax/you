@@ -60,22 +60,32 @@ defmodule YouWeb.SCIM.UsersController do
         scim_error(conn, 400, "userName is required")
 
       email ->
-        {:ok, user} =
-          %User{}
-          |> User.email_changeset(%{email: email, confirmed_at: DateTime.utc_now(:second)})
-          |> Ecto.Changeset.put_change(:confirmed_at, DateTime.utc_now(:second))
-          |> Repo.insert()
+        %User{}
+        |> User.email_changeset(%{email: email, confirmed_at: DateTime.utc_now(:second)})
+        |> Ecto.Changeset.put_change(:confirmed_at, DateTime.utc_now(:second))
+        |> Repo.insert()
+        |> case do
+          {:error, changeset} ->
+            # Provisioning systems re-POST users they have already sent, and
+            # SCIM says that is a 409, not a failure of the endpoint.
+            scim_error(conn, conflict_status(changeset), changeset_detail(changeset))
 
-        :telemetry.execute([:you, :audit, :scim, :user, :create], %{}, %{
-          user_id: user.id,
-          email: user.email
-        })
+          {:ok, user} ->
+            :telemetry.execute([:you, :audit, :scim, :user, :create], %{}, %{
+              user_id: user.id,
+              email: user.email
+            })
 
-        conn
-        |> put_status(201)
-        |> put_resp_header("location", "/scim/v2/Users/#{user.id}")
-        |> json(UserMapper.to_scim(user))
+            create_response(conn, user)
+        end
     end
+  end
+
+  defp create_response(conn, user) do
+    conn
+    |> put_status(201)
+    |> put_resp_header("location", "/scim/v2/Users/#{user.id}")
+    |> json(UserMapper.to_scim(user))
   end
 
   @doc """
@@ -128,21 +138,21 @@ defmodule YouWeb.SCIM.UsersController do
          %User{} = user <- Repo.get(User, id) do
       attrs = mapper.(params)
 
-      user =
+      renamed =
         if Map.has_key?(attrs, :email) and attrs.email != user.email do
-          {:ok, updated} =
-            user
-            |> User.email_changeset(%{email: attrs.email})
-            |> Repo.update()
-
-          updated
+          user |> User.email_changeset(%{email: attrs.email}) |> Repo.update()
         else
-          user
+          {:ok, user}
         end
 
-      user = apply_active(user, Map.get(attrs, :active))
+      case renamed do
+        {:error, changeset} ->
+          scim_error(conn, conflict_status(changeset), changeset_detail(changeset))
 
-      json(conn, UserMapper.to_scim(user))
+        {:ok, user} ->
+          user = apply_active(user, Map.get(attrs, :active))
+          json(conn, UserMapper.to_scim(user))
+      end
     else
       :error -> scim_error(conn, 404, "User #{id} not found")
       nil -> scim_error(conn, 404, "User #{id} not found")
@@ -189,6 +199,18 @@ defmodule YouWeb.SCIM.UsersController do
       "startIndex" => 1,
       "Resources" => resources
     })
+  end
+
+  # A taken userName is a conflict; anything else the changeset rejects is a
+  # bad request.
+  defp conflict_status(changeset) do
+    if Keyword.has_key?(changeset.errors, :email), do: 409, else: 400
+  end
+
+  defp changeset_detail(changeset) do
+    changeset
+    |> Ecto.Changeset.traverse_errors(fn {msg, _opts} -> msg end)
+    |> Enum.map_join("; ", fn {field, msgs} -> "#{field} #{Enum.join(msgs, ", ")}" end)
   end
 
   defp scim_error(conn, status, detail) do

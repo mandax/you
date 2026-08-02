@@ -6,7 +6,7 @@ defmodule YouWeb.LoginBrandingPreviewTest do
   Branding only. No callback URL is stashed, so signing in through it is an
   ordinary first-party login into You rather than an authorization-code flow.
   """
-  use YouWeb.ConnCase, async: true
+  use YouWeb.ConnCase, async: false
 
   alias You.Admin
 

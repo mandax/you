@@ -357,9 +357,13 @@ defmodule You.IAM.Server do
   # The user is created unconfirmed (confirmed_at nil). Returns
   # `{:ok, user}` or `{:error, :email_taken | :invalid_registration}`.
   defp create_user(email, password) do
+    # Hashing and the pwned-password check happen before the write lock: both
+    # are slow, and SQLite has a single writer.
+    prepared = Accounts.prepare_password(%{password: password})
+
     Repo.transact(fn ->
       with {:ok, user} <- Accounts.register_user(%{email: email}),
-           {:ok, {user, _tokens}} <- Accounts.update_user_password(user, %{password: password}) do
+           {:ok, {user, _tokens}} <- Accounts.apply_password(user, prepared) do
         {:ok, user}
       else
         {:error, changeset} ->

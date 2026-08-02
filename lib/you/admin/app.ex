@@ -148,6 +148,9 @@ defmodule You.Admin.App do
     )
     |> validate_subset(:enabled_methods, @auth_methods)
     |> unique_constraint(:slug)
+    |> unique_constraint(:callback_url,
+      message: "is already registered to another app"
+    )
   end
 
   defp validate_http_url(field, url) do

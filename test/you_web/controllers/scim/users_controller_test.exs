@@ -44,6 +44,17 @@ defmodule YouWeb.SCIM.UsersControllerTest do
   end
 
   describe "POST /scim/v2/Users" do
+    test "a userName that already exists is a 409, not a crash", %{conn: conn} do
+      user = AccountsFixtures.user_fixture()
+
+      conn =
+        with_bearer(conn)
+        |> post("/scim/v2/Users", %{"schemas" => [@scim_user_schema], "userName" => user.email})
+
+      assert conn.status == 409
+      assert json_response(conn, 409)["status"] == "409"
+    end
+
     test "creates a user and returns 201 with Location header", %{conn: conn} do
       email = AccountsFixtures.unique_user_email()
 
@@ -220,6 +231,22 @@ defmodule YouWeb.SCIM.UsersControllerTest do
         |> delete("/scim/v2/Users/999999")
 
       assert json_response(conn, 404)["status"] == "404"
+    end
+  end
+
+  describe "PUT /scim/v2/Users/:id conflicts" do
+    test "renaming onto a taken userName is a 409", %{conn: conn} do
+      taken = AccountsFixtures.user_fixture()
+      user = AccountsFixtures.user_fixture()
+
+      conn =
+        with_bearer(conn)
+        |> put("/scim/v2/Users/#{user.id}", %{
+          "schemas" => [@scim_user_schema],
+          "userName" => taken.email
+        })
+
+      assert conn.status == 409
     end
   end
 

@@ -62,9 +62,15 @@ if config_env() == :prod do
       For example: /data/you/prod.db
       """
 
+  # SQLite serialises writers. `:immediate` takes the write lock at BEGIN,
+  # where the busy handler applies — a deferred transaction that upgrades from
+  # read to write gets SQLITE_BUSY with no wait at all. config/test.exs carries
+  # the same pair for the same reason.
   config :you, You.Repo,
     database: database_path,
-    pool_size: String.to_integer(System.get_env("POOL_SIZE") || "10")
+    pool_size: String.to_integer(System.get_env("POOL_SIZE") || "10"),
+    busy_timeout: String.to_integer(env.("BUSY_TIMEOUT_MS") || "5000"),
+    default_transaction_mode: :immediate
 
   # Generated on first boot and persisted beside the database, so no compose
   # file ever ships a shared signing key. The environment still wins when set.

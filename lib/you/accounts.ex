@@ -13,7 +13,8 @@ defmodule You.Accounts do
     RecoveryCode,
     Consent,
     FederatedIdentity,
-    Passkey
+    Passkey,
+    RevokedJti
   }
 
   ## Database getters
@@ -108,13 +109,39 @@ defmodule You.Accounts do
   Returns `{:ok, user}` or `{:error, changeset}`.
   """
   def register_user_with_password(attrs) do
+    # The password changeset is built before the transaction opens. Building it
+    # runs the pwned-password check — a live HTTP call with a 3s timeout — and
+    # bcrypt, and SQLite has one writer: doing that under an open write lock
+    # blocks every other writer on the instance for the duration.
+    password_changeset = prepare_password(attrs)
+
     Repo.transact(fn ->
       with {:ok, user} <- register_user(attrs),
-           {:ok, {user, _tokens}} <- update_user_password(user, attrs),
+           {:ok, {user, _tokens}} <- apply_password(user, password_changeset),
            {:ok, user} <- confirm_user(user) do
         {:ok, user}
       end
     end)
+  end
+
+  @doc """
+  Builds a password changeset without touching the database.
+
+  Hashing and the pwned-password check are the slow parts of setting a
+  password; doing them before a write transaction opens keeps SQLite's single
+  writer free while they run. Pair with `apply_password/2`.
+  """
+  def prepare_password(attrs), do: User.password_changeset(%User{}, attrs)
+
+  @doc "Applies a changeset built by `prepare_password/1` to `user`."
+  def apply_password(user, %Ecto.Changeset{valid?: false} = changeset) do
+    {:error, %{changeset | data: user, action: :insert}}
+  end
+
+  def apply_password(user, changeset) do
+    user
+    |> Ecto.Changeset.change(Map.take(changeset.changes, [:hashed_password]))
+    |> update_user_and_delete_all_tokens()
   end
 
   # Mirrors the confirmation done by the magic-link login: stamp
@@ -707,10 +734,7 @@ defmodule You.Accounts do
     retention_hours = You.Settings.get(:jwt_expiry_hours) + 1
     threshold = DateTime.add(DateTime.utc_now(), -retention_hours * 3600, :second)
 
-    Repo.delete_all(
-      from t in UserToken,
-        where: t.context == "jti_revoked" and t.inserted_at < ^threshold
-    )
+    Repo.delete_all(from r in RevokedJti, where: r.inserted_at < ^threshold)
   end
 
   ## LGPD: Consent
@@ -733,7 +757,7 @@ defmodule You.Accounts do
         expires_at: expires_at
       })
       |> Repo.insert(
-        on_conflict: {:replace, [:scopes, :granted_at, :expires_at]},
+        on_conflict: {:replace, [:scopes, :granted_at, :expires_at, :updated_at]},
         conflict_target: [:user_id, :app_id]
       )
 
