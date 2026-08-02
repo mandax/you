@@ -116,4 +116,49 @@ defmodule You.ModeTest do
       assert Repo.aggregate(Admin.App, :count) == 0
     end
   end
+
+  describe "app cache" do
+    setup do
+      Application.put_env(:you, :mode_app_cache, true)
+
+      on_exit(fn ->
+        Application.put_env(:you, :mode_app_cache, false)
+        Mode.invalidate_app_cache()
+      end)
+    end
+
+    test "a console update invalidates the cached app" do
+      single_mode(slug: "solo", name: "Solo", callback_url: "https://solo.example.com/cb")
+      assert :ok = Mode.Provisioner.run()
+
+      assert Mode.app().name == "Solo"
+
+      {:ok, _} = Admin.update_app(Mode.app(), %{"name" => "Renamed"})
+
+      assert Mode.app().name == "Renamed"
+    end
+
+    test "a console delete invalidates the cached app" do
+      single_mode(slug: "solo", name: "Solo", callback_url: "https://solo.example.com/cb")
+      assert :ok = Mode.Provisioner.run()
+
+      app = Mode.app()
+      assert app.name == "Solo"
+
+      {:ok, _} = Admin.delete_app(app)
+
+      assert Mode.app() == nil
+    end
+
+    test "a secret rotation invalidates the cached app" do
+      single_mode(slug: "solo", name: "Solo", callback_url: "https://solo.example.com/cb")
+      assert :ok = Mode.Provisioner.run()
+
+      hash_before = Mode.app().client_secret_hash
+
+      {:ok, _app, _secret} = Admin.rotate_app_secret(Mode.app())
+
+      refute Mode.app().client_secret_hash == hash_before
+    end
+  end
 end

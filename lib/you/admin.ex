@@ -64,8 +64,12 @@ defmodule You.Admin do
     |> Ecto.Changeset.put_change(:client_secret_hash, hashed)
     |> Repo.insert()
     |> case do
-      {:ok, app} -> {:ok, app, secret}
-      {:error, changeset} -> {:error, changeset}
+      {:ok, app} ->
+        You.Mode.invalidate_app_cache()
+        {:ok, app, secret}
+
+      {:error, changeset} ->
+        {:error, changeset}
     end
   end
 
@@ -84,6 +88,8 @@ defmodule You.Admin do
     |> Repo.update()
     |> case do
       {:ok, app} ->
+        You.Mode.invalidate_app_cache()
+
         # Rotation invalidates the live secret immediately, so it needs a trail
         # of its own rather than inheriting `update_app`'s.
         :telemetry.execute([:you, :audit, :admin, :action], %{}, %{
@@ -223,6 +229,8 @@ defmodule You.Admin do
     # Only on success: a rejected changeset that still emitted would put a
     # change into the audit trail that never happened.
     with {:ok, _} <- result do
+      You.Mode.invalidate_app_cache()
+
       :telemetry.execute([:you, :audit, :admin, :action], %{}, %{
         action: "update_app",
         app_slug: app.slug
@@ -306,6 +314,8 @@ defmodule You.Admin do
     # Only on success, matching every other mutator here. A failed delete that
     # still emitted would put an app removal into the trail that never happened.
     with {:ok, _} <- result do
+      You.Mode.invalidate_app_cache()
+
       :telemetry.execute([:you, :audit, :admin, :action], %{}, %{
         action: "delete_app",
         app_slug: app.slug
