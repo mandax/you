@@ -104,11 +104,17 @@ defmodule YouWeb.ConsoleLive do
        onboarding: not Settings.get(:onboarding_completed),
        single_mode: You.Mode.single?(),
        mail_ready: You.Mailer.production_ready?()
-     )
-     |> load_data()
-     |> load_settings()}
+     )}
   end
 
+  @doc """
+  Resolves `?view=` and loads exactly the data that view renders.
+
+  `handle_params/3` runs after `mount/3` on every render — disconnected and
+  connected alike — so this is the one place a view's dataset needs loading;
+  nothing is preloaded in `mount/3` that might not match the view a
+  redirect or deep link actually lands on.
+  """
   @impl true
   def handle_params(params, _uri, socket) do
     # First admin login lands here rather than on an overview of a console
@@ -116,11 +122,25 @@ defmodule YouWeb.ConsoleLive do
     default = if socket.assigns.onboarding, do: "features", else: "overview"
     view = params["view"] || default
     view = if view in section_ids(), do: view, else: default
-    {:noreply, assign(socket, view: view, saved: false)}
+    {:noreply, socket |> assign(view: view, saved: false) |> load_view(view)}
   end
 
+  @doc """
+  The 5-second live tick. Only the overview and audit views render the audit
+  feed, so this is the only thing worth re-querying on a timer — users, apps,
+  providers and role assignments do not change on their own between admin
+  actions, and reloading them here would repeat the wholesale re-read this
+  module used to do per connected admin, per tick.
+  """
   @impl true
-  def handle_info(:refresh, socket), do: {:noreply, load_data(socket)}
+  def handle_info(:refresh, socket) do
+    if socket.assigns.view in ["overview", "audit"] do
+      {:noreply, load_events(socket)}
+    else
+      {:noreply, socket}
+    end
+  end
+
   def handle_info(_msg, socket), do: {:noreply, socket}
 
   # ── users ─────────────────────────────────────────────────────
@@ -131,14 +151,14 @@ defmodule YouWeb.ConsoleLive do
     audit_admin(socket, "logout_user", user.email)
 
     {:noreply,
-     socket |> load_data() |> put_flash(:info, "All sessions revoked for #{user.email}.")}
+     socket |> load_users() |> put_flash(:info, "All sessions revoked for #{user.email}.")}
   end
 
   def handle_event("anonymize_user", %{"id" => id}, socket) do
     user = Admin.get_user!(id)
     {:ok, _} = Accounts.anonymize_user(user)
     audit_admin(socket, "anonymize_user", user.email)
-    {:noreply, socket |> load_data() |> put_flash(:info, "User anonymized.")}
+    {:noreply, socket |> load_users() |> put_flash(:info, "User anonymized.")}
   end
 
   # ── apps ──────────────────────────────────────────────────────
@@ -155,7 +175,7 @@ defmodule YouWeb.ConsoleLive do
            ])
          ) do
       {:ok, app, secret} ->
-        {:noreply, socket |> load_data() |> assign(new_secret: secret, secret_app: app)}
+        {:noreply, socket |> load_apps() |> assign(new_secret: secret, secret_app: app)}
 
       {:error, changeset} ->
         {:noreply, put_flash(socket, :error, "Could not create app: #{error_summary(changeset)}")}
@@ -167,7 +187,7 @@ defmodule YouWeb.ConsoleLive do
     # would record the same removal twice under two different shapes.
     case id |> Admin.get_app!() |> Admin.delete_app() do
       {:ok, _app} ->
-        {:noreply, socket |> load_data() |> put_flash(:info, "App deleted.")}
+        {:noreply, socket |> load_apps() |> put_flash(:info, "App deleted.")}
 
       {:error, changeset} ->
         {:noreply, put_flash(socket, :error, "Could not delete: #{error_summary(changeset)}")}
@@ -208,7 +228,7 @@ defmodule YouWeb.ConsoleLive do
 
         {:noreply,
          socket
-         |> load_data()
+         |> load_providers()
          |> assign(new_provider_open: false, discovery: nil)
          |> put_flash(:info, "Provider created.")}
 
@@ -239,7 +259,7 @@ defmodule YouWeb.ConsoleLive do
 
         {:noreply,
          socket
-         |> load_data()
+         |> load_providers()
          |> assign(editing_provider: nil)
          |> put_flash(:info, "Provider updated.")}
 
@@ -261,14 +281,14 @@ defmodule YouWeb.ConsoleLive do
       updated.slug
     )
 
-    {:noreply, load_data(socket)}
+    {:noreply, load_providers(socket)}
   end
 
   def handle_event("delete_provider", %{"id" => id}, socket) do
     provider = IdentityProviders.get_provider!(id)
     {:ok, _} = IdentityProviders.delete_provider(provider)
     audit_admin(socket, "delete_provider", provider.slug)
-    {:noreply, socket |> load_data() |> put_flash(:info, "Provider deleted.")}
+    {:noreply, socket |> load_providers() |> put_flash(:info, "Provider deleted.")}
   end
 
   def handle_event("filter_users", %{"filter_key" => key, "value" => value}, socket) do
@@ -293,12 +313,12 @@ defmodule YouWeb.ConsoleLive do
         role == "admin" and not user.is_admin ->
           Admin.promote_admin(user)
           audit_admin(socket, "promote_admin", user.email)
-          load_data(socket)
+          load_users(socket)
 
         role == "user" and user.is_admin ->
           Admin.demote_admin(user)
           audit_admin(socket, "demote_admin", user.email)
-          load_data(socket)
+          load_users(socket)
 
         true ->
           socket
@@ -323,7 +343,7 @@ defmodule YouWeb.ConsoleLive do
 
     case Roles.set_role(app, user, params["value"] || params["role"]) do
       {:ok, _} ->
-        {:noreply, socket |> load_data() |> refresh_editing_user(params["user_id"])}
+        {:noreply, socket |> load_assignments() |> refresh_editing_user(params["user_id"])}
 
       {:error, _} ->
         {:noreply, put_flash(socket, :error, "Role is not allowed for this app.")}
@@ -369,7 +389,7 @@ defmodule YouWeb.ConsoleLive do
 
         {:noreply,
          socket
-         |> load_data()
+         |> load_endpoints()
          |> assign(webhook_secret: endpoint.secret, webhook_endpoint: endpoint)}
 
       {:error, changeset} ->
@@ -381,7 +401,7 @@ defmodule YouWeb.ConsoleLive do
   def handle_event("toggle_webhook", %{"id" => id}, socket) do
     endpoint = Webhooks.get_endpoint!(id)
     {:ok, _} = Webhooks.update_endpoint(endpoint, %{"enabled" => !endpoint.enabled})
-    {:noreply, load_data(socket)}
+    {:noreply, load_endpoints(socket)}
   end
 
   def handle_event("rotate_webhook_secret", %{"id" => id}, socket) do
@@ -391,7 +411,7 @@ defmodule YouWeb.ConsoleLive do
 
     {:noreply,
      socket
-     |> load_data()
+     |> load_endpoints()
      |> assign(webhook_secret: rotated.secret, webhook_endpoint: rotated)}
   end
 
@@ -399,7 +419,7 @@ defmodule YouWeb.ConsoleLive do
     endpoint = Webhooks.get_endpoint!(id)
     {:ok, _} = Webhooks.delete_endpoint(endpoint)
     audit_admin(socket, "delete_webhook", endpoint.url)
-    {:noreply, socket |> load_data() |> put_flash(:info, "Endpoint deleted.")}
+    {:noreply, socket |> load_endpoints() |> put_flash(:info, "Endpoint deleted.")}
   end
 
   def handle_event("dismiss_webhook_secret", _params, socket) do
@@ -492,16 +512,45 @@ defmodule YouWeb.ConsoleLive do
     })
   end
 
-  defp load_data(socket) do
+  # Loads exactly the data `view` renders — nothing more.
+  #
+  # Each section carries its own rows: `users` needs the roster, the app list
+  # (for its filter and the per-app role sheet) and the role-assignment map;
+  # `apps`/`providers`/`webhooks` need only their own table; `overview` needs
+  # counts, not rows, since it only ever prints a number; `audit` needs the
+  # live event feed plus the app list for its filter dropdown; `features` and
+  # `settings` carry their own state already (feature flags at mount,
+  # instance settings via `load_settings/1`) so there is nothing to fetch here.
+  defp load_view(socket, "overview"), do: socket |> load_counts() |> load_events()
+
+  defp load_view(socket, "users"),
+    do: socket |> load_users() |> load_apps() |> load_assignments()
+
+  defp load_view(socket, "apps"), do: load_apps(socket)
+  defp load_view(socket, "providers"), do: load_providers(socket)
+  defp load_view(socket, "audit"), do: socket |> load_events() |> load_apps()
+  defp load_view(socket, "webhooks"), do: load_endpoints(socket)
+  defp load_view(socket, "features"), do: socket
+  defp load_view(socket, "settings"), do: load_settings(socket)
+  defp load_view(socket, _view), do: socket
+
+  # Instance-wide counts for the overview cards. `Repo.aggregate/2` rather
+  # than loading every row and taking `length/1`, since the UI only ever
+  # prints the number.
+  defp load_counts(socket) do
     assign(socket,
-      users: Admin.list_users_with_stats(),
-      apps: Admin.list_apps(),
-      events: Streamer.recent(),
-      endpoints: Webhooks.list_endpoints(),
-      assignments: Roles.all_assignments(),
-      providers: IdentityProviders.list_providers()
+      user_count: Admin.count_users(),
+      admin_count: Admin.count_admins(),
+      app_count: Admin.count_apps()
     )
   end
+
+  defp load_users(socket), do: assign(socket, users: Admin.list_users_with_stats())
+  defp load_apps(socket), do: assign(socket, apps: Admin.list_apps())
+  defp load_assignments(socket), do: assign(socket, assignments: Roles.all_assignments())
+  defp load_providers(socket), do: assign(socket, providers: IdentityProviders.list_providers())
+  defp load_endpoints(socket), do: assign(socket, endpoints: Webhooks.list_endpoints())
+  defp load_events(socket), do: assign(socket, events: Streamer.recent())
 
   # Drops blank/missing keys so a preset's endpoint template (or, on edit, the
   # provider's own stored values) is left in place rather than clobbered by an
@@ -564,8 +613,9 @@ defmodule YouWeb.ConsoleLive do
       <%= case @view do %>
         <% "overview" -> %>
           <.overview
-            users={@users}
-            apps={@apps}
+            user_count={@user_count}
+            admin_count={@admin_count}
+            app_count={@app_count}
             events={@events}
             single_mode={@single_mode}
             mail_ready={@mail_ready}
@@ -629,8 +679,9 @@ defmodule YouWeb.ConsoleLive do
   end
 
   # ── section: overview ─────────────────────────────────────────
-  attr :users, :list, required: true
-  attr :apps, :list, required: true
+  attr :user_count, :integer, required: true
+  attr :admin_count, :integer, required: true
+  attr :app_count, :integer, required: true
   attr :events, :list, required: true
   attr :single_mode, :boolean, default: false
   attr :mail_ready, :boolean, default: true
@@ -658,9 +709,9 @@ defmodule YouWeb.ConsoleLive do
       </div>
 
       <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <.metric_card label="Users" value={to_string(length(@users))} />
-        <.metric_card label="Admins" value={to_string(Enum.count(@users, & &1.user.is_admin))} />
-        <.metric_card :if={!@single_mode} label="Apps" value={to_string(length(@apps))} />
+        <.metric_card label="Users" value={to_string(@user_count)} />
+        <.metric_card label="Admins" value={to_string(@admin_count)} />
+        <.metric_card :if={!@single_mode} label="Apps" value={to_string(@app_count)} />
       </div>
 
       <div class="rounded-lg border border-border bg-card p-4">

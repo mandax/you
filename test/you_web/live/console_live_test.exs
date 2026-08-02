@@ -741,4 +741,89 @@ defmodule YouWeb.ConsoleLiveTest do
       assert html =~ "https://idp.example.com/token"
     end
   end
+
+  describe "per-section data loading" do
+    test "overview renders live counts rather than cached rows", %{conn: conn} do
+      You.AccountsFixtures.user_fixture()
+      extra_admin = You.AccountsFixtures.user_fixture()
+      Admin.promote_admin!(extra_admin)
+
+      {:ok, _lv, html} = live(conn, "/console?view=overview")
+
+      assert metric_value(html, "Users") == Admin.count_users()
+      assert metric_value(html, "Admins") == Admin.count_admins()
+    end
+
+    test "patching to another view loads that view's data", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, "/console?view=audit")
+
+      html = lv |> element("a", "add a webhook for durable retention") |> render_click()
+
+      assert html =~ "Add endpoint"
+    end
+
+    test "logout_user reloads only the user list, not the app list also shown on that view", %{
+      conn: conn
+    } do
+      other = You.AccountsFixtures.user_fixture()
+      token = Accounts.generate_user_session_token(other)
+      {:ok, lv, _html} = live(conn, "/console?view=users")
+
+      {:ok, _app, _secret} =
+        Admin.create_app(%{
+          "name" => "Side App",
+          "slug" => "side-app",
+          "callback_url" => "https://side.example.com/cb"
+        })
+
+      html = render_click(lv, "logout_user", %{"id" => other.id})
+
+      assert Accounts.get_user_by_session_token(token) == nil
+      refute html =~ "Side App"
+    end
+
+    test "the 5s tick reloads the audit feed only on the overview and audit views", %{
+      conn: conn
+    } do
+      {:ok, lv, _html} = live(conn, "/console?view=overview")
+
+      :telemetry.execute([:you, :audit, :admin, :action], %{}, %{
+        action: "probe",
+        target: "tick-event"
+      })
+
+      _ = :sys.get_state(You.Audit.Streamer)
+      refute render(lv) =~ "tick-event"
+
+      send(lv.pid, :refresh)
+      assert render(lv) =~ "tick-event"
+    end
+
+    test "the 5s tick does not re-query users, apps, or providers on other views", %{
+      conn: conn
+    } do
+      {:ok, lv, html} = live(conn, "/console?view=apps")
+      refute html =~ "Ghost App"
+
+      {:ok, _app, _secret} =
+        Admin.create_app(%{
+          "name" => "Ghost App",
+          "slug" => "ghost-app",
+          "callback_url" => "https://ghost.example.com/cb"
+        })
+
+      send(lv.pid, :refresh)
+      refute render(lv) =~ "Ghost App"
+    end
+  end
+
+  defp metric_value(html, label) do
+    [_, value] =
+      Regex.run(
+        ~r/#{Regex.escape(label)}<\/div>\s*<div[^>]*>\s*<span[^>]*>\s*(\d+)\s*</,
+        html
+      )
+
+    String.to_integer(value)
+  end
 end
