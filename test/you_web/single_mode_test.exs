@@ -144,6 +144,15 @@ defmodule YouWeb.SingleModeTest do
       refute html =~ "all apps"
     end
 
+    test "the nav follows the registered app when the configured slug drifted", %{conn: conn} do
+      Application.put_env(:you, :single_app, slug: "does-not-exist", callback_url: @callback_url)
+
+      {:ok, _lv, html} = live(conn, ~p"/console")
+
+      assert html =~ ~s(href="/console/apps/solo")
+      refute html =~ ~s(href="/console/apps/does-not-exist")
+    end
+
     test "the per-app page still works", %{conn: conn} do
       {:ok, _lv, html} = live(conn, ~p"/console/apps/solo")
 

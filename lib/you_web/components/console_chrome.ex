@@ -48,8 +48,8 @@ defmodule YouWeb.Components.ConsoleChrome do
   end
 
   defp apps_entry(entry) do
-    case You.Mode.single?() && You.Mode.app_slug() do
-      slug when is_binary(slug) ->
+    case You.Mode.single?() && You.Mode.app() do
+      %You.Admin.App{slug: slug} ->
         %{
           id: app_nav_id(),
           label: "Application",

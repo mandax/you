@@ -32,6 +32,7 @@ defmodule YouWeb.UserResetPasswordController do
     if user = Accounts.get_user_by_email(email) do
       callback_url = get_session(conn, :callback_url)
       scopes = get_session(conn, :scopes)
+      app_slug = get_session(conn, :branding_app_slug)
 
       url_fun =
         fn token ->
@@ -42,6 +43,7 @@ defmodule YouWeb.UserResetPasswordController do
             if callback_url, do: ["callback_url=#{URI.encode(callback_url)}" | extra], else: extra
 
           extra = if scopes, do: ["scope=#{Enum.join(scopes, "+")}" | extra], else: extra
+          extra = if app_slug, do: ["app=#{URI.encode(app_slug)}" | extra], else: extra
 
           if extra == [] do
             base
@@ -83,6 +85,8 @@ defmodule YouWeb.UserResetPasswordController do
       else
         conn
       end
+
+    conn = YouWeb.AppBranding.put_app_param(conn, params)
 
     if user = Accounts.get_user_by_reset_password_token(token) do
       changeset = Accounts.change_user_password(user)

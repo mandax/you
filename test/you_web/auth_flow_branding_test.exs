@@ -90,6 +90,35 @@ defmodule YouWeb.AuthFlowBrandingTest do
     end
   end
 
+  describe "the emailed reset link" do
+    test "carries the app, so it opens branded in a fresh browser", %{conn: conn} do
+      user = You.AccountsFixtures.user_fixture()
+
+      conn
+      |> get(~p"/users/log-in?app=branded")
+      |> post(~p"/users/reset-password", %{"user" => %{"email" => user.email}})
+
+      link = reset_link()
+
+      assert link =~ "app=branded"
+
+      path = URI.parse(link) |> then(&"#{&1.path}?#{&1.query}")
+      assert_bare(build_conn() |> get(path) |> html_response(200))
+    end
+  end
+
+  defp reset_link do
+    receive do
+      {:email, email} ->
+        case Regex.run(~r{(https?://[^\s\]]*/users/reset-password/[^\s\]]+)}, email.text_body) do
+          [_, link] -> link
+          nil -> reset_link()
+        end
+    after
+      500 -> flunk("no reset email was sent")
+    end
+  end
+
   describe "You's own flow" do
     test "the login page keeps the chrome", %{conn: conn} do
       assert_chrome(conn |> get(~p"/users/log-in") |> html_response(200))
