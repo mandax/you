@@ -184,6 +184,25 @@ defmodule YouWeb.ConsoleLive do
     {:noreply, socket |> load_users() |> put_flash(:info, "User anonymized.")}
   end
 
+  # Also revokes every session: a second factor is reset either because a
+  # user lost the device that proves it, or because an account may be
+  # compromised and support cannot tell which from here. Either way, a
+  # session that was live under the old, stronger guarantee should not
+  # keep riding it silently once that guarantee is gone — the user signs
+  # back in with their password and, if they choose, re-enrolls.
+  def handle_event("reset_2fa", %{"id" => id}, socket) do
+    user = Admin.get_user!(id)
+    {:ok, _} = Accounts.disable_totp(user)
+    Accounts.delete_all_user_tokens(user)
+    audit_admin(socket, "reset_2fa", user.email)
+
+    {:noreply,
+     socket
+     |> load_users()
+     |> refresh_editing_user(id)
+     |> put_flash(:info, "Two-factor authentication reset for #{user.email}.")}
+  end
+
   # ── apps ──────────────────────────────────────────────────────
   def handle_event("create_app", params, socket) do
     case Admin.create_app(
@@ -1084,6 +1103,33 @@ defmodule YouWeb.ConsoleLive do
                 on_change="save_app_role"
                 params={%{"app_id" => app.id, "user_id" => @editing_user.id}}
               />
+            </div>
+          </section>
+
+          <section class="space-y-2">
+            <h3 class="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+              Security
+            </h3>
+            <div class="flex items-center justify-between gap-4">
+              <div class="text-sm">
+                <span>Two-factor authentication</span>
+                <span class="ml-2 text-xs text-muted-foreground">
+                  {if @editing_user.totp_enabled, do: "enabled", else: "not enabled"}
+                </span>
+              </div>
+              <button
+                :if={@editing_user.totp_enabled}
+                type="button"
+                phx-click="reset_2fa"
+                phx-value-id={@editing_user.id}
+                data-confirm={"Reset two-factor authentication for #{@editing_user.email}? " <>
+                  "This disables their authenticator app, deletes their recovery codes, and " <>
+                  "signs out every session. They will be able to sign in with their password " <>
+                  "alone until they re-enroll."}
+                class="text-sm text-destructive hover:underline whitespace-nowrap"
+              >
+                Reset 2FA
+              </button>
             </div>
           </section>
         </div>

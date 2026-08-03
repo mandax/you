@@ -158,6 +158,23 @@ defmodule YouWeb.UserSettingsController do
     end
   end
 
+  def regenerate_recovery_codes(conn, _params) do
+    user = conn.assigns.current_scope.user
+
+    case Accounts.regenerate_recovery_codes(user) do
+      {:ok, recovery_codes} ->
+        conn
+        |> put_flash(:info, "Recovery codes regenerated.")
+        |> assign(:recovery_codes, recovery_codes)
+        |> render(:totp_recovery)
+
+      {:error, :totp_not_enabled} ->
+        conn
+        |> put_flash(:error, "Two-factor authentication is not enabled.")
+        |> redirect(to: ~p"/users/settings")
+    end
+  end
+
   def totp_disable(conn, _params) do
     user = conn.assigns.current_scope.user
     {:ok, _user} = Accounts.disable_totp(user)

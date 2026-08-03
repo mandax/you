@@ -27,6 +27,33 @@ defmodule YouWeb.UserSettingsControllerTest do
       assert Phoenix.Flash.get(conn.assigns.flash, :error) ==
                "You must re-authenticate to access this page."
     end
+
+    test "warns when recovery codes are running low", %{conn: conn, user: user} do
+      {:ok, %{secret: secret}} = Accounts.generate_totp_setup(user)
+      user = Accounts.get_user!(user.id)
+      {:ok, _} = Accounts.enable_totp(user, NimbleTOTP.verification_code(secret))
+      user = Accounts.get_user!(user.id)
+
+      for code <- Enum.take(elem(Accounts.regenerate_recovery_codes(user), 1), 6) do
+        Accounts.verify_recovery_code(user, code)
+      end
+
+      assert Accounts.count_unused_recovery_codes(user) == 2
+
+      conn = get(conn, ~p"/users/settings")
+      response = html_response(conn, 200)
+      assert response =~ "Running low on recovery codes"
+    end
+
+    test "does not warn when recovery codes are plentiful", %{conn: conn, user: user} do
+      {:ok, %{secret: secret}} = Accounts.generate_totp_setup(user)
+      user = Accounts.get_user!(user.id)
+      {:ok, _} = Accounts.enable_totp(user, NimbleTOTP.verification_code(secret))
+
+      conn = get(conn, ~p"/users/settings")
+      response = html_response(conn, 200)
+      refute response =~ "Running low on recovery codes"
+    end
   end
 
   describe "PUT /users/settings (change password form)" do
@@ -229,5 +256,61 @@ defmodule YouWeb.UserSettingsControllerTest do
       conn = delete(conn, ~p"/users/settings/totp")
       assert redirected_to(conn) == ~p"/users/log-in"
     end
+  end
+
+  describe "POST /users/settings/totp/recovery-codes" do
+    setup %{conn: conn, user: user} do
+      {:ok, %{secret: secret}} = Accounts.generate_totp_setup(user)
+      user = Accounts.get_user!(user.id)
+
+      {:ok, %{recovery_codes: old_codes}} =
+        Accounts.enable_totp(user, NimbleTOTP.verification_code(secret))
+
+      %{conn: conn, user: Accounts.get_user!(user.id), old_codes: old_codes}
+    end
+
+    test "replaces the recovery code set and shows the new codes", %{
+      conn: conn,
+      user: user,
+      old_codes: old_codes
+    } do
+      conn = post(conn, ~p"/users/settings/totp/recovery-codes")
+      response = html_response(conn, 200)
+      assert response =~ "Recovery codes"
+      assert response =~ "These codes will not be shown again"
+
+      assert Accounts.count_unused_recovery_codes(user) == 8
+
+      for code <- old_codes do
+        assert {:error, :invalid_code} = Accounts.verify_recovery_code(user, code)
+      end
+    end
+
+    test "old codes stop working even if never used", %{conn: conn, user: user} do
+      post(conn, ~p"/users/settings/totp/recovery-codes")
+
+      assert Accounts.count_unused_recovery_codes(user) == 8
+    end
+
+    test "refuses when TOTP is not enabled" do
+      %{conn: conn} = log_in_fresh_user()
+
+      conn = post(conn, ~p"/users/settings/totp/recovery-codes")
+      assert redirected_to(conn) == ~p"/users/settings"
+
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) =~
+               "not enabled"
+    end
+
+    @tag token_authenticated_at: DateTime.add(DateTime.utc_now(:second), -11, :minute)
+    test "redirects if user is not in sudo mode", %{conn: conn} do
+      conn = post(conn, ~p"/users/settings/totp/recovery-codes")
+      assert redirected_to(conn) == ~p"/users/log-in"
+    end
+  end
+
+  defp log_in_fresh_user do
+    user = user_fixture()
+    %{conn: log_in_user(build_conn(), user), user: user}
   end
 end
