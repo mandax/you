@@ -11,6 +11,18 @@ defmodule YouWeb.LandingLive do
 
   @impl true
   def mount(_params, _session, socket) do
+    if You.Settings.enabled?(:feature_landing_page) do
+      {:ok, mount_landing(socket)}
+    else
+      {:ok, redirect(socket, to: destination(socket.assigns[:current_scope]))}
+    end
+  end
+
+  defp destination(%{user: %{is_admin: true}}), do: ~p"/console"
+  defp destination(%{user: %{}}), do: ~p"/users/settings"
+  defp destination(_), do: ~p"/users/log-in"
+
+  defp mount_landing(socket) do
     socket
     |> assign(:page_title, "Self-hosted identity, standard OIDC")
     |> assign(:page_description, @description)
@@ -18,7 +30,6 @@ defmodule YouWeb.LandingLive do
     # be baked in, or every deployment claims the same canonical page.
     |> assign(:canonical_url, YouWeb.Endpoint.url() <> "/")
     |> assign(:structured_data, structured_data())
-    |> then(&{:ok, &1})
   end
 
   # Schema.org SoftwareApplication: the one type a search engine can actually

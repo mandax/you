@@ -8,10 +8,17 @@ defmodule YouWeb.UserDashboardController do
   The signed-in user's account hub: cards for every app the user has
   granted consent to, linking into the app (where they're already
   authenticated via You).
+
+  In single-app mode there is nothing to choose between, so the hub is the
+  account itself — profile, sessions, passkeys and 2FA.
   """
   def index(conn, _params) do
-    user = conn.assigns.current_scope.user
-    render(conn, :index, apps: Accounts.list_consented_apps(user))
+    if You.Mode.single?() do
+      redirect(conn, to: ~p"/users/settings")
+    else
+      user = conn.assigns.current_scope.user
+      render(conn, :index, apps: Accounts.list_consented_apps(user))
+    end
   end
 
   @doc """

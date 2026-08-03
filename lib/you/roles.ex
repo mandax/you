@@ -170,26 +170,20 @@ defmodule You.Roles do
   appears exactly once, unassigned users carrying the app's `default_role`.
   """
   def list_for_app(%App{} = app) do
-    assigned =
-      Repo.all(
-        from a in Assignment,
-          join: u in User,
-          on: u.id == a.user_id,
-          where: a.app_id == ^app.id,
-          select: {u, a.role}
-      )
-
-    assigned_ids = Enum.map(assigned, fn {u, _} -> u.id end)
-
-    unassigned =
-      Repo.all(
-        from u in User,
-          where: u.id not in ^assigned_ids,
-          order_by: u.email
-      )
-
     default = app.default_role || "user"
 
-    Enum.sort_by(assigned ++ Enum.map(unassigned, &{&1, default}), fn {u, _} -> u.email end)
+    # One left join rather than a second query holding one bind parameter per
+    # assigned user, which past SQLITE_MAX_VARIABLE_NUMBER is a hard error.
+    Repo.all(
+      from u in User,
+        left_join: a in Assignment,
+        on: a.user_id == u.id and a.app_id == ^app.id,
+        order_by: u.email,
+        select: {u, a.role}
+    )
+    |> Enum.map(fn
+      {user, nil} -> {user, default}
+      {user, role} -> {user, role}
+    end)
   end
 end

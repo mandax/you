@@ -11,10 +11,18 @@ defmodule You.Accounts.AuthCodePKCETest do
     :crypto.hash(:sha256, verifier) |> Base.url_encode64(padding: false)
   end
 
-  test "without a challenge, no verifier is required", %{user: user} do
+  test "without a challenge, an authenticated client needs no verifier", %{user: user} do
     {:ok, code} = Accounts.generate_auth_code(user, ["email"])
-    assert {:ok, got, ["email"], _app} = Accounts.consume_auth_code(code)
+
+    assert {:ok, got, ["email"], _app} =
+             Accounts.consume_auth_code(code, nil, client_authenticated: true)
+
     assert got.id == user.id
+  end
+
+  test "without a challenge, an unauthenticated client is rejected", %{user: user} do
+    {:ok, code} = Accounts.generate_auth_code(user, ["email"])
+    assert {:error, :invalid_client} = Accounts.consume_auth_code(code)
   end
 
   test "with a challenge, the matching verifier succeeds", %{user: user} do

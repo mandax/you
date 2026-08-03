@@ -1,0 +1,135 @@
+defmodule YouWeb.AuthFlowBrandingTest do
+  @moduledoc """
+  Every page of an authentication flow belongs to the app the flow started for:
+  login, registration, password reset and the second factor all render bare and
+  branded, and none of them shows You's own chrome.
+  """
+  use YouWeb.ConnCase, async: false
+
+  alias You.Admin
+
+  @chrome ["Get started", "Identity &amp; Access Management"]
+
+  setup do
+    {:ok, app, _secret} =
+      Admin.create_app(%{
+        slug: "branded",
+        name: "Branded App",
+        callback_url: "https://branded.example.com/cb",
+        logo_url: "https://branded.example.com/logo.png",
+        brand_color: "#7c3aed"
+      })
+
+    %{app: app}
+  end
+
+  defp assert_bare(html) do
+    for chrome <- @chrome, do: refute(html =~ chrome)
+    assert html =~ "https://branded.example.com/logo.png"
+  end
+
+  defp assert_chrome(html) do
+    assert html =~ "Get started"
+    refute html =~ "https://branded.example.com/logo.png"
+  end
+
+  describe "a flow started with ?app=" do
+    test "the login page is bare", %{conn: conn} do
+      assert_bare(conn |> get(~p"/users/log-in?app=branded") |> html_response(200))
+    end
+
+    test "registration keeps the app", %{conn: conn} do
+      conn = get(conn, ~p"/users/log-in?app=branded")
+
+      assert_bare(conn |> get(~p"/users/register") |> html_response(200))
+    end
+
+    test "password reset keeps the app", %{conn: conn} do
+      conn = get(conn, ~p"/users/log-in?app=branded")
+
+      assert_bare(conn |> get(~p"/users/reset-password") |> html_response(200))
+    end
+
+    test "registration can be entered directly with ?app=", %{conn: conn} do
+      assert_bare(conn |> get(~p"/users/register?app=branded") |> html_response(200))
+    end
+
+    test "password reset can be entered directly with ?app=", %{conn: conn} do
+      assert_bare(conn |> get(~p"/users/reset-password?app=branded") |> html_response(200))
+    end
+  end
+
+  describe "after submitting a form" do
+    test "registering redirects back to the app's login page", %{conn: conn} do
+      conn = get(conn, ~p"/users/log-in?app=branded")
+
+      conn =
+        post(conn, ~p"/users/register", %{
+          "user" => %{"email" => "new-user@example.com"}
+        })
+
+      assert redirected_to(conn) =~ "app=branded"
+      assert_bare(conn |> recycle() |> get(redirected_to(conn)) |> html_response(200))
+    end
+
+    test "requesting a password reset redirects back to the app's login page", %{conn: conn} do
+      conn = get(conn, ~p"/users/log-in?app=branded")
+
+      conn =
+        post(conn, ~p"/users/reset-password", %{"user" => %{"email" => "nobody@example.com"}})
+
+      assert redirected_to(conn) =~ "app=branded"
+    end
+  end
+
+  describe "a flow started from a callback URL" do
+    test "registration keeps the app", %{conn: conn} do
+      conn = get(conn, ~p"/users/log-in?callback_url=https://branded.example.com/cb")
+
+      assert_bare(conn |> get(~p"/users/register") |> html_response(200))
+    end
+  end
+
+  describe "the emailed reset link" do
+    test "carries the app, so it opens branded in a fresh browser", %{conn: conn} do
+      user = You.AccountsFixtures.user_fixture()
+
+      conn
+      |> get(~p"/users/log-in?app=branded")
+      |> post(~p"/users/reset-password", %{"user" => %{"email" => user.email}})
+
+      link = reset_link()
+
+      assert link =~ "app=branded"
+
+      path = URI.parse(link) |> then(&"#{&1.path}?#{&1.query}")
+      assert_bare(build_conn() |> get(path) |> html_response(200))
+    end
+  end
+
+  defp reset_link do
+    receive do
+      {:email, email} ->
+        case Regex.run(~r{(https?://[^\s\]]*/users/reset-password/[^\s\]]+)}, email.text_body) do
+          [_, link] -> link
+          nil -> reset_link()
+        end
+    after
+      500 -> flunk("no reset email was sent")
+    end
+  end
+
+  describe "You's own flow" do
+    test "the login page keeps the chrome", %{conn: conn} do
+      assert_chrome(conn |> get(~p"/users/log-in") |> html_response(200))
+    end
+
+    test "registration keeps the chrome", %{conn: conn} do
+      assert_chrome(conn |> get(~p"/users/register") |> html_response(200))
+    end
+
+    test "password reset keeps the chrome", %{conn: conn} do
+      assert_chrome(conn |> get(~p"/users/reset-password") |> html_response(200))
+    end
+  end
+end

@@ -62,6 +62,10 @@ defmodule You.IAM.Server do
   Pass `code_verifier` when the code was issued with a PKCE challenge; it must
   satisfy `base64url(sha256(code_verifier)) == code_challenge`.
 
+  Callers reach this over Erlang distribution, which is full trust (the caller
+  already holds the distribution cookie), so the exchange counts as an
+  authenticated client and needs no `client_secret`.
+
   Returns `{:ok, %{user_id, email, jwt, refresh_token}}` or `{:error, reason}`
   (`:invalid_grant` on PKCE failure).
   """
@@ -137,24 +141,13 @@ defmodule You.IAM.Server do
   @impl true
   def handle_call({:verify_token, jwt}, _from, state) do
     result =
-      case JWT.verify(jwt) do
-        {:ok, claims} ->
-          user_id = claims["sub"]
-
-          case Repo.get(Accounts.User, user_id) do
-            %{email: email} when not is_nil(email) ->
-              if String.starts_with?(email, "redacted-") do
-                {:error, :not_found}
-              else
-                {:ok, %{user_id: user_id, email: claims["email"], role: claims["role"]}}
-              end
-
-            _ ->
-              {:error, :not_found}
-          end
-
-        {:error, reason} ->
-          {:error, reason}
+      with {:ok, claims} <- JWT.verify(jwt),
+           %{email: email} when not is_nil(email) <- Repo.get(Accounts.User, claims["sub"]),
+           false <- String.starts_with?(email, "redacted-") do
+        {:ok, %{user_id: claims["sub"], email: claims["email"], role: claims["role"]}}
+      else
+        {:error, reason} -> {:error, reason}
+        _ -> {:error, :not_found}
       end
 
     {:reply, result, state}
@@ -192,7 +185,7 @@ defmodule You.IAM.Server do
 
   def handle_call({:exchange_code, code, code_verifier}, _from, state) do
     result =
-      case Accounts.consume_auth_code(code, code_verifier) do
+      case Accounts.consume_auth_code(code, code_verifier, client_authenticated: true) do
         {:ok, user, scopes, app_slug} ->
           scopes = scopes || ["email"]
 
@@ -357,9 +350,13 @@ defmodule You.IAM.Server do
   # The user is created unconfirmed (confirmed_at nil). Returns
   # `{:ok, user}` or `{:error, :email_taken | :invalid_registration}`.
   defp create_user(email, password) do
+    # Hashing and the pwned-password check happen before the write lock: both
+    # are slow, and SQLite has a single writer.
+    prepared = Accounts.prepare_password(%{password: password})
+
     Repo.transact(fn ->
       with {:ok, user} <- Accounts.register_user(%{email: email}),
-           {:ok, {user, _tokens}} <- Accounts.update_user_password(user, %{password: password}) do
+           {:ok, {user, _tokens}} <- Accounts.apply_password(user, prepared) do
         {:ok, user}
       else
         {:error, changeset} ->
@@ -385,18 +382,9 @@ defmodule You.IAM.Server do
     end
   end
 
-  # Constant-time app secret check.
+  # Constant-time app secret check, shared with the OAuth HTTP endpoints.
   defp verify_client_secret(client_id, client_secret) do
-    case Repo.get_by(App, slug: client_id) do
-      %App{client_secret_hash: hash} = app when is_binary(hash) ->
-        if is_binary(client_secret) and
-             :crypto.hash_equals(hash, :crypto.hash(:sha256, client_secret)),
-           do: {:ok, app},
-           else: {:error, :invalid_client}
-
-      _ ->
-        {:error, :invalid_client}
-    end
+    You.OIDC.authenticate_client(client_id, client_secret)
   end
 
   defp authenticate_credentials(params) do

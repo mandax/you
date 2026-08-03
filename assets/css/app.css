@@ -452,6 +452,13 @@
   --app-on-brand: var(--app-on-brand-dark);
 }
 
+/* The app's colour becomes the primary colour inside a branded surface, so
+   every primary control follows it without being annotated one by one. */
+.app-branded {
+  --color-primary: var(--app-brand, hsl(var(--primary)));
+  --color-primary-foreground: var(--app-on-brand, hsl(var(--primary-foreground)));
+}
+
 .app-branded [data-brand-bg] {
   background-color: var(--app-brand);
   color: var(--app-on-brand);

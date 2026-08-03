@@ -43,8 +43,15 @@ docker run -d \
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `DATABASE_PATH` | Yes | (none) | Path to the SQLite database file |
-| `SECRET_KEY_BASE` | Yes | (none) | Phoenix secret key (`openssl rand -base64 48`) |
+| `SECRET_KEY_BASE` | No | generated | Phoenix secret key. Generated on first boot and persisted to `$(dirname DATABASE_PATH)/secret_key_base` (0600) when unset |
+| `JWT_SIGNING_KEY` | No | generated | Ed25519 seed for App JWTs. Generated on first boot and persisted to `$(dirname DATABASE_PATH)/jwt_signing_key` (0600) when unset. Never ephemeral — losing it invalidates every issued token |
 | `PHX_HOST` | Yes | (none) | Public hostname (e.g., `you.example.com`) |
+| `SMTP_HOST` | No | (none) | Mail relay. Unset falls back to an in-memory mailbox at `/console/mailbox`; every emailed flow is then undeliverable |
+| `YOU_MODE` | No | `multi` | `single` provisions one app from `SINGLE_APP_*` and hides the multi-app surface. See [quickstart](../quickstart.md) |
+| `SINGLE_APP_SLUG` | With `YOU_MODE=single` | `app` | The app's client id |
+| `SINGLE_APP_NAME` | No | the slug | Display name on the login page |
+| `SINGLE_APP_CALLBACK_URL` | With `YOU_MODE=single` | (none) | Where the auth code is delivered |
+| `SINGLE_APP_LAUNCH_URL` | No | (none) | Where "open the app" points |
 | `PORT` | No | `4000` | HTTP port |
 | `POOL_SIZE` | No | `10` | Ecto connection pool size |
 | `PHX_SERVER` | No | `true` | Set to start the HTTP server |
@@ -56,7 +63,7 @@ docker run -d \
 
 | Mount | Purpose |
 |-------|---------|
-| `/data/you` | SQLite database and WAL files |
+| `/data/you` | SQLite database, WAL files, and generated secrets (`secret_key_base`, `jwt_signing_key`, `single_app_client_secret`) |
 | `/var/log/you` | Audit log files (optional) |
 
 ## First-time Setup

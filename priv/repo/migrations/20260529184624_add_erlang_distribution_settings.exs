@@ -1,4 +1,14 @@
 defmodule You.Repo.Migrations.AddErlangDistributionSettings do
+  @moduledoc """
+  Historical migration, left unedited on purpose.
+
+  `@defaults` in `lib/you/settings.ex` is the source of truth for
+  `erlang_node_name` and `epmd_port`; the rows this migration seeded (when
+  they still match the seeded value) are removed by
+  `20260802173000_drop_settings_seed_duplicates.exs`. Editing an applied
+  migration does not re-run it, so this file is left as history.
+  """
+
   use Ecto.Migration
 
   def up do

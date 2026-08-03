@@ -114,8 +114,12 @@ Error response (`400`):
 }
 ```
 
-No client authentication is required at the token endpoint (it's a public client
-flow; the PKCE verifier authenticates the code holder).
+The token endpoint requires the client to authenticate. Public clients (SPA,
+mobile) do it with the PKCE `code_verifier` shown above; confidential clients do
+it with `client_id` + `client_secret`, as HTTP Basic or in the body. A request
+with neither is rejected with `401 {"error": "invalid_client"}`, and so is a code
+redeemed by an app other than the one it was issued to. The Erlang-distribution
+path needs no credentials: distribution is already full trust.
 
 ### 1.4 OIDC discovery
 

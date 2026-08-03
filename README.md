@@ -40,6 +40,10 @@ mix phx.server
 
 Visit [`localhost:4000`](http://localhost:4000).
 
+Running it rather than developing on it? [docs/quickstart.md](docs/quickstart.md)
+is `docker compose up` to a working login for a single app, with the multi-app
+surface hidden.
+
 ## Tests
 
 ```bash
@@ -56,9 +60,11 @@ receive a single-use authorization code via callback URL:
 2. You serves LiveView: email/password + 2FA + magic link
 3. On success, You creates a single-use auth code (5 min, hashed)
 4. You redirects: 302 callback_url?code=abc123
-5. App exchanges the code at POST /oauth/token (PKCE), or via
-   You.SDK.exchange_code(code) over Erlang distribution
-6. You validates code, consumes it, returns access + ID + refresh tokens
+5. App exchanges the code at POST /oauth/token, authenticating with PKCE
+   (public clients) or client_id + client_secret (confidential clients), or
+   via You.SDK.exchange_code(code) over Erlang distribution
+6. You validates the client and the code, consumes it, and returns access +
+   ID + refresh tokens
 7. App verifies the JWT locally against You's JWKS
 ```
 
@@ -106,7 +112,8 @@ Standard provider surface, usable by any OIDC client library:
 
 - `GET /.well-known/openid-configuration`: discovery
 - `GET /.well-known/jwks.json`: Ed25519 public keys (verify tokens locally)
-- `POST /oauth/token`: authorization_code + PKCE and refresh_token grants
+- `POST /oauth/token`: authorization_code (PKCE or client_secret) and
+  refresh_token grants
 - `GET /oauth/userinfo`: scoped claims for a Bearer token
 - `POST /oauth/introspect`: RFC 7662 (client-authenticated)
 - `POST /oauth/revoke`: RFC 7009 (client-authenticated)
@@ -119,6 +126,7 @@ headlessly at `/api/auth/*` (client_id + client_secret).
 
 ## Documentation
 
+- [Quickstart](docs/quickstart.md): single-app install with `docker compose`
 - [Integrating an app](docs/integration.md): OIDC and `You.SDK` integration guide
 - [Management REST API](docs/api.md): `/api/v1` for automating users and apps
 - [Webhooks](docs/webhooks.md): signed outbound events (Stripe recipe included)

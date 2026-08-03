@@ -1,0 +1,52 @@
+<Layouts.auth
+  flash={@flash}
+  current_scope={@current_scope}
+  bare={@bare}
+  brand_style={YouWeb.AppBranding.brand_style(assigns)}
+>
+  <div class="text-center">
+    <Layouts.auth_mark bare={@bare} app_name={@app_name} app_logo_url={@app_logo_url} />
+    <h1 class="text-xl font-medium tracking-tight">Recovery Code</h1>
+    <p class="text-sm text-muted-foreground mt-2">
+      Enter one of the recovery codes you saved when you set up two-factor authentication.
+    </p>
+  </div>
+
+  <div
+    :if={assigns[:error]}
+    class="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-foreground flex items-center gap-2"
+  >
+    <.icon name="danger-circle" class="size-4 shrink-0 text-destructive" />
+    {@error}
+  </div>
+
+  <.form
+    :let={f}
+    for={@form}
+    as={:recovery}
+    id="recovery_code_form"
+    action={~p"/users/log-in/totp/recovery"}
+  >
+    <div class="space-y-4">
+      <.input
+        field={f[:code]}
+        type="text"
+        label="Recovery Code"
+        autocomplete="off"
+        spellcheck="false"
+        required
+        phx-mounted={JS.focus()}
+      />
+      <.button type="submit" class="w-full">Verify <span aria-hidden="true">→</span></.button>
+    </div>
+  </.form>
+
+  <div class="text-center">
+    <.link
+      navigate={~p"/users/log-in/totp"}
+      class="text-sm text-muted-foreground hover:text-foreground hover:underline"
+    >
+      Use your authenticator app instead
+    </.link>
+  </div>
+</Layouts.auth>

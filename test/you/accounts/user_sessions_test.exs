@@ -1,5 +1,5 @@
 defmodule You.Accounts.UserSessionsTest do
-  use You.DataCase, async: true
+  use You.DataCase, async: false
 
   import You.AccountsFixtures
   alias You.Accounts

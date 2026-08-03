@@ -2,6 +2,8 @@ defmodule You.Admin.App do
   use Ecto.Schema
   import Ecto.Changeset
 
+  @timestamps_opts [type: :utc_datetime]
+
   schema "apps" do
     field :slug, :string
     field :name, :string
@@ -13,7 +15,6 @@ defmodule You.Admin.App do
     field :subtitle, :string
     field :tos_url, :string
     field :privacy_url, :string
-    field :background_image_url, :string
     field :accent_color, :string
     field :brand_color_dark, :string
     field :accent_color_dark, :string
@@ -111,7 +112,6 @@ defmodule You.Admin.App do
       :subtitle,
       :tos_url,
       :privacy_url,
-      :background_image_url,
       :accent_color,
       :brand_color_dark,
       :accent_color_dark,
@@ -138,7 +138,6 @@ defmodule You.Admin.App do
     |> validate_change(:logo_url, &validate_http_url/2)
     |> validate_change(:tos_url, &validate_http_url/2)
     |> validate_change(:privacy_url, &validate_http_url/2)
-    |> validate_change(:background_image_url, &validate_http_url/2)
     |> validate_length(:email_from_name, max: 100)
     # An empty list would lock every user out of the app with no way back in
     # through the login page. `nil` is the way to say "follow the instance".
@@ -148,6 +147,9 @@ defmodule You.Admin.App do
     )
     |> validate_subset(:enabled_methods, @auth_methods)
     |> unique_constraint(:slug)
+    |> unique_constraint(:callback_url,
+      message: "is already registered to another app"
+    )
   end
 
   defp validate_http_url(field, url) do

@@ -20,11 +20,14 @@ defmodule YouWeb.UserRegistrationController do
         conn
       end
 
+    conn = YouWeb.AppBranding.put_app_param(conn, params)
     changeset = Accounts.change_user_email(%User{})
 
-    render(conn, :new,
-      changeset: changeset,
-      callback_url: get_session(conn, :callback_url)
+    render(
+      conn,
+      :new,
+      [changeset: changeset, callback_url: get_session(conn, :callback_url)] ++
+        YouWeb.AppBranding.assigns(conn)
     )
   end
 
@@ -53,10 +56,15 @@ defmodule YouWeb.UserRegistrationController do
           :info,
           "An email was sent to #{user.email}, please access it to confirm your account."
         )
-        |> redirect(to: ~p"/users/log-in")
+        |> redirect(to: YouWeb.AppBranding.login_path(conn))
 
       {:error, %Ecto.Changeset{} = changeset} ->
-        render(conn, :new, changeset: changeset, callback_url: get_session(conn, :callback_url))
+        render(
+          conn,
+          :new,
+          [changeset: changeset, callback_url: get_session(conn, :callback_url)] ++
+            YouWeb.AppBranding.assigns(conn)
+        )
     end
   end
 end

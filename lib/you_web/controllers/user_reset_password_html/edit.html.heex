@@ -1,37 +1,40 @@
-<Layouts.public flash={@flash} current_scope={@current_scope}>
-  <div class="mx-auto max-w-sm pt-24 pb-32">
-    <div class="text-center mb-10">
-      <.wordmark size="lg" class="justify-center mb-4" />
-      <h1 class="text-xl font-medium tracking-tight">Reset your password</h1>
-      <p class="text-sm text-muted-foreground mt-2">
-        Choose a new password for your account.
-      </p>
-    </div>
-
-    <.form
-      :let={f}
-      for={@changeset}
-      action={~p"/users/reset-password/#{@token}"}
-      method="put"
-    >
-      <div class="space-y-4">
-        <.input
-          field={f[:password]}
-          type="password"
-          label="New password"
-          required
-          phx-mounted={JS.focus()}
-        />
-        <.input
-          field={f[:password_confirmation]}
-          type="password"
-          label="Confirm new password"
-          required
-        />
-        <.button type="submit" class="w-full">
-          Reset password
-        </.button>
-      </div>
-    </.form>
+<Layouts.auth
+  flash={@flash}
+  current_scope={@current_scope}
+  bare={@bare}
+  brand_style={YouWeb.AppBranding.brand_style(assigns)}
+>
+  <div class="text-center mb-10">
+    <Layouts.auth_mark bare={@bare} app_name={@app_name} app_logo_url={@app_logo_url} />
+    <h1 class="text-xl font-medium tracking-tight">Reset your password</h1>
+    <p class="text-sm text-muted-foreground mt-2">
+      Choose a new password for your account.
+    </p>
   </div>
-</Layouts.public>
+
+  <.form
+    :let={f}
+    for={@changeset}
+    action={~p"/users/reset-password/#{@token}"}
+    method="put"
+  >
+    <div class="space-y-4">
+      <.input
+        field={f[:password]}
+        type="password"
+        label="New password"
+        required
+        phx-mounted={JS.focus()}
+      />
+      <.input
+        field={f[:password_confirmation]}
+        type="password"
+        label="Confirm new password"
+        required
+      />
+      <.button type="submit" class="w-full">
+        Reset password
+      </.button>
+    </div>
+  </.form>
+</Layouts.auth>

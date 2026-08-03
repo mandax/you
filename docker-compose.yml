@@ -1,0 +1,82 @@
+# Single-app install: one app, one container, one volume.
+#
+#   cp .env.example .env   # edit PHX_HOST and the SINGLE_APP_* values
+#   docker compose up -d
+#   docker compose exec you bin/you eval 'You.Release.bootstrap_admin("you@example.com", "a-long-password")'
+#
+# See docs/quickstart.md. For the multi-app deployment, read docs/ops/deploy.md
+# instead — this file provisions exactly one app from the environment.
+
+services:
+  you:
+    image: ghcr.io/mandax/you:latest
+    # Testing an unreleased change? Uncomment to build this checkout instead of
+    # pulling the published image.
+    # build: .
+    restart: unless-stopped
+    # The image's default command starts the release without migrating, which
+    # is right for a fleet deployment where migrations are a deliberate step
+    # (docs/ops/docker.md). A single-app install has no such operator, and an
+    # unmigrated database means the boot has no schema to provision into, so
+    # the schema is brought up first and the release replaces the shell.
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["/app/bin/migrate && exec /app/bin/you start"]
+    ports:
+      # Bound to loopback: You expects a reverse proxy in front terminating
+      # TLS. Secure cookies and https callback URLs depend on it, and the
+      # container itself speaks plain http.
+      - "127.0.0.1:4000:4000"
+    environment:
+      # ── Required ────────────────────────────────────────────────
+      # The public hostname, used for generated URLs (magic links, OIDC
+      # discovery, WebAuthn relying party id). Must match what users type.
+      PHX_HOST: ${PHX_HOST:?set PHX_HOST to the public hostname}
+      # https unless You is reached over plain http (localhost, private network).
+      PHX_SCHEME: ${PHX_SCHEME:-https}
+      DATABASE_PATH: /data/you/you.db
+
+      # The one app this instance serves. These seed the app on FIRST boot
+      # only — after that the console owns it, so edits made there survive
+      # restarts and changing these values has no further effect.
+      # All optional: unset, You provisions an app whose callback points back
+      # at this instance, which you repoint from the console once your app has
+      # a callback route.
+      YOU_MODE: single
+      SINGLE_APP_SLUG: ${SINGLE_APP_SLUG:-app}
+      SINGLE_APP_NAME: ${SINGLE_APP_NAME:-My App}
+      SINGLE_APP_CALLBACK_URL: ${SINGLE_APP_CALLBACK_URL:-}
+      SINGLE_APP_LAUNCH_URL: ${SINGLE_APP_LAUNCH_URL:-}
+
+      # ── Email ───────────────────────────────────────────────────
+      # Unset, You keeps mail in an in-memory mailbox at /console/mailbox and
+      # reports the install as not production ready. Magic links, email 2FA,
+      # confirmation and password reset all need this.
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      MAIL_FROM: ${MAIL_FROM:-}
+
+      # ── Secrets ─────────────────────────────────────────────────
+      # Deliberately absent. SECRET_KEY_BASE and JWT_SIGNING_KEY are generated
+      # on first boot and persisted to the volume with 0600. A value shipped
+      # in this file would be shared by every install of You on earth, and
+      # anyone could forge tokens against any of them.
+
+      # ── Optional ────────────────────────────────────────────────
+      # Bearer token for the management REST API. Unset disables it.
+      API_TOKEN: ${API_TOKEN:-}
+    volumes:
+      # Named, not bind-mounted, and never anonymous: the SQLite file, the
+      # generated secrets and the WAL all live here. Losing it is losing every
+      # account. Back it up (docs/ops/backup.md).
+      - you-data:/data/you
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:4000/"]
+      interval: 30s
+      timeout: 10s
+      start_period: 40s
+      retries: 3
+
+volumes:
+  you-data:

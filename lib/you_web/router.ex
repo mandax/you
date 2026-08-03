@@ -23,6 +23,10 @@ defmodule YouWeb.Router do
     plug YouWeb.SCIM.BearerAuth
   end
 
+  pipeline :require_local_mailbox do
+    plug :ensure_local_mailbox
+  end
+
   pipeline :rate_limit_login do
     plug YouWeb.Plugs.RateLimit, key: :login
   end
@@ -75,6 +79,30 @@ defmodule YouWeb.Router do
     live_session :admin, on_mount: {YouWeb.UserAuth, :default} do
       live "/", ConsoleLive, :index
       live "/apps/:slug", AppLive.Show, :show
+    end
+
+    post "/backup/export", ConsoleBackupController, :export
+  end
+
+  # Admin-only and local-transport-only: it holds magic links and 2FA codes,
+  # and Swoosh runs no storage process when mail goes out over SMTP.
+  scope "/console" do
+    pipe_through [:browser, :require_authenticated_user, :require_admin, :require_local_mailbox]
+
+    forward "/mailbox", Plug.Swoosh.MailboxPreview
+  end
+
+  defp ensure_local_mailbox(conn, _opts) do
+    if You.Mailer.transport() == :local do
+      conn
+    else
+      conn
+      |> Phoenix.Controller.put_flash(
+        :error,
+        "The mailbox only exists while mail is unconfigured; this instance delivers over SMTP."
+      )
+      |> Phoenix.Controller.redirect(to: "/console")
+      |> halt()
     end
   end
 
@@ -195,6 +223,7 @@ defmodule YouWeb.Router do
     get "/users/settings/totp", UserSettingsController, :totp_setup
     post "/users/settings/totp", UserSettingsController, :totp_enable
     delete "/users/settings/totp", UserSettingsController, :totp_disable
+    post "/users/settings/totp/recovery-codes", UserSettingsController, :regenerate_recovery_codes
     post "/users/settings/email-2fa", UserSettingsController, :email_2fa_enable
     delete "/users/settings/email-2fa", UserSettingsController, :email_2fa_disable
   end
@@ -210,6 +239,7 @@ defmodule YouWeb.Router do
     # (magic-link) route. Phoenix matches in definition order, so otherwise
     # e.g. /users/log-in/totp is captured as token="totp".
     get "/users/log-in/totp", UserSessionController, :totp
+    get "/users/log-in/totp/recovery", UserSessionController, :recovery_code
     get "/users/log-in/email-2fa", UserSessionController, :email_2fa
     post "/users/log-in/authorize", UserSessionController, :authorize_action
     get "/users/log-in/:token", UserSessionController, :confirm
@@ -220,6 +250,7 @@ defmodule YouWeb.Router do
     scope "/" do
       pipe_through :rate_limit_totp
       post "/users/log-in/totp", UserSessionController, :verify_totp
+      post "/users/log-in/totp/recovery", UserSessionController, :verify_recovery_code
     end
 
     scope "/" do

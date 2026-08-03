@@ -1,39 +1,42 @@
-<Layouts.public flash={@flash} current_scope={@current_scope}>
-  <div class="mx-auto max-w-sm pt-24 pb-32">
-    <div class="text-center mb-10">
-      <.wordmark size="lg" class="justify-center mb-4" />
-      <h1 class="text-xl font-medium tracking-tight">Create your account</h1>
-      <p class="text-sm text-muted-foreground mt-1">
-        Already registered?
-        <.link
-          navigate={
-            if @callback_url,
-              do: ~p"/users/log-in?callback_url=#{URI.encode(@callback_url)}",
-              else: ~p"/users/log-in"
-          }
-          class="font-medium text-foreground hover:underline"
-        >
-          Log in
-        </.link>
-      </p>
-    </div>
-
-    <.form :let={f} for={@changeset} action={~p"/users/register"}>
-      <div class="space-y-4">
-        <.input
-          field={f[:email]}
-          type="email"
-          label="Email"
-          autocomplete="username"
-          spellcheck="false"
-          required
-          phx-mounted={JS.focus()}
-        />
-
-        <.button type="submit" phx-disable-with="Creating account..." class="w-full">
-          Create an account
-        </.button>
-      </div>
-    </.form>
+<Layouts.auth
+  flash={@flash}
+  current_scope={@current_scope}
+  bare={@bare}
+  brand_style={YouWeb.AppBranding.brand_style(assigns)}
+>
+  <div class="text-center mb-10">
+    <Layouts.auth_mark bare={@bare} app_name={@app_name} app_logo_url={@app_logo_url} />
+    <h1 class="text-xl font-medium tracking-tight">Create your account</h1>
+    <p class="text-sm text-muted-foreground mt-1">
+      Already registered?
+      <.link
+        navigate={
+          if @callback_url,
+            do: ~p"/users/log-in?callback_url=#{URI.encode(@callback_url)}",
+            else: ~p"/users/log-in"
+        }
+        class="font-medium text-foreground hover:underline"
+      >
+        Log in
+      </.link>
+    </p>
   </div>
-</Layouts.public>
+
+  <.form :let={f} for={@changeset} action={~p"/users/register"}>
+    <div class="space-y-4">
+      <.input
+        field={f[:email]}
+        type="email"
+        label="Email"
+        autocomplete="username"
+        spellcheck="false"
+        required
+        phx-mounted={JS.focus()}
+      />
+
+      <.button type="submit" phx-disable-with="Creating account..." class="w-full">
+        Create an account
+      </.button>
+    </div>
+  </.form>
+</Layouts.auth>

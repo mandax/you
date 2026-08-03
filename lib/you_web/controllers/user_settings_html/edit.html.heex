@@ -151,29 +151,51 @@
           <h2 class="text-lg font-medium">Two-factor authentication</h2>
           <p class="text-sm text-muted-foreground">
             <%= if @current_scope.user.totp_enabled do %>
-              Authenticator app is enabled.
+              Authenticator app is enabled. {@recovery_codes_remaining} recovery code(s) remaining.
             <% else %>
               Add an extra layer of security by requiring a code from your authenticator app.
             <% end %>
           </p>
+          <p
+            :if={@current_scope.user.totp_enabled and @recovery_codes_remaining <= 2}
+            class="mt-2 flex items-center gap-2 text-sm text-destructive"
+          >
+            <.icon name="danger-circle" class="size-4 shrink-0" />
+            <%= if @recovery_codes_remaining == 0 do %>
+              You have no recovery codes left. Regenerate them now or you may be
+              locked out if you lose your authenticator app.
+            <% else %>
+              Running low on recovery codes. Regenerate them before you run out.
+            <% end %>
+          </p>
         </div>
-        <%= if @current_scope.user.totp_enabled do %>
-          <.link
-            href={~p"/users/settings/totp"}
-            method="delete"
-            data-confirm="Disable two-factor authentication?"
-            class="text-sm text-destructive hover:underline whitespace-nowrap"
-          >
-            Disable
-          </.link>
-        <% else %>
-          <.link
-            navigate={~p"/users/settings/totp"}
-            class="text-sm text-foreground hover:underline whitespace-nowrap"
-          >
-            Set up authenticator app →
-          </.link>
-        <% end %>
+        <div class="flex shrink-0 items-center gap-4">
+          <%= if @current_scope.user.totp_enabled do %>
+            <.link
+              href={~p"/users/settings/totp/recovery-codes"}
+              method="post"
+              data-confirm="Regenerate recovery codes? Your existing codes will stop working immediately."
+              class="text-sm text-foreground hover:underline whitespace-nowrap"
+            >
+              Regenerate codes
+            </.link>
+            <.link
+              href={~p"/users/settings/totp"}
+              method="delete"
+              data-confirm="Disable two-factor authentication?"
+              class="text-sm text-destructive hover:underline whitespace-nowrap"
+            >
+              Disable
+            </.link>
+          <% else %>
+            <.link
+              navigate={~p"/users/settings/totp"}
+              class="text-sm text-foreground hover:underline whitespace-nowrap"
+            >
+              Set up authenticator app →
+            </.link>
+          <% end %>
+        </div>
       </div>
     </section>
 

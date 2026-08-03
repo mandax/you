@@ -4,6 +4,15 @@ This is a web application written using the Phoenix web framework.
 
 - Use `mix precommit` alias when you are done with all changes and fix any pending issues
 - Use the already included and available `:req` (`Req`) library for HTTP requests, **avoid** `:httpoison`, `:tesla`, and `:httpc`. Req is included by default and is the preferred HTTP client for Phoenix apps
+- **Never nest a `case` inside a `case`.** Pick the fix that matches the shape:
+  - `with` when the inner case is a pass-through, or the whole thing is one linear happy path whose failures collapse to the same place
+  - **Extract a private function** when the inner case *builds a value* rather than steering control flow — forcing `with` there inverts the happy path to fit the machinery and reads worse
+  - **Multiple function heads or guards** when the branches are a dispatch on shape
+
+  `with` is not automatically the answer. If every `else` clause collapses to a single catch-all, that is the tell you do not need `with` — look for a simpler formulation first. A pipeline into one `case` often replaces two, and a default argument can delete a branch outright (`System.get_env(name, "")` removes the `nil` case).
+
+  `config/*.exs` is the exception: no private functions to extract to, so keep it compact and flat instead.
+- Documentation belongs in `@doc` and `@moduledoc`. Avoid inline `#` comments that narrate what the code is doing inside a function body; a short one is fine for a genuinely non-obvious guard.
 
 ### Phoenix v1.8 guidelines
 

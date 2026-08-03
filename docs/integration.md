@@ -76,11 +76,34 @@ Success (`200`):
 
 Failure (`400`): `{"error": "invalid_grant", "error_description": "..."}`.
 
-No client authentication is required at the token endpoint. This is a public
-client flow; the PKCE verifier authenticates the code holder.
+#### Client authentication is required
+
+Every code exchange must prove the caller is the client the code was issued
+to. There are two accepted proofs, and a request carrying neither is rejected
+with `401 {"error": "invalid_client"}`:
+
+- **Public clients** (SPA, mobile) send the PKCE `code_verifier`, as above. The
+  code must have been minted from an authorize request carrying a
+  `code_challenge`.
+- **Confidential clients** (server-side apps) send `client_id` +
+  `client_secret`, either as HTTP Basic (RFC 6749 §2.3.1) or in the body:
+
+  ```http
+  POST /oauth/token
+  Authorization: Basic base64(client_id:client_secret)
+  Content-Type: application/json
+
+  {"code": "ya29.xxx"}
+  ```
+
+A code minted **without** a PKCE challenge can only be redeemed with the client
+secret. A code minted for one app cannot be redeemed by another: a mismatched
+`client_id` fails with `invalid_grant`.
 
 The **refresh_token grant** is also supported: POST the `refresh_token` to
-`/oauth/token` to obtain a new access token without involving the user.
+`/oauth/token` to obtain a new access token without involving the user. Client
+credentials are optional there, but when sent they must be valid and must match
+the app the refresh token was issued for.
 
 ### 1.4 Verifying the JWT locally, with no call to You
 

@@ -1,53 +1,56 @@
-<Layouts.public flash={@flash} current_scope={@current_scope}>
-  <div class="mx-auto max-w-sm pt-24 pb-32 space-y-6">
-    <div class="text-center">
-      <.wordmark size="lg" class="justify-center mb-4" />
-      <h1 class="text-xl font-medium tracking-tight">Authorize</h1>
-      <p class="text-sm text-muted-foreground mt-2">
-        You are signed in as <strong>{@user_email}</strong>.<br /> An application at
-        <strong>{@app_name}</strong>
-        would like to access:
-      </p>
-    </div>
-
-    <ul class="space-y-2">
-      <li
-        :for={scope <- @scopes}
-        class="flex items-center gap-3 text-sm rounded-lg border border-border p-3"
-      >
-        <.icon name="lock-open" class="size-4 shrink-0 text-muted-foreground" />
-        {scope}
-      </li>
-    </ul>
-
-    <.form
-      :let={_f}
-      for={%{}}
-      as={:authorize}
-      id="authorize_form"
-      action={~p"/users/log-in/authorize"}
-    >
-      <.button type="submit" class="w-full">
-        Authorize <span aria-hidden="true">→</span>
-      </.button>
-    </.form>
-
-    <.button href="/" variant="outline" class="w-full">Cancel</.button>
-
-    <p :if={@tos_url || @privacy_url} class="text-center text-xs text-muted-foreground">
-      By continuing, you agree to
-      <.link :if={@tos_url} href={@tos_url} target="_blank" class="underline underline-offset-2">
-        Terms of Service
-      </.link>
-      <span :if={@tos_url && @privacy_url}>and</span>
-      <.link
-        :if={@privacy_url}
-        href={@privacy_url}
-        target="_blank"
-        class="underline underline-offset-2"
-      >
-        Privacy Policy
-      </.link>
+<Layouts.auth
+  flash={@flash}
+  current_scope={@current_scope}
+  bare={@bare}
+  brand_style={YouWeb.AppBranding.brand_style(assigns)}
+>
+  <div class="text-center">
+    <Layouts.auth_mark bare={@bare} app_name={@app_name} app_logo_url={@app_logo_url} />
+    <h1 class="text-xl font-medium tracking-tight">Authorize</h1>
+    <p class="text-sm text-muted-foreground mt-2">
+      You are signed in as <strong>{@user_email}</strong>.<br /> An application at
+      <strong>{@app_name}</strong>
+      would like to access:
     </p>
   </div>
-</Layouts.public>
+
+  <ul class="space-y-2">
+    <li
+      :for={scope <- @scopes}
+      class="flex items-center gap-3 text-sm rounded-lg border border-border p-3"
+    >
+      <.icon name="lock-open" class="size-4 shrink-0 text-muted-foreground" />
+      {scope}
+    </li>
+  </ul>
+
+  <.form
+    :let={_f}
+    for={%{}}
+    as={:authorize}
+    id="authorize_form"
+    action={~p"/users/log-in/authorize"}
+  >
+    <.button type="submit" class="w-full">
+      Authorize <span aria-hidden="true">→</span>
+    </.button>
+  </.form>
+
+  <.button href="/" variant="outline" class="w-full">Cancel</.button>
+
+  <p :if={@tos_url || @privacy_url} class="text-center text-xs text-muted-foreground">
+    By continuing, you agree to
+    <.link :if={@tos_url} href={@tos_url} target="_blank" class="underline underline-offset-2">
+      Terms of Service
+    </.link>
+    <span :if={@tos_url && @privacy_url}>and</span>
+    <.link
+      :if={@privacy_url}
+      href={@privacy_url}
+      target="_blank"
+      class="underline underline-offset-2"
+    >
+      Privacy Policy
+    </.link>
+  </p>
+</Layouts.auth>

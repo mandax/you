@@ -14,6 +14,7 @@ defmodule YouWeb.ConsoleLive do
 
   alias You.{Admin, Accounts, Settings, Webhooks, Roles, IdentityProviders}
   alias You.Audit.Streamer
+  alias You.Config.{Bundle, Vault}
 
   # Shown but locked. An admin should be able to see that password login
   # exists and cannot be switched off, rather than wonder where it went.
@@ -42,19 +43,24 @@ defmodule YouWeb.ConsoleLive do
     "features" =>
       "What this instance offers. Switching something off removes it from the console and the login page.",
     "settings" =>
-      "Instance-wide tuning: token lifetimes, Erlang distribution, and integration secrets."
+      "Instance-wide tuning: token lifetimes, Erlang distribution, and integration secrets.",
+    "backup" =>
+      "Export an encrypted snapshot of this instance's settings, apps, providers and webhooks — or restore one. Never a database backup: no users, tokens or sessions."
   }
 
   @feature_copy %{
     feature_passkeys: {"Passkeys", "WebAuthn sign-in and per-user passkey management."},
     feature_magic_link: {"Magic links", "Passwordless sign-in by emailed link."},
     feature_social_login: {"Social sign-in", "Upstream identity providers on the login page."},
-    feature_webhooks: {"Webhooks", "Signed outbound events."}
+    feature_webhooks: {"Webhooks", "Signed outbound events."},
+    feature_landing_page:
+      {"Public landing page",
+       "What visitors see at /. Switched off, / goes to the console for admins and to the login page for everyone else — the right shape when this instance is infrastructure for your own app rather than a product with a homepage."}
   }
 
   # Write-only in the console: never rendered into the DOM, blank on save
   # keeps the current value, cleared via the explicit "clear" button.
-  @secret_settings [:erlang_cookie, :scim_bearer_token]
+  @secret_settings [:erlang_cookie, :scim_bearer_token, :smtp_password, :api_token]
 
   @settings_fields [
     %{key: :session_expiry_hours, label: "Session expiry (hours)"},
@@ -65,7 +71,16 @@ defmodule YouWeb.ConsoleLive do
     %{key: :epmd_port, label: "EPMD port"},
     %{key: :erlang_cookie, label: "Erlang cookie"},
     %{key: :scim_bearer_token, label: "SCIM bearer token"},
-    %{key: :audit_webhook_url, label: "Audit webhook URL"}
+    %{key: :audit_webhook_url, label: "Audit webhook URL"},
+    %{key: :you_mode, label: "Deployment mode"},
+    %{key: :smtp_host, label: "SMTP host"},
+    %{key: :smtp_port, label: "SMTP port"},
+    %{key: :smtp_username, label: "SMTP username"},
+    %{key: :smtp_password, label: "SMTP password"},
+    %{key: :mail_from, label: "Mail from address"},
+    %{key: :api_token, label: "Management API token"},
+    %{key: :analytics_src, label: "Analytics script URL"},
+    %{key: :analytics_domain, label: "Analytics domain"}
   ]
 
   @impl true
@@ -74,6 +89,12 @@ defmodule YouWeb.ConsoleLive do
 
     {:ok,
      socket
+     |> allow_upload(:bundle,
+       accept: ~w(.you-bundle .json),
+       max_entries: 1,
+       max_file_size: 25_000_000,
+       progress: &handle_bundle_progress/3
+     )
      |> assign(
        page_title: "Console",
        nav: nav(),
@@ -98,24 +119,51 @@ defmodule YouWeb.ConsoleLive do
        provider_filter: "",
        webhook_filter: "",
        features: Settings.features() |> Map.new(&{&1, Settings.get(&1)}),
-       onboarding: not Settings.get(:onboarding_completed)
-     )
-     |> load_data()
-     |> load_settings()}
+       onboarding: not Settings.get(:onboarding_completed),
+       single_mode: You.Mode.single?(),
+       mail_ready: You.Mailer.production_ready?(),
+       trigger_export: false,
+       import_ciphertext: nil,
+       import_payload: nil,
+       import_preview: nil,
+       import_error: nil
+     )}
   end
 
+  @doc """
+  Resolves `?view=` and loads exactly the data that view renders.
+
+  `handle_params/3` runs after `mount/3` on every render — disconnected and
+  connected alike — so this is the one place a view's dataset needs loading;
+  nothing is preloaded in `mount/3` that might not match the view a
+  redirect or deep link actually lands on.
+  """
   @impl true
   def handle_params(params, _uri, socket) do
     # First admin login lands here rather than on an overview of a console
     # they have not shaped yet.
     default = if socket.assigns.onboarding, do: "features", else: "overview"
     view = params["view"] || default
-    view = if Enum.any?(nav(), &(&1.id == view)), do: view, else: default
-    {:noreply, assign(socket, view: view, saved: false)}
+    view = if view in section_ids(), do: view, else: default
+    {:noreply, socket |> assign(view: view, saved: false) |> load_view(view)}
   end
 
+  @doc """
+  The 5-second live tick. Only the overview and audit views render the audit
+  feed, so this is the only thing worth re-querying on a timer — users, apps,
+  providers and role assignments do not change on their own between admin
+  actions, and reloading them here would repeat the wholesale re-read this
+  module used to do per connected admin, per tick.
+  """
   @impl true
-  def handle_info(:refresh, socket), do: {:noreply, load_data(socket)}
+  def handle_info(:refresh, socket) do
+    if socket.assigns.view in ["overview", "audit"] do
+      {:noreply, load_events(socket)}
+    else
+      {:noreply, socket}
+    end
+  end
+
   def handle_info(_msg, socket), do: {:noreply, socket}
 
   # ── users ─────────────────────────────────────────────────────
@@ -126,14 +174,33 @@ defmodule YouWeb.ConsoleLive do
     audit_admin(socket, "logout_user", user.email)
 
     {:noreply,
-     socket |> load_data() |> put_flash(:info, "All sessions revoked for #{user.email}.")}
+     socket |> load_users() |> put_flash(:info, "All sessions revoked for #{user.email}.")}
   end
 
   def handle_event("anonymize_user", %{"id" => id}, socket) do
     user = Admin.get_user!(id)
     {:ok, _} = Accounts.anonymize_user(user)
     audit_admin(socket, "anonymize_user", user.email)
-    {:noreply, socket |> load_data() |> put_flash(:info, "User anonymized.")}
+    {:noreply, socket |> load_users() |> put_flash(:info, "User anonymized.")}
+  end
+
+  # Also revokes every session: a second factor is reset either because a
+  # user lost the device that proves it, or because an account may be
+  # compromised and support cannot tell which from here. Either way, a
+  # session that was live under the old, stronger guarantee should not
+  # keep riding it silently once that guarantee is gone — the user signs
+  # back in with their password and, if they choose, re-enrolls.
+  def handle_event("reset_2fa", %{"id" => id}, socket) do
+    user = Admin.get_user!(id)
+    {:ok, _} = Accounts.disable_totp(user)
+    Accounts.delete_all_user_tokens(user)
+    audit_admin(socket, "reset_2fa", user.email)
+
+    {:noreply,
+     socket
+     |> load_users()
+     |> refresh_editing_user(id)
+     |> put_flash(:info, "Two-factor authentication reset for #{user.email}.")}
   end
 
   # ── apps ──────────────────────────────────────────────────────
@@ -150,7 +217,7 @@ defmodule YouWeb.ConsoleLive do
            ])
          ) do
       {:ok, app, secret} ->
-        {:noreply, socket |> load_data() |> assign(new_secret: secret, secret_app: app)}
+        {:noreply, socket |> load_apps() |> assign(new_secret: secret, secret_app: app)}
 
       {:error, changeset} ->
         {:noreply, put_flash(socket, :error, "Could not create app: #{error_summary(changeset)}")}
@@ -162,7 +229,7 @@ defmodule YouWeb.ConsoleLive do
     # would record the same removal twice under two different shapes.
     case id |> Admin.get_app!() |> Admin.delete_app() do
       {:ok, _app} ->
-        {:noreply, socket |> load_data() |> put_flash(:info, "App deleted.")}
+        {:noreply, socket |> load_apps() |> put_flash(:info, "App deleted.")}
 
       {:error, changeset} ->
         {:noreply, put_flash(socket, :error, "Could not delete: #{error_summary(changeset)}")}
@@ -203,7 +270,7 @@ defmodule YouWeb.ConsoleLive do
 
         {:noreply,
          socket
-         |> load_data()
+         |> load_providers()
          |> assign(new_provider_open: false, discovery: nil)
          |> put_flash(:info, "Provider created.")}
 
@@ -234,7 +301,7 @@ defmodule YouWeb.ConsoleLive do
 
         {:noreply,
          socket
-         |> load_data()
+         |> load_providers()
          |> assign(editing_provider: nil)
          |> put_flash(:info, "Provider updated.")}
 
@@ -256,14 +323,14 @@ defmodule YouWeb.ConsoleLive do
       updated.slug
     )
 
-    {:noreply, load_data(socket)}
+    {:noreply, load_providers(socket)}
   end
 
   def handle_event("delete_provider", %{"id" => id}, socket) do
     provider = IdentityProviders.get_provider!(id)
     {:ok, _} = IdentityProviders.delete_provider(provider)
     audit_admin(socket, "delete_provider", provider.slug)
-    {:noreply, socket |> load_data() |> put_flash(:info, "Provider deleted.")}
+    {:noreply, socket |> load_providers() |> put_flash(:info, "Provider deleted.")}
   end
 
   def handle_event("filter_users", %{"filter_key" => key, "value" => value}, socket) do
@@ -288,12 +355,12 @@ defmodule YouWeb.ConsoleLive do
         role == "admin" and not user.is_admin ->
           Admin.promote_admin(user)
           audit_admin(socket, "promote_admin", user.email)
-          load_data(socket)
+          load_users(socket)
 
         role == "user" and user.is_admin ->
           Admin.demote_admin(user)
           audit_admin(socket, "demote_admin", user.email)
-          load_data(socket)
+          load_users(socket)
 
         true ->
           socket
@@ -318,7 +385,7 @@ defmodule YouWeb.ConsoleLive do
 
     case Roles.set_role(app, user, params["value"] || params["role"]) do
       {:ok, _} ->
-        {:noreply, socket |> load_data() |> refresh_editing_user(params["user_id"])}
+        {:noreply, socket |> load_assignments() |> refresh_editing_user(params["user_id"])}
 
       {:error, _} ->
         {:noreply, put_flash(socket, :error, "Role is not allowed for this app.")}
@@ -364,7 +431,7 @@ defmodule YouWeb.ConsoleLive do
 
         {:noreply,
          socket
-         |> load_data()
+         |> load_endpoints()
          |> assign(webhook_secret: endpoint.secret, webhook_endpoint: endpoint)}
 
       {:error, changeset} ->
@@ -376,7 +443,7 @@ defmodule YouWeb.ConsoleLive do
   def handle_event("toggle_webhook", %{"id" => id}, socket) do
     endpoint = Webhooks.get_endpoint!(id)
     {:ok, _} = Webhooks.update_endpoint(endpoint, %{"enabled" => !endpoint.enabled})
-    {:noreply, load_data(socket)}
+    {:noreply, load_endpoints(socket)}
   end
 
   def handle_event("rotate_webhook_secret", %{"id" => id}, socket) do
@@ -386,7 +453,7 @@ defmodule YouWeb.ConsoleLive do
 
     {:noreply,
      socket
-     |> load_data()
+     |> load_endpoints()
      |> assign(webhook_secret: rotated.secret, webhook_endpoint: rotated)}
   end
 
@@ -394,7 +461,7 @@ defmodule YouWeb.ConsoleLive do
     endpoint = Webhooks.get_endpoint!(id)
     {:ok, _} = Webhooks.delete_endpoint(endpoint)
     audit_admin(socket, "delete_webhook", endpoint.url)
-    {:noreply, socket |> load_data() |> put_flash(:info, "Endpoint deleted.")}
+    {:noreply, socket |> load_endpoints() |> put_flash(:info, "Endpoint deleted.")}
   end
 
   def handle_event("dismiss_webhook_secret", _params, socket) do
@@ -421,17 +488,36 @@ defmodule YouWeb.ConsoleLive do
   end
 
   def handle_event("save_settings", params, socket) do
-    Enum.each(@settings_fields, fn %{key: key} ->
-      raw = params[Atom.to_string(key)]
+    changed =
+      Enum.flat_map(@settings_fields, fn %{key: key} ->
+        raw = params[Atom.to_string(key)]
 
-      if is_binary(raw) and not (key in @secret_settings and raw == "") do
-        Settings.set(key, parse_value(raw))
-      end
-    end)
+        if is_binary(raw) and not (key in @secret_settings and raw == "") do
+          value = parse_value(key, raw)
+          previous = Settings.get(key)
+          Settings.set(key, value)
+
+          if previous == value, do: [], else: [key]
+        else
+          []
+        end
+      end)
+
+    audit_settings(socket, changed)
 
     You.Accounts.CookieSync.apply_cookie()
     You.Audit.Streamer.reload()
-    {:noreply, socket |> load_settings() |> assign(saved: true)}
+    You.Mode.invalidate_app_cache()
+
+    {:noreply,
+     socket
+     |> load_settings()
+     |> assign(
+       saved: true,
+       single_mode: You.Mode.single?(),
+       nav: nav(),
+       mail_ready: You.Mailer.production_ready?()
+     )}
   end
 
   def handle_event("clear_setting", %{"key" => key}, socket) do
@@ -443,10 +529,122 @@ defmodule YouWeb.ConsoleLive do
 
       setting ->
         Settings.set(setting, "")
+        audit_settings(socket, [setting])
         You.Accounts.CookieSync.apply_cookie()
         You.Audit.Streamer.reload()
         {:noreply, load_settings(socket)}
     end
+  end
+
+  # ── backup ────────────────────────────────────────────────────
+  #
+  # Export is a controller download, not a LiveView event: `handle_event`
+  # cannot stream a file. The form in `backup_view/1` posts straight to
+  # `YouWeb.ConsoleBackupController` — this event only checks the two
+  # password fields agree and are long enough, then flips
+  # `phx-trigger-action` so the browser submits that form natively, carrying
+  # the password field's live DOM value with it. Neither password is kept
+  # past this check — `params` is discarded either way.
+  def handle_event(
+        "prepare_export",
+        %{"password" => password, "password_confirmation" => confirmation},
+        socket
+      ) do
+    cond do
+      String.length(password) < Vault.min_password_length() ->
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           "The export password must be at least #{Vault.min_password_length()} characters."
+         )}
+
+      password != confirmation ->
+        {:noreply, put_flash(socket, :error, "Passwords do not match.")}
+
+      true ->
+        {:noreply, assign(socket, trigger_export: true)}
+    end
+  end
+
+  def handle_event("prepare_export", _params, socket) do
+    {:noreply, put_flash(socket, :error, "Enter and confirm a password to export a bundle.")}
+  end
+
+  def handle_event("cancel_upload", %{"ref" => ref}, socket) do
+    {:noreply, cancel_upload(socket, :bundle, ref)}
+  end
+
+  # `live_file_input/1` needs the enclosing form to declare `phx-change` to
+  # track upload progress; there is nothing else on this form to validate.
+  def handle_event("validate_import", _params, socket), do: {:noreply, socket}
+
+  def handle_event("preview_import", %{"password" => password}, socket) do
+    case socket.assigns.import_ciphertext do
+      nil ->
+        {:noreply, put_flash(socket, :error, "Choose a bundle file first.")}
+
+      ciphertext ->
+        with {:ok, payload} <- Vault.open(ciphertext, password),
+             {:ok, summary} <- Bundle.preview(payload) do
+          {:noreply,
+           assign(socket, import_payload: payload, import_preview: summary, import_error: nil)}
+        else
+          {:error, reason} ->
+            {:noreply,
+             assign(socket, import_payload: nil, import_preview: nil, import_error: reason)}
+        end
+    end
+  end
+
+  def handle_event("apply_import", _params, socket) do
+    case socket.assigns.import_payload && Bundle.import(socket.assigns.import_payload) do
+      {:ok, summary} ->
+        audit_admin(socket, "import_config_bundle", import_target(summary))
+
+        {:noreply,
+         socket
+         |> reset_import()
+         |> put_flash(:info, "Bundle imported: #{import_target(summary)}.")}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Import failed: #{import_error_copy(reason)}")}
+
+      nil ->
+        {:noreply, put_flash(socket, :error, "Preview a bundle before applying it.")}
+    end
+  end
+
+  def handle_event("cancel_import", _params, socket), do: {:noreply, reset_import(socket)}
+
+  # Consumes the file as soon as the upload itself completes, rather than
+  # later in `preview_import`: `allow_upload/3`'s `:progress` callback runs
+  # synchronously in the same message that reports 100%, which is the
+  # documented place to call `consume_uploaded_entry/3`. Consuming at preview
+  # time instead would tie the temp file's lifetime to a password the
+  # operator hasn't typed yet, and a wrong password would force a re-upload.
+  defp handle_bundle_progress(:bundle, entry, socket) do
+    if entry.done? do
+      contents =
+        consume_uploaded_entry(socket, entry, fn %{path: path} -> {:ok, File.read!(path)} end)
+
+      {:noreply, assign(socket, import_ciphertext: contents)}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  defp reset_import(socket) do
+    assign(socket,
+      import_ciphertext: nil,
+      import_payload: nil,
+      import_preview: nil,
+      import_error: nil
+    )
+  end
+
+  defp import_target(summary) do
+    Enum.map_join(summary, ", ", fn {section, count} -> "#{count} #{section}" end)
   end
 
   # Case-insensitive substring match across the given fields. Filtering is
@@ -479,6 +677,17 @@ defmodule YouWeb.ConsoleLive do
     end
   end
 
+  # Which keys changed, never their values: the settings screen holds the
+  # Erlang cookie, the SCIM token and the SMTP password, and an audit trail
+  # that copies them is a second place to steal them from. Repointing
+  # `audit_webhook_url` is itself recorded, so silencing the trail cannot be
+  # done silently.
+  defp audit_settings(_socket, []), do: :ok
+
+  defp audit_settings(socket, keys) do
+    audit_admin(socket, "update_settings", keys |> Enum.map(&to_string/1) |> Enum.join(", "))
+  end
+
   defp audit_admin(socket, action, target) do
     :telemetry.execute([:you, :audit, :admin, :action], %{}, %{
       admin_user_id: socket.assigns.current_scope.user.id,
@@ -487,16 +696,46 @@ defmodule YouWeb.ConsoleLive do
     })
   end
 
-  defp load_data(socket) do
+  # Loads exactly the data `view` renders — nothing more.
+  #
+  # Each section carries its own rows: `users` needs the roster, the app list
+  # (for its filter and the per-app role sheet) and the role-assignment map;
+  # `apps`/`providers`/`webhooks` need only their own table; `overview` needs
+  # counts, not rows, since it only ever prints a number; `audit` needs the
+  # live event feed plus the app list for its filter dropdown; `features` and
+  # `settings` carry their own state already (feature flags at mount,
+  # instance settings via `load_settings/1`) so there is nothing to fetch here.
+  defp load_view(socket, "overview"), do: socket |> load_counts() |> load_events()
+
+  defp load_view(socket, "users"),
+    do: socket |> load_users() |> load_apps() |> load_assignments()
+
+  defp load_view(socket, "apps"), do: load_apps(socket)
+  defp load_view(socket, "providers"), do: load_providers(socket)
+  defp load_view(socket, "audit"), do: socket |> load_events() |> load_apps()
+  defp load_view(socket, "webhooks"), do: load_endpoints(socket)
+  defp load_view(socket, "features"), do: socket
+  defp load_view(socket, "settings"), do: load_settings(socket)
+  defp load_view(socket, "backup"), do: socket
+  defp load_view(socket, _view), do: socket
+
+  # Instance-wide counts for the overview cards. `Repo.aggregate/2` rather
+  # than loading every row and taking `length/1`, since the UI only ever
+  # prints the number.
+  defp load_counts(socket) do
     assign(socket,
-      users: Admin.list_users_with_stats(),
-      apps: Admin.list_apps(),
-      events: Streamer.recent(),
-      endpoints: Webhooks.list_endpoints(),
-      assignments: Roles.all_assignments(),
-      providers: IdentityProviders.list_providers()
+      user_count: Admin.count_users(),
+      admin_count: Admin.count_admins(),
+      app_count: Admin.count_apps()
     )
   end
+
+  defp load_users(socket), do: assign(socket, users: Admin.list_users_with_stats())
+  defp load_apps(socket), do: assign(socket, apps: Admin.list_apps())
+  defp load_assignments(socket), do: assign(socket, assignments: Roles.all_assignments())
+  defp load_providers(socket), do: assign(socket, providers: IdentityProviders.list_providers())
+  defp load_endpoints(socket), do: assign(socket, endpoints: Webhooks.list_endpoints())
+  defp load_events(socket), do: assign(socket, events: Streamer.recent())
 
   # Drops blank/missing keys so a preset's endpoint template (or, on edit, the
   # provider's own stored values) is left in place rather than clobbered by an
@@ -525,11 +764,22 @@ defmodule YouWeb.ConsoleLive do
   defp load_settings(socket),
     do: assign(socket, settings: Settings.all())
 
-  defp parse_value(raw) do
+  defp parse_value(:you_mode, "single"), do: "single"
+  defp parse_value(:you_mode, _raw), do: "multi"
+
+  defp parse_value(_key, raw) do
     if raw =~ ~r/^\d+$/, do: String.to_integer(raw), else: raw
   end
 
-  defp section_copy(view), do: Map.get(@section_copy, view)
+  @single_section_copy %{
+    "users" =>
+      "Everyone with an account here. Filter by role or status, and manage a user's access from their row."
+  }
+
+  defp section_copy(view, true),
+    do: Map.get(@single_section_copy, view) || Map.get(@section_copy, view)
+
+  defp section_copy(view, false), do: Map.get(@section_copy, view)
 
   defp nav_label(view), do: Enum.find_value(nav(), "", &if(&1.id == view, do: &1.label))
 
@@ -540,14 +790,24 @@ defmodule YouWeb.ConsoleLive do
     <.console_shell nav={@nav} active={@view} title={nav_label(@view)} node_name={@node_name}>
       <div class="mb-5">
         <h1 class="text-lg font-medium">{nav_label(@view)}</h1>
-        <p :if={section_copy(@view)} class="mt-1 max-w-2xl text-sm text-muted-foreground">
-          {section_copy(@view)}
+        <p
+          :if={section_copy(@view, @single_mode)}
+          class="mt-1 max-w-2xl text-sm text-muted-foreground"
+        >
+          {section_copy(@view, @single_mode)}
         </p>
       </div>
 
       <%= case @view do %>
         <% "overview" -> %>
-          <.overview users={@users} apps={@apps} events={@events} />
+          <.overview
+            user_count={@user_count}
+            admin_count={@admin_count}
+            app_count={@app_count}
+            events={@events}
+            single_mode={@single_mode}
+            mail_ready={@mail_ready}
+          />
         <% "users" -> %>
           <.users_view
             users={@users}
@@ -556,6 +816,7 @@ defmodule YouWeb.ConsoleLive do
             filters={@user_filters}
             current_scope={@current_scope}
             editing_user={@editing_user}
+            single_mode={@single_mode}
           />
         <% "apps" -> %>
           <.apps_view
@@ -598,6 +859,14 @@ defmodule YouWeb.ConsoleLive do
             oidc_providers={@oidc_providers}
             saved={@saved}
           />
+        <% "backup" -> %>
+          <.backup_view
+            uploads={@uploads}
+            trigger_export={@trigger_export}
+            import_preview={@import_preview}
+            import_error={@import_error}
+            has_ciphertext={@import_ciphertext != nil}
+          />
       <% end %>
 
       <Layouts.flash_group flash={@flash} />
@@ -606,17 +875,38 @@ defmodule YouWeb.ConsoleLive do
   end
 
   # ── section: overview ─────────────────────────────────────────
-  attr :users, :list, required: true
-  attr :apps, :list, required: true
+  attr :user_count, :integer, required: true
+  attr :admin_count, :integer, required: true
+  attr :app_count, :integer, required: true
   attr :events, :list, required: true
+  attr :single_mode, :boolean, default: false
+  attr :mail_ready, :boolean, default: true
 
   defp overview(assigns) do
     ~H"""
     <div class="space-y-6">
+      <div
+        :if={!@mail_ready}
+        class="rounded-lg border border-signal-warn/40 bg-signal-warn/5 p-4 text-sm"
+      >
+        <div class="flex items-center gap-2 font-medium">
+          <span class="lucide-triangle-alert size-4 block text-signal-warn" /> Email is not configured
+        </div>
+        <p class="mt-1 text-muted-foreground">
+          Mail is being kept in an in-memory mailbox instead of being delivered. Magic links, email
+          2FA, address confirmation and password resets will not reach users. Configure SMTP from
+          the Settings section, or read the queued mail at
+          <.link href={~p"/console/mailbox"} class="text-primary underline">
+            /console/mailbox
+          </.link>
+          while evaluating.
+        </p>
+      </div>
+
       <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <.metric_card label="Users" value={to_string(length(@users))} />
-        <.metric_card label="Admins" value={to_string(Enum.count(@users, & &1.user.is_admin))} />
-        <.metric_card label="Apps" value={to_string(length(@apps))} />
+        <.metric_card label="Users" value={to_string(@user_count)} />
+        <.metric_card label="Admins" value={to_string(@admin_count)} />
+        <.metric_card :if={!@single_mode} label="Apps" value={to_string(@app_count)} />
       </div>
 
       <div class="rounded-lg border border-border bg-card p-4">
@@ -643,6 +933,7 @@ defmodule YouWeb.ConsoleLive do
   attr :filters, :map, required: true
   attr :current_scope, :map, required: true
   attr :editing_user, :map, default: nil
+  attr :single_mode, :boolean, default: false
 
   defp users_view(assigns) do
     assigns =
@@ -679,6 +970,7 @@ defmodule YouWeb.ConsoleLive do
             params={%{"filter_key" => "status"}}
           />
           <.select
+            :if={!@single_mode}
             id="filter-app"
             value={@filters["app"]}
             placeholder="all apps"
@@ -811,6 +1103,33 @@ defmodule YouWeb.ConsoleLive do
                 on_change="save_app_role"
                 params={%{"app_id" => app.id, "user_id" => @editing_user.id}}
               />
+            </div>
+          </section>
+
+          <section class="space-y-2">
+            <h3 class="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+              Security
+            </h3>
+            <div class="flex items-center justify-between gap-4">
+              <div class="text-sm">
+                <span>Two-factor authentication</span>
+                <span class="ml-2 text-xs text-muted-foreground">
+                  {if @editing_user.totp_enabled, do: "enabled", else: "not enabled"}
+                </span>
+              </div>
+              <button
+                :if={@editing_user.totp_enabled}
+                type="button"
+                phx-click="reset_2fa"
+                phx-value-id={@editing_user.id}
+                data-confirm={"Reset two-factor authentication for #{@editing_user.email}? " <>
+                  "This disables their authenticator app, deletes their recovery codes, and " <>
+                  "signs out every session. They will be able to sign in with their password " <>
+                  "alone until they re-enroll."}
+                class="text-sm text-destructive hover:underline whitespace-nowrap"
+              >
+                Reset 2FA
+              </button>
             </div>
           </section>
         </div>
@@ -1723,6 +2042,70 @@ defmodule YouWeb.ConsoleLive do
           </p>
         </.settings_group>
 
+        <.settings_group title="Deployment mode">
+          <label class="flex items-center justify-between gap-4 text-sm">
+            <span class="text-muted-foreground">Mode</span>
+            <select
+              name="you_mode"
+              class="h-8 rounded-md border border-input bg-background px-2 font-mono text-xs"
+            >
+              <option value="multi" selected={@settings[:you_mode] != "single"}>multi</option>
+              <option value="single" selected={@settings[:you_mode] == "single"}>single</option>
+            </select>
+          </label>
+          <p class="pt-1 font-mono text-[11px] text-muted-foreground">
+            Single mode replaces the apps registry with one application. Applies to this console
+            session on save; other open console tabs pick it up on their next page load.
+          </p>
+        </.settings_group>
+
+        <.settings_group title="Mail">
+          <.setting_field name="smtp_host" label="SMTP host" value={@settings[:smtp_host]} />
+          <.setting_field name="smtp_port" label="SMTP port" value={@settings[:smtp_port]} />
+          <.setting_field
+            name="smtp_username"
+            label="SMTP username"
+            value={@settings[:smtp_username]}
+          />
+          <.secret_setting_field
+            name="smtp_password"
+            label="SMTP password"
+            value={@settings[:smtp_password]}
+          />
+          <.setting_field name="mail_from" label="Mail from address" value={@settings[:mail_from]} />
+          <p class="pt-1 font-mono text-[11px] text-muted-foreground">
+            Applies to the next email sent — nothing to restart. Clear the host to fall back to
+            the in-memory mailbox at /console/mailbox.
+          </p>
+        </.settings_group>
+
+        <.settings_group title="Management API">
+          <.secret_setting_field
+            name="api_token"
+            label="Bearer token"
+            value={@settings[:api_token]}
+          />
+          <p class="pt-1 font-mono text-[11px] text-muted-foreground">
+            Unset or empty disables the management API. Applies immediately.
+          </p>
+        </.settings_group>
+
+        <.settings_group title="Analytics">
+          <.setting_field
+            name="analytics_src"
+            label="Script URL"
+            value={@settings[:analytics_src]}
+          />
+          <.setting_field
+            name="analytics_domain"
+            label="Domain"
+            value={@settings[:analytics_domain]}
+          />
+          <p class="pt-1 font-mono text-[11px] text-muted-foreground">
+            Both fields are required for the snippet to appear. Plausible-compatible.
+          </p>
+        </.settings_group>
+
         <.button type="submit">Save settings</.button>
       </form>
 
@@ -1754,6 +2137,269 @@ defmodule YouWeb.ConsoleLive do
     </div>
     """
   end
+
+  # ── section: backup ───────────────────────────────────────────
+  attr :uploads, :map, required: true
+  attr :trigger_export, :boolean, required: true
+  attr :import_preview, :any, default: nil
+  attr :import_error, :any, default: nil
+  attr :has_ciphertext, :boolean, required: true
+
+  defp backup_view(assigns) do
+    ~H"""
+    <div class="max-w-2xl space-y-4">
+      <.settings_group title="Export">
+        <p class="text-sm text-muted-foreground">
+          Downloads settings, apps, providers and webhooks, sealed with the password below. The
+          file contains SMTP credentials, the management API token, webhook signing secrets and
+          upstream provider client secrets — everything needed to impersonate this instance's
+          integrations. Treat it, and the password, accordingly.
+        </p>
+        <.form
+          for={%{}}
+          action={~p"/console/backup/export"}
+          method="post"
+          id="export-form"
+          phx-submit="prepare_export"
+          phx-trigger-action={@trigger_export}
+          class="space-y-3"
+        >
+          <div class="flex items-end gap-2 [&_>div]:mb-0">
+            <div class="flex-1">
+              <.input
+                type="password"
+                name="password"
+                label={"Password (#{Vault.min_password_length()}+ characters)"}
+                value=""
+                autocomplete="new-password"
+                minlength={Vault.min_password_length()}
+                required
+              />
+            </div>
+          </div>
+          <div class="flex items-end gap-2 [&_>div]:mb-0">
+            <div class="flex-1">
+              <.input
+                type="password"
+                name="password_confirmation"
+                label="Confirm password"
+                value=""
+                autocomplete="new-password"
+                minlength={Vault.min_password_length()}
+                required
+              />
+            </div>
+            <.button type="submit">Export bundle</.button>
+          </div>
+          <p class="font-mono text-[11px] text-muted-foreground">
+            Used exactly twice — now, and on the day you need to restore this. There is no reset:
+            get it wrong here and the file is unrecoverable.
+          </p>
+        </.form>
+      </.settings_group>
+
+      <.settings_group title="Import">
+        <p class="text-sm text-muted-foreground">
+          Upserts by natural key and never deletes — an instance that has diverged keeps whatever
+          the bundle doesn't mention. Review the counts below before applying.
+        </p>
+
+        <form
+          id="import-form"
+          phx-submit="preview_import"
+          phx-change="validate_import"
+          class="space-y-3"
+        >
+          <.live_file_input upload={@uploads.bundle} class="text-sm" />
+          <div :for={entry <- @uploads.bundle.entries} class="flex items-center gap-2 text-xs">
+            <span class="font-mono text-muted-foreground">
+              {entry.client_name} ({entry.progress}%)
+            </span>
+            <button
+              type="button"
+              phx-click="cancel_upload"
+              phx-value-ref={entry.ref}
+              class="text-signal-down hover:underline"
+            >
+              remove
+            </button>
+          </div>
+          <div :if={@has_ciphertext} class="flex items-center gap-2">
+            <p class="font-mono text-[11px] text-signal-ok">
+              File loaded — enter the password and decrypt.
+            </p>
+            <button
+              type="button"
+              phx-click="cancel_import"
+              class="font-mono text-[11px] text-muted-foreground hover:underline"
+            >
+              remove
+            </button>
+          </div>
+
+          <.input
+            type="password"
+            name="password"
+            label="Password"
+            value=""
+            autocomplete="off"
+            required
+          />
+
+          <.button type="submit" variant="outline">Decrypt &amp; preview</.button>
+        </form>
+
+        <p :if={@import_error} class="font-mono text-[11px] text-signal-down">
+          Could not read this bundle: {import_error_copy(@import_error)}.
+        </p>
+
+        <div :if={@import_preview} class="space-y-4 rounded-md border border-border bg-muted/30 p-3">
+          <div class="text-xs font-medium">This bundle will change:</div>
+
+          <div
+            :if={@import_preview.privileged?}
+            class="flex items-start gap-2 rounded-md border border-signal-down/40 bg-signal-down/10 px-3 py-2 text-xs text-signal-down"
+          >
+            <span class="lucide-triangle-alert size-4 shrink-0 block" />
+            <span>
+              This bundle changes privileged instance configuration — credentials, distribution
+              access, mail routing, or a first-party app or enabled identity provider. Review every
+              highlighted line below before applying.
+            </span>
+          </div>
+
+          <div
+            :if={@import_preview.ignored_settings != []}
+            class="rounded-md border border-signal-warn/40 bg-signal-warn/10 px-3 py-2 text-xs"
+          >
+            Ignored — instance identity, never carried by a bundle:
+            <span class="font-mono">{Enum.join(@import_preview.ignored_settings, ", ")}</span>
+          </div>
+
+          <div :if={@import_preview.settings != []} class="space-y-1">
+            <div class="font-mono text-[11px] uppercase tracking-wide text-muted-foreground">
+              Settings
+            </div>
+            <dl class="space-y-1 text-xs">
+              <div
+                :for={s <- @import_preview.settings}
+                class={[
+                  "flex justify-between gap-4 border-b border-border/60 pb-1 last:border-0",
+                  privileged_row?(s.privileged?, s.status != :unchanged) &&
+                    "font-medium text-signal-down"
+                ]}
+              >
+                <dt class="font-mono">{s.key}</dt>
+                <dd class="font-mono text-right break-all">{setting_change_text(s)}</dd>
+              </div>
+            </dl>
+          </div>
+
+          <div :if={@import_preview.apps != []} class="space-y-1">
+            <div class="font-mono text-[11px] uppercase tracking-wide text-muted-foreground">
+              Apps
+            </div>
+            <dl class="space-y-1 text-xs">
+              <div
+                :for={a <- @import_preview.apps}
+                class={[
+                  "flex justify-between gap-4 border-b border-border/60 pb-1 last:border-0",
+                  privileged_row?(a.privileged?, a.action != :unchanged) &&
+                    "font-medium text-signal-down"
+                ]}
+              >
+                <dt class="font-mono">
+                  {a.slug} <span class="text-muted-foreground">({action_label(a.action)})</span>
+                  <span :if={a.first_party} class="text-signal-down">1st-party</span>
+                </dt>
+                <dd class="font-mono text-right break-all">{a.callback_url}</dd>
+              </div>
+            </dl>
+          </div>
+
+          <div :if={@import_preview.identity_providers != []} class="space-y-1">
+            <div class="font-mono text-[11px] uppercase tracking-wide text-muted-foreground">
+              Identity providers
+            </div>
+            <dl class="space-y-1 text-xs">
+              <div
+                :for={p <- @import_preview.identity_providers}
+                class={[
+                  "space-y-0.5 border-b border-border/60 pb-1 last:border-0",
+                  privileged_row?(p.privileged?, p.action != :unchanged) &&
+                    "font-medium text-signal-down"
+                ]}
+              >
+                <div class="flex justify-between gap-4">
+                  <dt class="font-mono">
+                    {p.slug} <span class="text-muted-foreground">({action_label(p.action)})</span>
+                    <span :if={p.enabled} class="text-signal-down">enabled</span>
+                  </dt>
+                </div>
+                <dd class="font-mono break-all text-muted-foreground">
+                  authorize: {p.authorize_url} · token: {p.token_url} · userinfo: {p.userinfo_url}
+                </dd>
+              </div>
+            </dl>
+          </div>
+
+          <div :if={@import_preview.webhook_endpoints != []} class="space-y-1">
+            <div class="font-mono text-[11px] uppercase tracking-wide text-muted-foreground">
+              Webhook endpoints
+            </div>
+            <dl class="space-y-1 text-xs">
+              <div
+                :for={e <- @import_preview.webhook_endpoints}
+                class="flex justify-between gap-4 border-b border-border/60 pb-1 last:border-0"
+              >
+                <dt class="font-mono text-muted-foreground">({action_label(e.action)})</dt>
+                <dd class="font-mono text-right break-all">{e.url}</dd>
+              </div>
+            </dl>
+          </div>
+
+          <div class="flex justify-end gap-2">
+            <.button type="button" variant="outline" phx-click="cancel_import">Cancel</.button>
+            <.button
+              type="button"
+              phx-click="apply_import"
+              data-confirm="Apply this bundle? Matching settings, apps, providers and webhooks are overwritten; nothing is deleted."
+            >
+              Apply import
+            </.button>
+          </div>
+        </div>
+      </.settings_group>
+    </div>
+    """
+  end
+
+  defp import_error_copy(:wrong_password), do: "wrong password"
+  defp import_error_copy(:malformed), do: "not a bundle"
+  defp import_error_copy(:unsupported_version), do: "exported by a newer version of You"
+
+  defp privileged_row?(privileged?, changed?), do: privileged? and changed?
+
+  defp action_label(:create), do: "create"
+  defp action_label(:update), do: "update"
+  defp action_label(:unchanged), do: "unchanged"
+
+  defp setting_change_text(%{secret?: true, status: status}), do: status_label(status)
+
+  defp setting_change_text(%{status: :unchanged, new: new}),
+    do: "unchanged (#{display_value(new)})"
+
+  defp setting_change_text(%{old: old, new: new}),
+    do: "#{display_value(old)} → #{display_value(new)}"
+
+  defp status_label(:unchanged), do: "unchanged"
+  defp status_label(:set), do: "set"
+  defp status_label(:cleared), do: "cleared"
+  defp status_label(:changed), do: "changed"
+
+  defp display_value(nil), do: "(empty)"
+  defp display_value(""), do: "(empty)"
+  defp display_value(value), do: to_string(value)
 
   # ── small shared pieces ───────────────────────────────────────
   attr :title, :string, required: true

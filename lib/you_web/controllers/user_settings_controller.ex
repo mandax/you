@@ -158,6 +158,23 @@ defmodule YouWeb.UserSettingsController do
     end
   end
 
+  def regenerate_recovery_codes(conn, _params) do
+    user = conn.assigns.current_scope.user
+
+    case Accounts.regenerate_recovery_codes(user) do
+      {:ok, recovery_codes} ->
+        conn
+        |> put_flash(:info, "Recovery codes regenerated.")
+        |> assign(:recovery_codes, recovery_codes)
+        |> render(:totp_recovery)
+
+      {:error, :totp_not_enabled} ->
+        conn
+        |> put_flash(:error, "Two-factor authentication is not enabled.")
+        |> redirect(to: ~p"/users/settings")
+    end
+  end
+
   def totp_disable(conn, _params) do
     user = conn.assigns.current_scope.user
     {:ok, _user} = Accounts.disable_totp(user)
@@ -200,12 +217,16 @@ defmodule YouWeb.UserSettingsController do
   defp assign_email_and_password_changesets(conn, _opts) do
     user = conn.assigns.current_scope.user
 
+    recovery_codes_remaining =
+      if user.totp_enabled, do: Accounts.count_unused_recovery_codes(user)
+
     conn
     |> assign(:email_changeset, Accounts.change_user_email(user))
     |> assign(:password_changeset, Accounts.change_user_password(user))
     |> assign(:sessions, Accounts.list_user_sessions(user))
     |> assign(:current_token, get_session(conn, :user_token))
     |> assign(:federated_identities, Accounts.list_federated_identities_for_user(user))
+    |> assign(:recovery_codes_remaining, recovery_codes_remaining)
   end
 
   defp get_user_consents(user_id) do

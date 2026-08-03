@@ -64,8 +64,12 @@ defmodule You.Admin do
     |> Ecto.Changeset.put_change(:client_secret_hash, hashed)
     |> Repo.insert()
     |> case do
-      {:ok, app} -> {:ok, app, secret}
-      {:error, changeset} -> {:error, changeset}
+      {:ok, app} ->
+        You.Mode.invalidate_app_cache()
+        {:ok, app, secret}
+
+      {:error, changeset} ->
+        {:error, changeset}
     end
   end
 
@@ -84,6 +88,8 @@ defmodule You.Admin do
     |> Repo.update()
     |> case do
       {:ok, app} ->
+        You.Mode.invalidate_app_cache()
+
         # Rotation invalidates the live secret immediately, so it needs a trail
         # of its own rather than inheriting `update_app`'s.
         :telemetry.execute([:you, :audit, :admin, :action], %{}, %{
@@ -104,11 +110,28 @@ defmodule You.Admin do
   def get_user!(id), do: Repo.get!(User, id)
 
   @doc """
-  Lists all users.
+  Lists users, ordered by email.
+
+  `:limit` and `:offset` page the result; unpaged callers get everything, which
+  is fine for the console but not for an API answering an unbounded request.
   """
-  def list_users do
-    Repo.all(from u in User, order_by: [asc: u.email])
+  def list_users(opts \\ []) do
+    query = from(u in User, order_by: [asc: u.email])
+
+    query =
+      case opts[:limit] do
+        nil -> query
+        limit -> from(q in query, limit: ^limit, offset: ^(opts[:offset] || 0))
+      end
+
+    Repo.all(query)
   end
+
+  @doc "How many users exist."
+  def count_users, do: Repo.aggregate(User, :count)
+
+  @doc "How many users are You admins."
+  def count_admins, do: Repo.aggregate(from(u in User, where: u.is_admin), :count)
 
   @doc """
   Lists all users with their passkey and federated-identity counts.
@@ -179,6 +202,9 @@ defmodule You.Admin do
     Repo.all(App)
   end
 
+  @doc "How many apps are registered."
+  def count_apps, do: Repo.aggregate(App, :count)
+
   @doc """
   Fetches a single app by id, raising if it does not exist.
   """
@@ -188,6 +214,12 @@ defmodule You.Admin do
   Fetches a single app by slug (its client_id), raising if it does not exist.
   """
   def get_app_by_slug!(slug) when is_binary(slug), do: Repo.get_by!(App, slug: slug)
+
+  @doc """
+  Fetches a single app by slug, or nil. For callers where an unknown slug is
+  an ordinary outcome rather than a bug — a preview link someone edited, say.
+  """
+  def get_app_by_slug(slug) when is_binary(slug), do: Repo.get_by(App, slug: slug)
 
   @doc """
   Updates an existing app's attributes.
@@ -203,6 +235,8 @@ defmodule You.Admin do
     # Only on success: a rejected changeset that still emitted would put a
     # change into the audit trail that never happened.
     with {:ok, _} <- result do
+      You.Mode.invalidate_app_cache()
+
       :telemetry.execute([:you, :audit, :admin, :action], %{}, %{
         action: "update_app",
         app_slug: app.slug
@@ -286,6 +320,8 @@ defmodule You.Admin do
     # Only on success, matching every other mutator here. A failed delete that
     # still emitted would put an app removal into the trail that never happened.
     with {:ok, _} <- result do
+      You.Mode.invalidate_app_cache()
+
       :telemetry.execute([:you, :audit, :admin, :action], %{}, %{
         action: "delete_app",
         app_slug: app.slug

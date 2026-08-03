@@ -12,8 +12,10 @@ All runtime configuration is read from environment variables in
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `DATABASE_PATH` | Yes | (none) | Path to the SQLite database file (e.g. `/data/you/prod.db`) |
-| `SECRET_KEY_BASE` | Yes | (none) | Phoenix secret key. Generate with `mix phx.gen.secret` or `openssl rand -base64 48` |
+| `SECRET_KEY_BASE` | No | generated | Phoenix secret key. When unset it is generated on first boot and persisted to `$(dirname DATABASE_PATH)/secret_key_base` with mode 0600. Set it explicitly if you manage secrets outside the data volume |
 | `PHX_HOST` | Yes | `example.com` | Public hostname. Drives generated URLs (magic links, OIDC discovery, WebAuthn origin) |
+| `PHX_SCHEME` | No | `https` | Scheme for generated URLs. Leave unset behind Cloudflare or any TLS proxy. `http` is for localhost or a private network; it also drops the `secure` flag from the session cookie, since a `secure` cookie is never sent over plaintext. Anything else aborts the boot |
+| `PHX_URL_PORT` | No | `443`/`80` | Port in generated URLs, when the public port is not the scheme's default |
 | `PORT` | No | `4000` | HTTP port the app listens on |
 | `POOL_SIZE` | No | `10` | Ecto connection pool size |
 | `PHX_SERVER` | No | (none) | Set to `true` to start the HTTP server (already set in the Docker image) |
@@ -38,21 +40,27 @@ production, point it at your SMTP relay:
 | `SMTP_PASSWORD` | SMTP auth password |
 | `MAIL_FROM` | Sender address, default `no-reply@<PHX_HOST>` |
 
-`SMTP_HOST` is required in production (boot aborts without it). `SMTP_USERNAME`
-and `SMTP_PASSWORD` are optional as a pair: omit both for an unauthenticated
-relay. TLS (STARTTLS) is always enforced. Without a working SMTP relay,
-magic-link and confirmation emails are not delivered. Password and passkey
-logins still work.
+`SMTP_USERNAME` and `SMTP_PASSWORD` are optional as a pair: omit both for an
+unauthenticated relay. TLS (STARTTLS) is always enforced.
+
+Without `SMTP_HOST` the boot does not abort: mail is kept in an in-memory
+mailbox that admins can read at `/console/mailbox`, and the console overview
+says the instance is not production ready. That exists so an evaluation can
+exercise magic links and email 2FA, not so an install can run without mail —
+the mailbox is lost on restart and no user ever receives anything. Password and
+passkey logins still work either way.
 
 ## JWT signing keys
 
-Access tokens and id_tokens are Ed25519-signed JWTs. Without configuration You
-generates an **ephemeral key per boot**, so every token dies on restart, and
-multiple replicas would each sign with a different key. Set a persistent key:
+Access tokens and id_tokens are Ed25519-signed JWTs. When `JWT_SIGNING_KEY` is
+unset You generates a key on first boot and persists it to
+`$(dirname DATABASE_PATH)/jwt_signing_key` (mode 0600), so tokens survive
+restarts. Set it explicitly when you manage secrets outside the data volume, or
+when several replicas must sign with the same key without sharing a volume:
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `JWT_SIGNING_KEY` | Recommended | base64url-encoded 32-byte Ed25519 seed. Generate: `mix run -e ':crypto.strong_rand_bytes(32) \|> Base.url_encode64(padding: false) \|> IO.puts()'` |
+| `JWT_SIGNING_KEY` | No | base64url-encoded 32-byte Ed25519 seed. Generate: `mix run -e ':crypto.strong_rand_bytes(32) \|> Base.url_encode64(padding: false) \|> IO.puts()'` |
 | `JWT_KEY_ID` | No | Key id stamped into token headers and JWKS. Default `you-ed25519-v1` |
 | `JWT_PREVIOUS_KEYS` | No | Comma-separated `kid:seed` pairs kept for verification only, during rotation |
 
@@ -75,8 +83,10 @@ The endpoint is compiled with `force_ssl` using
 - HTTP requests are redirected to HTTPS and HSTS is set automatically.
 - `localhost` / `127.0.0.1` are excluded from the redirect (health checks).
 
-`config/runtime.exs` sets the endpoint URL to `https://<PHX_HOST>:443`, so all
-generated links are HTTPS regardless of the internal port.
+`config/runtime.exs` sets the endpoint URL from `PHX_SCHEME`/`PHX_HOST`
+(`https://<PHX_HOST>:443` unless you say otherwise), so all generated links use
+that scheme regardless of the internal port, and the session cookie is marked
+`secure` whenever the scheme is https.
 
 ## Database
 

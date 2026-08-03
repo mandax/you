@@ -1,202 +1,27 @@
-<Layouts.public flash={@flash} current_scope={@current_scope}>
-  <div class="grid min-h-[calc(100vh-3.5rem)] lg:grid-cols-2">
-    <%!-- brand panel: same graph language as the landing hero --%>
-    <div class="relative hidden overflow-hidden border-r border-border lg:block">
-      <canvas data-graph class="absolute inset-0 h-full w-full" aria-hidden="true"></canvas>
-      <div class="pointer-events-none absolute inset-0 bg-gradient-to-t from-background/70 via-transparent to-background/30">
-      </div>
-      <div class="relative flex h-full flex-col justify-end p-12">
-        <p class="font-mono text-xs uppercase tracking-widest text-muted-foreground">
-          Self-hosted identity
-        </p>
-        <h2 class="mt-3 max-w-md text-3xl font-bold leading-tight tracking-tight">
-          One login for every service you run.
-        </h2>
-        <p class="mt-2 max-w-md text-sm text-muted-foreground">
-          Your users' credentials stay on your hardware.
-        </p>
-      </div>
-    </div>
-
-    <%!-- form panel --%>
-    <%!-- Brand values ride in an inline custom property; the light/dark switch
-         and the rules that consume them live in app.css, so admin input
-         never reaches a stylesheet. --%>
-    <div
-      class={[
-        "flex items-center justify-center px-5 py-16",
-        assigns[:app_brand_color] && "app-branded"
-      ]}
-      style={
-        assigns[:app_brand_color] &&
-          "--app-brand: #{@app_brand_color}; --app-on-brand: #{@app_on_brand}; --app-brand-dark: #{@app_brand_color_dark || @app_brand_color}; --app-on-brand-dark: #{@app_on_brand_dark}"
-      }
-    >
-      <div class="w-full max-w-sm animate-rise-in space-y-6">
-        <div class="text-center">
-          <%= if assigns[:app_name] do %>
-            <.login_header
-              app_name={@app_name}
-              logo_url={assigns[:app_logo_url]}
-              brand_color={assigns[:app_brand_color]}
-              brand_color_dark={assigns[:app_brand_color_dark]}
-              accent_color={assigns[:app_accent_color]}
-              accent_color_dark={assigns[:app_accent_color_dark]}
-              headline={assigns[:app_headline]}
-              subtitle={assigns[:app_subtitle]}
-            />
-          <% else %>
-            <.wordmark size="lg" class="justify-center mb-4" />
-            <h1 class="text-2xl font-bold tracking-tight">
-              <%= if @current_scope do %>
-                Confirm your identity
-              <% else %>
-                Welcome back
-              <% end %>
-            </h1>
-          <% end %>
-          <p :if={!@current_scope} class="mt-2 text-sm text-muted-foreground">
-            New here?
-            <.link
-              navigate={
-                if @callback_url,
-                  do: ~p"/users/register?callback_url=#{URI.encode(@callback_url)}",
-                  else: ~p"/users/register"
-              }
-              class="font-medium text-foreground hover:underline"
-              data-brand-text
-            >
-              Create an account
-            </.link>
+<%= if @bare do %>
+  <.login_panel {assigns} />
+  <Layouts.flash_group flash={@flash} />
+<% else %>
+  <Layouts.public flash={@flash} current_scope={@current_scope}>
+    <div class="grid min-h-[calc(100vh-3.5rem)] lg:grid-cols-2">
+      <div class="relative hidden overflow-hidden border-r border-border lg:block">
+        <canvas data-graph class="absolute inset-0 h-full w-full" aria-hidden="true"></canvas>
+        <div class="pointer-events-none absolute inset-0 bg-gradient-to-t from-background/70 via-transparent to-background/30">
+        </div>
+        <div class="relative flex h-full flex-col justify-end p-12">
+          <p class="font-mono text-xs uppercase tracking-widest text-muted-foreground">
+            Self-hosted identity
+          </p>
+          <h2 class="mt-3 max-w-md text-3xl font-bold leading-tight tracking-tight">
+            One login for every service you run.
+          </h2>
+          <p class="mt-2 max-w-md text-sm text-muted-foreground">
+            Your users' credentials stay on your hardware.
           </p>
         </div>
-
-        <div :if={local_mail_adapter?()} class="rounded-lg border border-border p-4 text-sm">
-          <div class="flex items-start gap-3">
-            <.icon name="info-circle" class="mt-0.5 block size-5 shrink-0 text-muted-foreground" />
-            <div>
-              <p class="font-medium">Local mail adapter</p>
-              <p class="mt-1 text-muted-foreground">
-                To see sent emails, visit <.link href="/dev/mailbox" class="underline">the mailbox page</.link>.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <.form
-          :let={f}
-          :if={"password" in @methods}
-          for={@form}
-          as={:user}
-          id="login_form_password"
-          action={~p"/users/log-in"}
-        >
-          <div class="space-y-4">
-            <.input
-              readonly={!!@current_scope}
-              field={f[:email]}
-              type="email"
-              label="Email"
-              autocomplete="username"
-              spellcheck="false"
-              required
-              phx-mounted={JS.focus()}
-            />
-            <.input
-              field={f[:password]}
-              type="password"
-              label="Password"
-              autocomplete="current-password"
-              spellcheck="false"
-            />
-            <div class="flex items-center justify-between text-sm">
-              <label class="flex items-center gap-2 text-muted-foreground">
-                <input
-                  type="checkbox"
-                  name={@form[:remember_me].name}
-                  value="true"
-                  checked
-                  class="size-4 rounded border-input accent-[hsl(var(--primary))]"
-                /> Stay logged in
-              </label>
-              <.link
-                navigate={
-                  if @callback_url,
-                    do: ~p"/users/reset-password?callback_url=#{URI.encode(@callback_url)}",
-                    else: ~p"/users/reset-password"
-                }
-                class="font-medium text-foreground hover:underline"
-                data-brand-text
-              >
-                Forgot password?
-              </.link>
-            </div>
-            <.button type="submit" class="w-full" size="lg" data-brand-bg>
-              Log in <span class="lucide-arrow-right block size-4" />
-            </.button>
-          </div>
-        </.form>
-
-        <div
-          :if={"password" in @methods and "magic_link" in @methods}
-          class="flex items-center gap-3 text-sm text-muted-foreground"
-        >
-          <span class="flex-1 border-t border-border" />
-          <span>or</span>
-          <span class="flex-1 border-t border-border" />
-        </div>
-
-        <.form
-          :let={f}
-          :if={"magic_link" in @methods}
-          for={@form}
-          as={:user}
-          id="login_form_magic"
-          action={~p"/users/log-in"}
-        >
-          <input type="hidden" name={f[:email].name} value={f[:email].value} />
-          <.button type="submit" variant="outline" class="w-full">
-            Email me a magic link <span class="lucide-mail block size-4" />
-          </.button>
-        </.form>
-        <script :if={"password" in @methods and "magic_link" in @methods}>
-          // The magic-link form shares the email typed in the password form.
-          document.getElementById("login_form_magic").addEventListener("submit", (e) => {
-            const email = document.querySelector("#login_form_password input[name='user[email]']").value
-            e.target.querySelector("input[name='user[email]']").value = email
-          })
-        </script>
-
-        <div
-          :if={
-            ("social" in @methods and @providers != []) or
-              ("passkey" in @methods and !@current_scope)
-          }
-          class="space-y-3"
-        >
-          <.button
-            :for={
-              provider <- if("social" in @methods, do: ordered_providers(@providers), else: [])
-            }
-            href={~p"/auth/#{provider.slug}"}
-            variant="outline"
-            class="w-full"
-          >
-            <span :if={provider.icon} class={["lucide-#{provider.icon}", "size-4 block"]} />
-            Sign in with {provider.display_name}
-          </.button>
-          <button
-            :if={"passkey" in @methods and !@current_scope}
-            id="passkey-login"
-            type="button"
-            data-start-url={~p"/users/log-in/passkey/start"}
-            data-finish-url={~p"/users/log-in/passkey/finish"}
-            class="inline-flex w-full items-center justify-center gap-2 rounded-md border border-input bg-background px-4 py-2 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
-          >
-            <span class="lucide-fingerprint-pattern size-4" /> Sign in with a passkey
-          </button>
-        </div>
       </div>
+
+      <.login_panel {assigns} />
     </div>
-  </div>
-</Layouts.public>
+  </Layouts.public>
+<% end %>

@@ -1,54 +1,57 @@
-<Layouts.public flash={@flash} current_scope={@current_scope}>
-  <div class="mx-auto max-w-sm pt-24 pb-32 space-y-6">
-    <div class="text-center">
-      <div class="size-10 rounded-xl bg-primary text-primary-foreground flex items-center justify-center mx-auto mb-4">
-        <span class="lucide-mail size-5 block" />
-      </div>
-      <h1 class="text-xl font-medium tracking-tight">Check your email</h1>
-      <p class="text-sm text-muted-foreground mt-2">
-        We sent a 6-digit code to your email. Enter it to finish signing in.
-      </p>
+<Layouts.auth
+  flash={@flash}
+  current_scope={@current_scope}
+  bare={@bare}
+  brand_style={YouWeb.AppBranding.brand_style(assigns)}
+>
+  <div class="text-center">
+    <div class="size-10 rounded-xl bg-primary text-primary-foreground flex items-center justify-center mx-auto mb-4">
+      <span class="lucide-mail size-5 block" />
     </div>
-
-    <div
-      :if={assigns[:error]}
-      class="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-foreground flex items-center gap-2"
-    >
-      <.icon name="danger-circle" class="size-4 shrink-0 text-destructive" />
-      {@error}
-    </div>
-
-    <.form
-      :let={f}
-      for={@form}
-      as={:email_2fa}
-      id="email_2fa_form"
-      action={~p"/users/log-in/email-2fa"}
-    >
-      <div class="space-y-4">
-        <.input
-          field={f[:code]}
-          type="text"
-          inputmode="numeric"
-          label="Verification code"
-          autocomplete="one-time-code"
-          spellcheck="false"
-          required
-          phx-mounted={JS.focus()}
-        />
-        <.button type="submit" class="w-full">Verify <span aria-hidden="true">→</span></.button>
-      </div>
-    </.form>
-
-    <p class="text-center text-sm text-muted-foreground">
-      Didn't get it?
-      <.link
-        href={~p"/users/log-in/email-2fa/resend"}
-        method="post"
-        class="font-medium text-foreground hover:underline"
-      >
-        Resend code
-      </.link>
+    <h1 class="text-xl font-medium tracking-tight">Check your email</h1>
+    <p class="text-sm text-muted-foreground mt-2">
+      We sent a 6-digit code to your email. Enter it to finish signing in.
     </p>
   </div>
-</Layouts.public>
+
+  <div
+    :if={assigns[:error]}
+    class="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-foreground flex items-center gap-2"
+  >
+    <.icon name="danger-circle" class="size-4 shrink-0 text-destructive" />
+    {@error}
+  </div>
+
+  <.form
+    :let={f}
+    for={@form}
+    as={:email_2fa}
+    id="email_2fa_form"
+    action={~p"/users/log-in/email-2fa"}
+  >
+    <div class="space-y-4">
+      <.input
+        field={f[:code]}
+        type="text"
+        inputmode="numeric"
+        label="Verification code"
+        autocomplete="one-time-code"
+        spellcheck="false"
+        required
+        phx-mounted={JS.focus()}
+      />
+      <.button type="submit" class="w-full">Verify <span aria-hidden="true">→</span></.button>
+    </div>
+  </.form>
+
+  <p class="text-center text-sm text-muted-foreground">
+    Didn't get it?
+    <.link
+      href={~p"/users/log-in/email-2fa/resend"}
+      method="post"
+      class="font-medium text-foreground hover:underline"
+    >
+      Resend code
+    </.link>
+  </p>
+</Layouts.auth>

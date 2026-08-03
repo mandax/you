@@ -13,7 +13,8 @@ defmodule You.Accounts do
     RecoveryCode,
     Consent,
     FederatedIdentity,
-    Passkey
+    Passkey,
+    RevokedJti
   }
 
   ## Database getters
@@ -108,13 +109,39 @@ defmodule You.Accounts do
   Returns `{:ok, user}` or `{:error, changeset}`.
   """
   def register_user_with_password(attrs) do
+    # The password changeset is built before the transaction opens. Building it
+    # runs the pwned-password check — a live HTTP call with a 3s timeout — and
+    # bcrypt, and SQLite has one writer: doing that under an open write lock
+    # blocks every other writer on the instance for the duration.
+    password_changeset = prepare_password(attrs)
+
     Repo.transact(fn ->
       with {:ok, user} <- register_user(attrs),
-           {:ok, {user, _tokens}} <- update_user_password(user, attrs),
+           {:ok, {user, _tokens}} <- apply_password(user, password_changeset),
            {:ok, user} <- confirm_user(user) do
         {:ok, user}
       end
     end)
+  end
+
+  @doc """
+  Builds a password changeset without touching the database.
+
+  Hashing and the pwned-password check are the slow parts of setting a
+  password; doing them before a write transaction opens keeps SQLite's single
+  writer free while they run. Pair with `apply_password/2`.
+  """
+  def prepare_password(attrs), do: User.password_changeset(%User{}, attrs)
+
+  @doc "Applies a changeset built by `prepare_password/1` to `user`."
+  def apply_password(user, %Ecto.Changeset{valid?: false} = changeset) do
+    {:error, %{changeset | data: user, action: :insert}}
+  end
+
+  def apply_password(user, changeset) do
+    user
+    |> Ecto.Changeset.change(Map.take(changeset.changes, [:hashed_password]))
+    |> update_user_and_delete_all_tokens()
   end
 
   # Mirrors the confirmation done by the magic-link login: stamp
@@ -423,34 +450,36 @@ defmodule You.Accounts do
   @doc """
   Consumes an authorization code, returning the user if valid.
 
-  When the code was issued with a PKCE `code_challenge`, `code_verifier` is
-  required and must satisfy `base64url(sha256(code_verifier)) == code_challenge`;
-  otherwise the code is rejected. The code is single-use; it is always deleted
-  once found, so a failed verification cannot be retried.
+  The redeeming client must prove it is entitled to the code, one of two ways:
 
-  Returns `{:ok, user, scopes}`, `{:error, :invalid_grant}` (PKCE failure), or
+    * PKCE — the code was issued with a `code_challenge` and the caller presents
+      a `code_verifier` satisfying
+      `base64url(sha256(code_verifier)) == code_challenge`.
+    * Client authentication — the caller has already verified a confidential
+      client's secret (or is trusted by transport, as over Erlang distribution)
+      and passes `client_authenticated: true`.
+
+  A code issued without a challenge is redeemable **only** by an authenticated
+  client. The code is single-use; it is always deleted once found, so a failed
+  verification cannot be retried.
+
+  Returns `{:ok, user, scopes, app_slug}`, `{:error, :invalid_grant}` (PKCE
+  failure), `{:error, :invalid_client}` (neither proof presented), or
   `{:error, :not_found}`.
   """
-  def consume_auth_code(code, code_verifier \\ nil) when is_binary(code) do
+  def consume_auth_code(code, code_verifier \\ nil, opts \\ []) when is_binary(code) do
     expiry = You.Settings.get(:code_expiry_minutes)
+    authenticated? = Keyword.get(opts, :client_authenticated, false)
 
-    with {:ok, query} <- UserToken.verify_auth_code_query(code, expiry) do
-      case Repo.one(query) do
-        {user, token} ->
-          meta = parse_meta(token.meta)
-          Repo.delete!(token)
-
-          if pkce_ok?(meta["code_challenge"], code_verifier) do
-            {:ok, user, meta["scopes"] || ["email"], meta["app"]}
-          else
-            {:error, :invalid_grant}
-          end
-
-        nil ->
-          {:error, :not_found}
-      end
+    with {:ok, query} <- UserToken.verify_auth_code_query(code, expiry),
+         {user, token} <- Repo.one(query),
+         meta = parse_meta(token.meta),
+         _ = Repo.delete!(token),
+         :ok <- code_proof(meta["code_challenge"], code_verifier, authenticated?) do
+      {:ok, user, meta["scopes"] || ["email"], meta["app"]}
     else
-      :error -> {:error, :not_found}
+      {:error, reason} -> {:error, reason}
+      _ -> {:error, :not_found}
     end
   end
 
@@ -463,8 +492,13 @@ defmodule You.Accounts do
     end
   end
 
-  # No challenge was bound → PKCE not required (backward compatible).
-  defp pkce_ok?(nil, _verifier), do: true
+  defp code_proof(nil, _verifier, true), do: :ok
+  defp code_proof(nil, _verifier, _authenticated?), do: {:error, :invalid_client}
+
+  defp code_proof(challenge, verifier, _authenticated?) do
+    if pkce_ok?(challenge, verifier), do: :ok, else: {:error, :invalid_grant}
+  end
+
   defp pkce_ok?(_challenge, verifier) when not is_binary(verifier), do: false
 
   defp pkce_ok?(challenge, verifier) do
@@ -554,6 +588,38 @@ defmodule You.Accounts do
       |> Repo.update()
     end)
   end
+
+  @doc """
+  Regenerates a user's recovery codes, replacing the entire existing set.
+
+  Every existing code is deleted first, used or not, and a fresh set of 8 is
+  issued in its place. A code that was never used is gone just as surely as
+  one that was: this is the only way to recover from a low or exhausted set
+  without disabling and re-enrolling TOTP from scratch.
+
+  Requires TOTP to already be enabled. Emits an account-level audit event,
+  since regenerating invalidates every code that came before it.
+
+  Returns `{:ok, [string]}` or `{:error, :totp_not_enabled}`.
+  """
+  def regenerate_recovery_codes(%User{totp_enabled: true} = user) do
+    result =
+      Repo.transact(fn ->
+        Repo.delete_all(from r in RecoveryCode, where: r.user_id == ^user.id)
+        {:ok, generate_recovery_codes(user)}
+      end)
+
+    with {:ok, _codes} <- result do
+      :telemetry.execute([:you, :audit, :account, :update], %{}, %{
+        user_id: user.id,
+        action: "regenerate_recovery_codes"
+      })
+    end
+
+    result
+  end
+
+  def regenerate_recovery_codes(%User{}), do: {:error, :totp_not_enabled}
 
   ## Email 2FA (one-time code emailed as a second factor)
 
@@ -679,6 +745,54 @@ defmodule You.Accounts do
     NimbleTOTP.valid?(secret, code)
   end
 
+  @doc """
+  Verifies a recovery code for a user and consumes it on success (single-use).
+
+  Checks the code against every unused recovery code the user has, since each
+  is hashed with its own bcrypt salt and cannot be looked up directly. Runs a
+  dummy `Bcrypt.no_user_verify/0` whenever there is no match — including when
+  the user has no unused codes left — so a failed attempt takes the same time
+  either way and doesn't leak whether the user has recovery codes remaining.
+
+  Returns `{:ok, user}` or `{:error, :invalid_code}`.
+  """
+  def verify_recovery_code(%User{} = user, code) when is_binary(code) do
+    unused_codes =
+      Repo.all(from r in RecoveryCode, where: r.user_id == ^user.id and r.used == false)
+
+    case Enum.find(unused_codes, &Bcrypt.verify_pass(code, &1.code_hash)) do
+      nil ->
+        Bcrypt.no_user_verify()
+        {:error, :invalid_code}
+
+      matched_code ->
+        claim_recovery_code(matched_code, user)
+    end
+  end
+
+  # Single-use is decided by the update itself, not by the read above: two
+  # requests carrying the same code can both see it unused, and only the one
+  # that flips the row may be let through.
+  defp claim_recovery_code(matched_code, user) do
+    {claimed, _} =
+      Repo.update_all(
+        from(r in RecoveryCode, where: r.id == ^matched_code.id and r.used == false),
+        set: [used: true]
+      )
+
+    if claimed == 1, do: {:ok, user}, else: {:error, :invalid_code}
+  end
+
+  @doc """
+  Returns how many unused recovery codes a user has left.
+  """
+  def count_unused_recovery_codes(%User{} = user) do
+    Repo.aggregate(
+      from(r in RecoveryCode, where: r.user_id == ^user.id and r.used == false),
+      :count
+    )
+  end
+
   defp generate_recovery_codes(%User{} = user) do
     codes = for _ <- 1..8, do: generate_code()
 
@@ -707,10 +821,7 @@ defmodule You.Accounts do
     retention_hours = You.Settings.get(:jwt_expiry_hours) + 1
     threshold = DateTime.add(DateTime.utc_now(), -retention_hours * 3600, :second)
 
-    Repo.delete_all(
-      from t in UserToken,
-        where: t.context == "jti_revoked" and t.inserted_at < ^threshold
-    )
+    Repo.delete_all(from r in RevokedJti, where: r.inserted_at < ^threshold)
   end
 
   ## LGPD: Consent
@@ -733,7 +844,7 @@ defmodule You.Accounts do
         expires_at: expires_at
       })
       |> Repo.insert(
-        on_conflict: {:replace, [:scopes, :granted_at, :expires_at]},
+        on_conflict: {:replace, [:scopes, :granted_at, :expires_at, :updated_at]},
         conflict_target: [:user_id, :app_id]
       )
 
@@ -821,22 +932,18 @@ defmodule You.Accounts do
   """
   def find_or_create_user_by_federated_identity(provider, subject, email, email_verified \\ false)
       when is_binary(provider) and is_binary(subject) and is_binary(email) do
-    case get_federated_identity(provider, subject) do
+    with nil <- get_federated_identity(provider, subject),
+         nil <- get_user_by_email(email) do
+      create_user_with_federated_identity(provider, subject, email, email_verified)
+    else
       %FederatedIdentity{} = fed ->
         {:ok, get_user!(fed.user_id)}
 
-      nil ->
-        case get_user_by_email(email) do
-          %User{} = existing ->
-            if email_verified do
-              link_federated_identity(existing, provider, subject, email)
-            else
-              {:error, :email_not_verified}
-            end
+      %User{} = existing when email_verified ->
+        link_federated_identity(existing, provider, subject, email)
 
-          nil ->
-            create_user_with_federated_identity(provider, subject, email, email_verified)
-        end
+      %User{} ->
+        {:error, :email_not_verified}
     end
   end
 
@@ -1000,9 +1107,8 @@ defmodule You.Accounts do
   defp update_user_and_delete_all_tokens(changeset) do
     Repo.transact(fn ->
       with {:ok, user} <- Repo.update(changeset) do
-        tokens_to_expire = Repo.all_by(UserToken, user_id: user.id)
-
-        Repo.delete_all(from(t in UserToken, where: t.id in ^Enum.map(tokens_to_expire, & &1.id)))
+        {_count, tokens_to_expire} =
+          Repo.delete_all(from(t in UserToken, where: t.user_id == ^user.id, select: t))
 
         {:ok, {user, tokens_to_expire}}
       end

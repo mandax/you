@@ -265,6 +265,79 @@ defmodule YouWeb.ConsoleLiveTest do
       refute Accounts.get_user!(other.id).email == other.email
     end
 
+    test "reset_2fa clears TOTP, wipes recovery codes, revokes sessions, and is audited", %{
+      conn: conn
+    } do
+      other = You.AccountsFixtures.user_fixture()
+      {:ok, %{secret: secret}} = Accounts.generate_totp_setup(other)
+      other = Accounts.get_user!(other.id)
+
+      {:ok, %{recovery_codes: old_codes}} =
+        Accounts.enable_totp(other, NimbleTOTP.verification_code(secret))
+
+      other = Accounts.get_user!(other.id)
+      assert other.totp_enabled
+      assert Accounts.count_unused_recovery_codes(other) == 8
+
+      session_token = Accounts.generate_user_session_token(other)
+
+      :telemetry.attach(
+        "test-reset-2fa-audit",
+        [:you, :audit, :admin, :action],
+        fn _event, _measurements, metadata, test_pid ->
+          send(test_pid, {:audit, metadata})
+        end,
+        self()
+      )
+
+      {:ok, lv, _} = live(conn, "/console?view=users")
+      render_click(lv, "edit_user", %{"id" => other.id})
+      html = render_click(lv, "reset_2fa", %{"id" => other.id})
+
+      assert html =~ "Two-factor authentication reset"
+
+      reset_user = Accounts.get_user!(other.id)
+      refute reset_user.totp_enabled
+      assert reset_user.totp_secret == nil
+      assert Accounts.count_unused_recovery_codes(reset_user) == 0
+      assert Accounts.get_user_by_session_token(session_token) == nil
+
+      for code <- old_codes do
+        assert {:error, :invalid_code} = Accounts.verify_recovery_code(reset_user, code)
+      end
+
+      assert_receive {:audit, %{action: "reset_2fa", target: email}}
+      assert email == other.email
+
+      :telemetry.detach("test-reset-2fa-audit")
+    end
+
+    test "a user can re-enroll TOTP after an admin reset", %{conn: conn} do
+      other = You.AccountsFixtures.user_fixture()
+      {:ok, %{secret: secret}} = Accounts.generate_totp_setup(other)
+      other = Accounts.get_user!(other.id)
+      {:ok, _} = Accounts.enable_totp(other, NimbleTOTP.verification_code(secret))
+      other = Accounts.get_user!(other.id)
+
+      {:ok, lv, _} = live(conn, "/console?view=users")
+      render_click(lv, "edit_user", %{"id" => other.id})
+      render_click(lv, "reset_2fa", %{"id" => other.id})
+
+      reset_user = Accounts.get_user!(other.id)
+      refute reset_user.totp_enabled
+
+      {:ok, %{secret: new_secret}} = Accounts.generate_totp_setup(reset_user)
+      reset_user = Accounts.get_user!(reset_user.id)
+
+      assert {:ok, %{totp_enabled: true, recovery_codes: new_codes}} =
+               Accounts.enable_totp(reset_user, NimbleTOTP.verification_code(new_secret))
+
+      assert length(new_codes) == 8
+      final_user = Accounts.get_user!(reset_user.id)
+      assert final_user.totp_enabled
+      assert Accounts.count_unused_recovery_codes(final_user) == 8
+    end
+
     test "filters narrow the user list", %{conn: conn} do
       You.AccountsFixtures.user_fixture(%{email: "findme@example.com"})
       {:ok, lv, _} = live(conn, "/console?view=users")
@@ -468,6 +541,25 @@ defmodule YouWeb.ConsoleLiveTest do
 
       assert Settings.get(:scim_bearer_token) == "sekret"
       assert Settings.get(:audit_webhook_url) == "https://hooks.example.com/audit"
+    end
+
+    test "flipping deployment mode reshapes the console for this session", %{conn: conn} do
+      {:ok, _app, _secret} =
+        Admin.create_app(%{
+          slug: "solo",
+          name: "Solo",
+          callback_url: "https://solo.example.com/cb"
+        })
+
+      on_exit(fn -> Application.put_env(:you, :mode, :multi) end)
+
+      {:ok, lv, html} = live(conn, "/console?view=settings")
+      refute html =~ ~s(href="/console/apps/solo")
+
+      render_submit(form(lv, "form[phx-submit=save_settings]"), %{"you_mode" => "single"})
+
+      assert Application.get_env(:you, :mode) == :single
+      assert render(lv) =~ ~s(href="/console/apps/solo")
     end
 
     test "secrets are write-only: never rendered, blank keeps current, clear removes", %{
@@ -740,5 +832,90 @@ defmodule YouWeb.ConsoleLiveTest do
       assert html =~ "https://idp.example.com/authorize"
       assert html =~ "https://idp.example.com/token"
     end
+  end
+
+  describe "per-section data loading" do
+    test "overview renders live counts rather than cached rows", %{conn: conn} do
+      You.AccountsFixtures.user_fixture()
+      extra_admin = You.AccountsFixtures.user_fixture()
+      Admin.promote_admin!(extra_admin)
+
+      {:ok, _lv, html} = live(conn, "/console?view=overview")
+
+      assert metric_value(html, "Users") == Admin.count_users()
+      assert metric_value(html, "Admins") == Admin.count_admins()
+    end
+
+    test "patching to another view loads that view's data", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, "/console?view=audit")
+
+      html = lv |> element("a", "add a webhook for durable retention") |> render_click()
+
+      assert html =~ "Add endpoint"
+    end
+
+    test "logout_user reloads only the user list, not the app list also shown on that view", %{
+      conn: conn
+    } do
+      other = You.AccountsFixtures.user_fixture()
+      token = Accounts.generate_user_session_token(other)
+      {:ok, lv, _html} = live(conn, "/console?view=users")
+
+      {:ok, _app, _secret} =
+        Admin.create_app(%{
+          "name" => "Side App",
+          "slug" => "side-app",
+          "callback_url" => "https://side.example.com/cb"
+        })
+
+      html = render_click(lv, "logout_user", %{"id" => other.id})
+
+      assert Accounts.get_user_by_session_token(token) == nil
+      refute html =~ "Side App"
+    end
+
+    test "the 5s tick reloads the audit feed only on the overview and audit views", %{
+      conn: conn
+    } do
+      {:ok, lv, _html} = live(conn, "/console?view=overview")
+
+      :telemetry.execute([:you, :audit, :admin, :action], %{}, %{
+        action: "probe",
+        target: "tick-event"
+      })
+
+      _ = :sys.get_state(You.Audit.Streamer)
+      refute render(lv) =~ "tick-event"
+
+      send(lv.pid, :refresh)
+      assert render(lv) =~ "tick-event"
+    end
+
+    test "the 5s tick does not re-query users, apps, or providers on other views", %{
+      conn: conn
+    } do
+      {:ok, lv, html} = live(conn, "/console?view=apps")
+      refute html =~ "Ghost App"
+
+      {:ok, _app, _secret} =
+        Admin.create_app(%{
+          "name" => "Ghost App",
+          "slug" => "ghost-app",
+          "callback_url" => "https://ghost.example.com/cb"
+        })
+
+      send(lv.pid, :refresh)
+      refute render(lv) =~ "Ghost App"
+    end
+  end
+
+  defp metric_value(html, label) do
+    [_, value] =
+      Regex.run(
+        ~r/#{Regex.escape(label)}<\/div>\s*<div[^>]*>\s*<span[^>]*>\s*(\d+)\s*</,
+        html
+      )
+
+    String.to_integer(value)
   end
 end

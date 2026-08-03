@@ -17,7 +17,9 @@ config :you, You.Repo,
   database: "priv/repo/you_dev.db",
   stacktrace: true,
   show_sensitive_data_on_connection_error: true,
-  pool_size: 5
+  pool_size: 5,
+  busy_timeout: 5_000,
+  default_transaction_mode: :immediate
 
 # For development, we disable any cache and enable
 # debugging and code reloading.

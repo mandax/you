@@ -35,12 +35,24 @@ defmodule YouWeb.AuthMethods do
   @doc """
   The registered app the in-flight OAuth handoff is for, or `nil` for a plain
   sign-in to You itself.
+
+  An app is named either by the session's `callback_url` or by `?app=<slug>`,
+  which opens that app's login page without an OAuth handoff. Naming neither
+  gives You's own login page, in every deployment mode: branding stays tied to
+  an app that was asked for.
   """
   def app_for(%Plug.Conn{} = conn) do
     with url when is_binary(url) <- get_session(conn, :callback_url),
          {:ok, app} <- Admin.lookup_app_by_callback(url) do
       app
     else
+      _ -> branding_app(conn)
+    end
+  end
+
+  defp branding_app(conn) do
+    case get_session(conn, :branding_app_slug) do
+      slug when is_binary(slug) and slug != "" -> Admin.get_app_by_slug(slug)
       _ -> nil
     end
   end

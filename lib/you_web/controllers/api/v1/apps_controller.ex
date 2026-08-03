@@ -25,18 +25,12 @@ defmodule YouWeb.API.V1.AppsController do
   end
 
   def update(conn, %{"id" => id} = params) do
-    case fetch_app(id) do
-      nil ->
-        not_found(conn)
-
-      app ->
-        case Admin.update_app(app, params) do
-          {:ok, app} ->
-            json(conn, %{data: JSON.app_json(app)})
-
-          {:error, %Ecto.Changeset{} = changeset} ->
-            unprocessable(conn, changeset)
-        end
+    with app when not is_nil(app) <- fetch_app(id),
+         {:ok, app} <- Admin.update_app(app, params) do
+      json(conn, %{data: JSON.app_json(app)})
+    else
+      nil -> not_found(conn)
+      {:error, %Ecto.Changeset{} = changeset} -> unprocessable(conn, changeset)
     end
   end
 

@@ -31,20 +31,19 @@ defmodule YouWeb.Plugs.RateLimit do
 
       {limit, window_ms} ->
         bucket = {key, client_ip(conn)}
-
-        case YouWeb.RateLimit.check(bucket, limit, window_ms) do
-          {:allow, _count} ->
-            conn
-
-          {:deny, retry_after_ms} ->
-            retry_after = max(ceil(retry_after_ms / 1_000), 1)
-
-            conn
-            |> put_resp_header("retry-after", Integer.to_string(retry_after))
-            |> respond()
-            |> halt()
-        end
+        enforce(conn, YouWeb.RateLimit.check(bucket, limit, window_ms))
     end
+  end
+
+  defp enforce(conn, {:allow, _count}), do: conn
+
+  defp enforce(conn, {:deny, retry_after_ms}) do
+    retry_after = max(ceil(retry_after_ms / 1_000), 1)
+
+    conn
+    |> put_resp_header("retry-after", Integer.to_string(retry_after))
+    |> respond()
+    |> halt()
   end
 
   defp respond(conn) do

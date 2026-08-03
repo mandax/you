@@ -33,7 +33,7 @@ defmodule You.JWT do
   """
 
   alias You.Repo
-  alias You.Accounts.UserToken
+  alias You.Accounts.RevokedJti
 
   @default_exp 86_400
   @default_kid "you-ed25519-v1"
@@ -121,18 +121,19 @@ defmodule You.JWT do
 
   @doc """
   Revokes a JWT by adding its JTI to the blocklist. Returns `:ok`.
+
+  Idempotent: revoking the same token twice is a success, as RFC 7009 requires
+  of `/oauth/revoke`, and clients do retry it after a network failure. Works
+  for service tokens too, whose subject is an app slug rather than a user id.
   """
   def revoke(signed) when is_binary(signed) do
     with {:ok, payload} <- jose_verify(signed) do
       jti = payload["jti"]
       sub = payload["sub"]
 
-      %UserToken{
-        token: hash_jti(jti),
-        context: "jti_revoked",
-        user_id: sub
-      }
-      |> Repo.insert()
+      %RevokedJti{}
+      |> RevokedJti.changeset(%{jti_hash: hash_jti(jti), subject: to_string(sub)})
+      |> Repo.insert(on_conflict: :nothing, conflict_target: :jti_hash)
 
       :telemetry.execute([:you, :audit, :token, :revoke], %{}, %{
         user_id: sub,
@@ -228,7 +229,7 @@ defmodule You.JWT do
   defp check_blocklist(%{"jti" => jti} = payload) when is_binary(jti) do
     hashed = hash_jti(jti)
 
-    case Repo.get_by(UserToken, token: hashed, context: "jti_revoked") do
+    case Repo.get_by(RevokedJti, jti_hash: hashed) do
       nil -> {:ok, payload}
       _ -> {:error, :revoked}
     end

@@ -240,7 +240,7 @@ defmodule YouWeb.AppLive.ShowTest do
 
     test "links out to the real login page for this app", %{conn: conn, app: app} do
       {:ok, _lv, html} = live(conn, ~p"/console/apps/#{app.slug}?tab=login")
-      assert html =~ "/users/log-in?callback_url="
+      assert html =~ "/users/log-in?app=#{app.slug}"
     end
 
     test "reflects unsaved headline and subtitle without persisting them", %{
@@ -292,12 +292,12 @@ defmodule YouWeb.AppLive.ShowTest do
       assert html =~ ~s(phx-click="toggle_preview_theme")
 
       refute html =~
-               ~s(class="mt-2 rounded-lg border border-border bg-background bg-cover bg-center px-5 py-8 text-center dark")
+               ~s(class="mt-2 rounded-lg border border-border bg-background px-5 py-8 text-center dark")
 
       html = render_click(lv, "toggle_preview_theme", %{})
 
       assert html =~
-               ~s(class="mt-2 rounded-lg border border-border bg-background bg-cover bg-center px-5 py-8 text-center dark")
+               ~s(class="mt-2 rounded-lg border border-border bg-background px-5 py-8 text-center dark")
 
       # Toggling the preview theme must not flip the console's own document-wide theme.
       refute html =~ ~s(<html class="dark")
@@ -306,7 +306,7 @@ defmodule YouWeb.AppLive.ShowTest do
       html = render_click(lv, "toggle_preview_theme", %{})
 
       refute html =~
-               ~s(class="mt-2 rounded-lg border border-border bg-background bg-cover bg-center px-5 py-8 text-center dark")
+               ~s(class="mt-2 rounded-lg border border-border bg-background px-5 py-8 text-center dark")
     end
   end
 
@@ -460,56 +460,56 @@ defmodule YouWeb.AppLive.ShowTest do
     end
   end
 
-  describe "background and accent" do
+  describe "accent colour" do
     test "previews unsaved values without persisting", %{conn: conn, app: app} do
       {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}?tab=login")
 
       html =
         lv
-        |> form("#app-branding-form", %{
-          "accent_color" => "#0ea5e9",
-          "background_image_url" => "https://cdn.example.com/bg.png"
-        })
+        |> form("#app-branding-form", %{"accent_color" => "#0ea5e9"})
         |> render_change()
 
       assert html =~ "color: #0ea5e9"
-      assert html =~ "background-image: url(https://cdn.example.com/bg.png)"
-
       assert Admin.get_app!(app.id).accent_color == nil
-      assert Admin.get_app!(app.id).background_image_url == nil
     end
 
     # The preview never passes through App.changeset/2, so it needs its own
-    # guards: HEEx escapes markup but not CSS-property or javascript: injection.
-    test "the preview drops an invalid accent color and a javascript background",
-         %{conn: conn, app: app} do
+    # guards: HEEx escapes markup but not CSS-property injection.
+    test "the preview drops an invalid accent color", %{conn: conn, app: app} do
       {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}?tab=login")
 
       html =
         lv
         |> form("#app-branding-form", %{
-          "accent_color" => "red; background: url(https://attacker.example/x)",
-          "background_image_url" => "javascript:alert(1)"
+          "accent_color" => "red; background: url(https://attacker.example/x)"
         })
         |> render_change()
 
       refute html =~ "attacker.example"
-      refute html =~ "javascript:alert"
     end
 
-    test "saving persists both", %{conn: conn, app: app} do
+    test "saving persists it", %{conn: conn, app: app} do
       {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}?tab=login")
 
       lv
-      |> form("#app-branding-form", %{
-        "accent_color" => "#0ea5e9",
-        "background_image_url" => "https://cdn.example.com/bg.png"
-      })
+      |> form("#app-branding-form", %{"accent_color" => "#0ea5e9"})
       |> render_submit()
 
-      saved = Admin.get_app!(app.id)
-      assert saved.accent_color == "#0ea5e9"
-      assert saved.background_image_url == "https://cdn.example.com/bg.png"
+      assert Admin.get_app!(app.id).accent_color == "#0ea5e9"
+    end
+
+    # The brand colour lands on the submit button on the real page, so the
+    # preview has to show it there too, with the label colour derived.
+    test "the preview button carries the brand colour", %{conn: conn, app: app} do
+      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}?tab=login")
+
+      html =
+        lv
+        |> form("#app-branding-form", %{"brand_color" => "#7c3aed"})
+        |> render_change()
+
+      assert html =~ "background-color: #7c3aed"
+      assert html =~ "Sign in"
     end
   end
 

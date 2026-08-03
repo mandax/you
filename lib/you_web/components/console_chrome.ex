@@ -21,7 +21,8 @@ defmodule YouWeb.Components.ConsoleChrome do
     %{id: "audit", label: "Audit Log", icon: "lucide-scroll-text"},
     %{id: "webhooks", label: "Webhooks", icon: "lucide-webhook"},
     %{id: "features", label: "Features", icon: "lucide-toggle-right"},
-    %{id: "settings", label: "Settings", icon: "lucide-settings"}
+    %{id: "settings", label: "Settings", icon: "lucide-settings"},
+    %{id: "backup", label: "Backup", icon: "lucide-hard-drive-download"}
   ]
 
   @doc """
@@ -29,14 +30,51 @@ defmodule YouWeb.Components.ConsoleChrome do
 
   A section that is off disappears from the nav; the LiveView also refuses to
   render its view, since a nav entry is presentation and not a gate.
+
+  In single-app mode the apps registry is replaced by a direct link to the one
+  app: there is no list to navigate, and no second app to register.
   """
   def nav do
-    Enum.reject(@nav, fn entry ->
+    @nav
+    |> Enum.reject(fn entry ->
       case entry.id do
         "webhooks" -> not You.Settings.enabled?(:feature_webhooks)
         _ -> false
       end
     end)
+    |> Enum.map(fn
+      %{id: "apps"} = entry -> apps_entry(entry)
+      entry -> entry
+    end)
+  end
+
+  defp apps_entry(entry) do
+    case You.Mode.single?() && You.Mode.app() do
+      %You.Admin.App{slug: slug} ->
+        %{
+          id: app_nav_id(),
+          label: "Application",
+          icon: "lucide-box",
+          href: ~p"/console/apps/#{slug}"
+        }
+
+      _ ->
+        entry
+    end
+  end
+
+  @doc """
+  The nav id the per-app page highlights: `"apps"` under the registry,
+  `"app"` when the single app has replaced it.
+  """
+  def app_nav_id, do: if(You.Mode.single?(), do: "app", else: "apps")
+
+  @doc """
+  Nav ids naming a section the console renders. Entries carrying `:href` point
+  elsewhere, so they are valid nav ids but not valid `?view=` values.
+  """
+  def section_ids do
+    nav() |> Enum.reject(&Map.has_key?(&1, :href)) |> Enum.map(& &1.id)
   end
 
   @doc """
@@ -62,7 +100,7 @@ defmodule YouWeb.Components.ConsoleChrome do
         <nav class="flex-1 space-y-px px-2 pt-3">
           <.link
             :for={n <- @nav}
-            navigate={~p"/console?view=#{n.id}"}
+            navigate={n[:href] || ~p"/console?view=#{n.id}"}
             aria-current={@active == n.id && "page"}
             class={[
               "group flex h-8 w-full items-center gap-2.5 rounded-md px-3 text-sm transition-colors",

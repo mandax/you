@@ -19,6 +19,10 @@ defmodule YouWeb.SEOController do
   # spending the budget on pages that only ever answer 302 or 401.
   @disallowed ~w(/console /users /oauth /api /scim /.well-known)
 
+  defp crawlable_pages do
+    if You.Settings.enabled?(:feature_landing_page), do: @pages, else: []
+  end
+
   def robots(conn, _params) do
     body = """
     User-agent: *
@@ -36,7 +40,7 @@ defmodule YouWeb.SEOController do
     today = Date.utc_today() |> Date.to_iso8601()
 
     entries =
-      Enum.map_join(@pages, "\n", fn {path, changefreq, priority} ->
+      Enum.map_join(crawlable_pages(), "\n", fn {path, changefreq, priority} ->
         """
           <url>
             <loc>#{YouWeb.Endpoint.url() <> path}</loc>

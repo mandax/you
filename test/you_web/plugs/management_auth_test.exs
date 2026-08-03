@@ -1,6 +1,13 @@
 defmodule YouWeb.Plugs.ManagementAuthTest do
   use YouWeb.ConnCase, async: false
 
+  setup do
+    previous = Application.get_env(:you, :api_token)
+    Application.put_env(:you, :api_token, "test-api-token")
+    on_exit(fn -> Application.put_env(:you, :api_token, previous) end)
+    :ok
+  end
+
   @token "test-api-token"
 
   test "no authorization header is 401 invalid_token", %{conn: conn} do

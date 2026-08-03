@@ -1,71 +1,74 @@
-<Layouts.public flash={@flash} current_scope={@current_scope}>
-  <div class="mx-auto max-w-sm pt-24 pb-32 space-y-6">
-    <div class="text-center">
-      <.wordmark size="lg" class="justify-center mb-4" />
-      <h1 class="text-xl font-medium tracking-tight">Welcome{", "}{@user.email}</h1>
-    </div>
+<Layouts.auth
+  flash={@flash}
+  current_scope={@current_scope}
+  bare={@bare}
+  brand_style={YouWeb.AppBranding.brand_style(assigns)}
+>
+  <div class="text-center">
+    <Layouts.auth_mark bare={@bare} app_name={@app_name} app_logo_url={@app_logo_url} />
+    <h1 class="text-xl font-medium tracking-tight">Welcome{", "}{@user.email}</h1>
+  </div>
 
-    <.form
-      :if={!@user.confirmed_at}
-      for={@form}
-      id="confirmation_form"
-      action={~p"/users/log-in?_action=confirmed"}
-      phx-mounted={JS.focus_first()}
-    >
-      <input type="hidden" name={@form[:token].name} value={@form[:token].value} />
-      <div class="space-y-3">
+  <.form
+    :if={!@user.confirmed_at}
+    for={@form}
+    id="confirmation_form"
+    action={~p"/users/log-in?_action=confirmed"}
+    phx-mounted={JS.focus_first()}
+  >
+    <input type="hidden" name={@form[:token].name} value={@form[:token].value} />
+    <div class="space-y-3">
+      <.button
+        type="submit"
+        name={@form[:remember_me].name}
+        value="true"
+        phx-disable-with="Confirming..."
+        class="w-full"
+      >
+        Confirm and stay logged in
+      </.button>
+      <.button type="submit" phx-disable-with="Confirming..." variant="outline" class="w-full">
+        Confirm and log in only this time
+      </.button>
+    </div>
+  </.form>
+
+  <.form
+    :if={@user.confirmed_at}
+    for={@form}
+    id="login_form"
+    action={~p"/users/log-in"}
+    phx-mounted={JS.focus_first()}
+  >
+    <input type="hidden" name={@form[:token].name} value={@form[:token].value} />
+    <div class="space-y-3">
+      <%= if @current_scope do %>
+        <.button
+          type="submit"
+          variant="default"
+          phx-disable-with="Logging in..."
+          class="w-full"
+        >
+          Log in
+        </.button>
+      <% else %>
         <.button
           type="submit"
           name={@form[:remember_me].name}
           value="true"
-          phx-disable-with="Confirming..."
+          phx-disable-with="Logging in..."
           class="w-full"
         >
-          Confirm and stay logged in
+          Keep me logged in on this device
         </.button>
-        <.button type="submit" phx-disable-with="Confirming..." variant="outline" class="w-full">
-          Confirm and log in only this time
+        <.button type="submit" phx-disable-with="Logging in..." variant="outline" class="w-full">
+          Log me in only this time
         </.button>
-      </div>
-    </.form>
+      <% end %>
+    </div>
+  </.form>
 
-    <.form
-      :if={@user.confirmed_at}
-      for={@form}
-      id="login_form"
-      action={~p"/users/log-in"}
-      phx-mounted={JS.focus_first()}
-    >
-      <input type="hidden" name={@form[:token].name} value={@form[:token].value} />
-      <div class="space-y-3">
-        <%= if @current_scope do %>
-          <.button
-            type="submit"
-            variant="default"
-            phx-disable-with="Logging in..."
-            class="w-full"
-          >
-            Log in
-          </.button>
-        <% else %>
-          <.button
-            type="submit"
-            name={@form[:remember_me].name}
-            value="true"
-            phx-disable-with="Logging in..."
-            class="w-full"
-          >
-            Keep me logged in on this device
-          </.button>
-          <.button type="submit" phx-disable-with="Logging in..." variant="outline" class="w-full">
-            Log me in only this time
-          </.button>
-        <% end %>
-      </div>
-    </.form>
-
-    <p :if={!@user.confirmed_at} class="text-xs text-muted-foreground text-center mt-4">
-      Tip: If you prefer passwords, you can enable them in the user settings.
-    </p>
-  </div>
-</Layouts.public>
+  <p :if={!@user.confirmed_at} class="text-xs text-muted-foreground text-center mt-4">
+    Tip: If you prefer passwords, you can enable them in the user settings.
+  </p>
+</Layouts.auth>

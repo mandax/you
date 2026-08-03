@@ -5,9 +5,33 @@ defmodule YouWeb.API.V1.UsersController do
   alias You.Admin
   alias YouWeb.API.V1.JSON
 
-  def index(conn, _params) do
-    users = Admin.list_users()
-    json(conn, %{data: Enum.map(users, &JSON.user_json/1)})
+  @default_limit 100
+  @max_limit 500
+
+  def index(conn, params) do
+    limit = params |> Map.get("limit") |> positive_integer(@default_limit) |> min(@max_limit)
+    offset = params |> Map.get("offset") |> non_negative_integer(0)
+
+    users = Admin.list_users(limit: limit, offset: offset)
+
+    json(conn, %{
+      data: Enum.map(users, &JSON.user_json/1),
+      meta: %{limit: limit, offset: offset, total: Admin.count_users()}
+    })
+  end
+
+  defp positive_integer(value, default) do
+    case value && Integer.parse(value) do
+      {parsed, ""} when parsed > 0 -> parsed
+      _ -> default
+    end
+  end
+
+  defp non_negative_integer(value, default) do
+    case value && Integer.parse(value) do
+      {parsed, ""} when parsed >= 0 -> parsed
+      _ -> default
+    end
   end
 
   def show(conn, %{"id" => id}) do

@@ -6,7 +6,7 @@ defmodule You.MixProject do
   def project do
     [
       app: :you,
-      version: "0.1.6",
+      version: "0.3.0",
       elixir: "~> 1.15",
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
@@ -76,6 +76,7 @@ defmodule You.MixProject do
       {:absinthe, "~> 1.7"},
       {:absinthe_plug, "~> 1.5"},
       {:bcrypt_elixir, "~> 3.0"},
+      {:argon2_elixir, "~> 4.0"},
       {:nimble_totp, "~> 1.0"},
       {:eqrcode, "~> 0.2"},
       {:swoosh, "~> 1.16"},

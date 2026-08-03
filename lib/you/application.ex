@@ -27,6 +27,13 @@ defmodule You.Application do
         children
       end
 
+    # Seeds console-editable settings from the environment, then provisions
+    # the single app. Both are no-ops after their first successful boot;
+    # appended so they run after You.Repo is up, in this order so
+    # You.Mode.single?/0 already reflects YOU_MODE by the time provisioning
+    # decides whether to run.
+    children = children ++ [You.Settings.EnvSeed, You.Mode.Provisioner]
+
     # Always include the Streamer; it is a no-op when unconfigured. Appended
     # (not prepended) because it reads the audit-webhook setting from the DB at
     # init, so it must start after You.Repo. Same for the webhook Dispatcher,

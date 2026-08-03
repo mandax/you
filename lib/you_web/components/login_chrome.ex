@@ -1,10 +1,7 @@
 defmodule YouWeb.Components.LoginChrome do
   @moduledoc """
-  The branded part of the login page.
-
-  Rendered both by the real login template and by the console's branding
-  preview, so what an admin previews is the markup users get rather than a
-  mockup that drifts.
+  The branded part of the login page: the header the real login template
+  renders above the sign-in form.
   """
   use Phoenix.Component
 
@@ -35,14 +32,12 @@ defmodule YouWeb.Components.LoginChrome do
         :if={@logo_url}
         src={@logo_url}
         alt={@app_name}
-        class="mx-auto mb-4 size-11 rounded-xl border border-border object-cover"
+        class="mx-auto mb-4 h-12 w-auto max-w-[200px] object-contain"
       />
-      <div
+      <span
         :if={!@logo_url}
-        class="mx-auto mb-4 flex size-11 items-center justify-center rounded-xl border border-border"
-      >
-        <span class="lucide-lock block size-5 text-muted-foreground" />
-      </div>
+        class="lucide-lock mx-auto mb-4 block size-8 text-muted-foreground"
+      />
       <h1 class="text-2xl font-bold tracking-tight">
         <%= if @headline do %>
           {@headline}
@@ -74,75 +69,6 @@ defmodule YouWeb.Components.LoginChrome do
       >
         {@subtitle || "secured by You"}
       </p>
-    </div>
-    """
-  end
-
-  @doc """
-  Inert rendering of the login form's controls, for the console preview.
-
-  Deliberately not the real form: that one carries CSRF, a live action and
-  passkey wiring, none of which belong in a preview pane. What it does share is
-  the brand hooks (`data-brand-bg`, `data-brand-text`) and the method list, so
-  an admin sees the branding land on the same controls a user will see.
-  """
-  attr :methods, :list, required: true
-  attr :providers, :list, default: []
-
-  def login_form_preview(assigns) do
-    ~H"""
-    <div class="pointer-events-none mt-6 space-y-4 text-left select-none" aria-hidden="true">
-      <div :if={"password" in @methods} class="space-y-4">
-        <div>
-          <span class="mb-1 block text-sm font-medium text-foreground">Email</span>
-          <div class="h-10 w-full rounded-md border border-input bg-background" />
-        </div>
-        <div>
-          <span class="mb-1 block text-sm font-medium text-foreground">Password</span>
-          <div class="h-10 w-full rounded-md border border-input bg-background" />
-        </div>
-        <div class="flex items-center justify-between text-sm">
-          <span class="text-muted-foreground">Stay logged in</span>
-          <span class="font-medium text-foreground" data-brand-text>Forgot password?</span>
-        </div>
-        <div
-          class="flex h-11 w-full items-center justify-center rounded-md bg-primary text-sm font-medium text-primary-foreground"
-          data-brand-bg
-        >
-          Log in
-        </div>
-      </div>
-
-      <div
-        :if={"password" in @methods and "magic_link" in @methods}
-        class="flex items-center gap-3 text-sm text-muted-foreground"
-      >
-        <span class="flex-1 border-t border-border" /> <span>or</span>
-        <span class="flex-1 border-t border-border" />
-      </div>
-
-      <div
-        :if={"magic_link" in @methods}
-        class="flex h-10 w-full items-center justify-center rounded-md border border-input text-sm font-medium"
-      >
-        Email me a magic link
-      </div>
-
-      <div :if={"social" in @methods} class="space-y-3">
-        <div
-          :for={provider <- @providers}
-          class="flex h-10 w-full items-center justify-center rounded-md border border-input text-sm font-medium"
-        >
-          Sign in with {provider}
-        </div>
-      </div>
-
-      <div
-        :if={"passkey" in @methods}
-        class="flex h-10 w-full items-center justify-center gap-2 rounded-md border border-input text-sm font-medium"
-      >
-        <span class="lucide-fingerprint-pattern size-4" /> Sign in with a passkey
-      </div>
     </div>
     """
   end
