@@ -154,13 +154,6 @@ defmodule You.AdminTest do
       assert app.accent_color == "#0ea5e9"
     end
 
-    test "background_image_url must be an http(s) URL", %{app: app} do
-      assert {:error, changeset} =
-               Admin.update_app(app, %{"background_image_url" => "javascript:alert(1)"})
-
-      assert "must be an http(s) URL" in errors_on(changeset).background_image_url
-    end
-
     test "email_from_name is capped", %{app: app} do
       assert {:error, changeset} =
                Admin.update_app(app, %{"email_from_name" => String.duplicate("a", 101)})

@@ -47,7 +47,8 @@ Validation failures add a `details` map of field errors:
 ### List users
 
 ```sh
-curl -H "Authorization: Bearer $API_TOKEN" https://you.example.com/api/v1/users
+curl -H "Authorization: Bearer $API_TOKEN" \
+  "https://you.example.com/api/v1/users?limit=100&offset=0"
 ```
 
 ```json
@@ -60,11 +61,17 @@ curl -H "Authorization: Bearer $API_TOKEN" https://you.example.com/api/v1/users
       "confirmed": true,
       "inserted_at": "2026-07-25T10:00:00"
     }
-  ]
+  ],
+  "meta": {"limit": 100, "offset": 0, "total": 4213}
 }
 ```
 
 Password hashes and other secrets are never included.
+
+**The response is paged, whether or not you ask.** `limit` defaults to 100 and
+is capped at 500; `offset` defaults to 0. Read `meta.total` and walk `offset`
+to enumerate every account — a client that reads `data` alone and stops will
+silently see only the first page.
 
 ### Get one user
 

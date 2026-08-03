@@ -63,7 +63,6 @@ defmodule YouWeb.AppLive.Show do
          accent_color: safe_brand_color(params["accent_color"]),
          brand_color_dark: safe_brand_color(params["brand_color_dark"]),
          accent_color_dark: safe_brand_color(params["accent_color_dark"]),
-         background_image_url: safe_logo_url(params["background_image_url"]),
          headline: safe_copy(params["headline"]),
          subtitle: safe_copy(params["subtitle"])
        }
@@ -76,7 +75,6 @@ defmodule YouWeb.AppLive.Show do
       Map.take(params, [
         "accent_color",
         "accent_color_dark",
-        "background_image_url",
         "brand_color",
         "brand_color_dark",
         "headline",
@@ -256,7 +254,6 @@ defmodule YouWeb.AppLive.Show do
         accent_color: app.accent_color,
         brand_color_dark: app.brand_color_dark,
         accent_color_dark: app.accent_color_dark,
-        background_image_url: app.background_image_url,
         headline: app.headline,
         subtitle: app.subtitle
       },
