@@ -9,15 +9,9 @@ end
 # Blank counts as unset: compose substitutes an unset `${VAR}` as an empty
 # string, so every variable it mentions is always present in the container.
 env = fn name ->
-  case System.get_env(name) do
-    nil ->
-      nil
-
-    value ->
-      case String.trim(value) do
-        "" -> nil
-        trimmed -> trimmed
-      end
+  case name |> System.get_env("") |> String.trim() do
+    "" -> nil
+    value -> value
   end
 end
 
@@ -191,11 +185,8 @@ if config_env() == :prod do
     smtp_host when is_binary(smtp_host) ->
       smtp_auth =
         case {env.("SMTP_USERNAME"), env.("SMTP_PASSWORD")} do
-          {username, password} when is_binary(username) and is_binary(password) ->
-            [username: username, password: password, auth: :always]
-
-          _ ->
-            []
+          {u, p} when is_binary(u) and is_binary(p) -> [username: u, password: p, auth: :always]
+          _ -> []
         end
 
       config :you,

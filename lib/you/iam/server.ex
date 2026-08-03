@@ -141,24 +141,13 @@ defmodule You.IAM.Server do
   @impl true
   def handle_call({:verify_token, jwt}, _from, state) do
     result =
-      case JWT.verify(jwt) do
-        {:ok, claims} ->
-          user_id = claims["sub"]
-
-          case Repo.get(Accounts.User, user_id) do
-            %{email: email} when not is_nil(email) ->
-              if String.starts_with?(email, "redacted-") do
-                {:error, :not_found}
-              else
-                {:ok, %{user_id: user_id, email: claims["email"], role: claims["role"]}}
-              end
-
-            _ ->
-              {:error, :not_found}
-          end
-
-        {:error, reason} ->
-          {:error, reason}
+      with {:ok, claims} <- JWT.verify(jwt),
+           %{email: email} when not is_nil(email) <- Repo.get(Accounts.User, claims["sub"]),
+           false <- String.starts_with?(email, "redacted-") do
+        {:ok, %{user_id: claims["sub"], email: claims["email"], role: claims["role"]}}
+      else
+        {:error, reason} -> {:error, reason}
+        _ -> {:error, :not_found}
       end
 
     {:reply, result, state}

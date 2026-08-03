@@ -471,22 +471,15 @@ defmodule You.Accounts do
     expiry = You.Settings.get(:code_expiry_minutes)
     authenticated? = Keyword.get(opts, :client_authenticated, false)
 
-    with {:ok, query} <- UserToken.verify_auth_code_query(code, expiry) do
-      case Repo.one(query) do
-        {user, token} ->
-          meta = parse_meta(token.meta)
-          Repo.delete!(token)
-
-          case code_proof(meta["code_challenge"], code_verifier, authenticated?) do
-            :ok -> {:ok, user, meta["scopes"] || ["email"], meta["app"]}
-            {:error, reason} -> {:error, reason}
-          end
-
-        nil ->
-          {:error, :not_found}
-      end
+    with {:ok, query} <- UserToken.verify_auth_code_query(code, expiry),
+         {user, token} <- Repo.one(query),
+         meta = parse_meta(token.meta),
+         _ = Repo.delete!(token),
+         :ok <- code_proof(meta["code_challenge"], code_verifier, authenticated?) do
+      {:ok, user, meta["scopes"] || ["email"], meta["app"]}
     else
-      :error -> {:error, :not_found}
+      {:error, reason} -> {:error, reason}
+      _ -> {:error, :not_found}
     end
   end
 
@@ -939,22 +932,18 @@ defmodule You.Accounts do
   """
   def find_or_create_user_by_federated_identity(provider, subject, email, email_verified \\ false)
       when is_binary(provider) and is_binary(subject) and is_binary(email) do
-    case get_federated_identity(provider, subject) do
+    with nil <- get_federated_identity(provider, subject),
+         nil <- get_user_by_email(email) do
+      create_user_with_federated_identity(provider, subject, email, email_verified)
+    else
       %FederatedIdentity{} = fed ->
         {:ok, get_user!(fed.user_id)}
 
-      nil ->
-        case get_user_by_email(email) do
-          %User{} = existing ->
-            if email_verified do
-              link_federated_identity(existing, provider, subject, email)
-            else
-              {:error, :email_not_verified}
-            end
+      %User{} = existing when email_verified ->
+        link_federated_identity(existing, provider, subject, email)
 
-          nil ->
-            create_user_with_federated_identity(provider, subject, email, email_verified)
-        end
+      %User{} ->
+        {:error, :email_not_verified}
     end
   end
 

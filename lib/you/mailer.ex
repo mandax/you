@@ -63,17 +63,18 @@ defmodule You.Mailer do
         []
 
       host ->
-        auth =
-          case {present(Settings.get(:smtp_username)), present(Settings.get(:smtp_password))} do
-            {username, password} when is_binary(username) and is_binary(password) ->
-              [username: username, password: password, auth: :always]
-
-            _ ->
-              []
-          end
-
         [adapter: Swoosh.Adapters.SMTP, relay: host, port: Settings.get(:smtp_port), tls: :always] ++
-          auth
+          smtp_auth()
+    end
+  end
+
+  defp smtp_auth do
+    case {present(Settings.get(:smtp_username)), present(Settings.get(:smtp_password))} do
+      {username, password} when is_binary(username) and is_binary(password) ->
+        [username: username, password: password, auth: :always]
+
+      _ ->
+        []
     end
   end
 
