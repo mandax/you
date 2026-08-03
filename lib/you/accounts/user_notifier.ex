@@ -10,10 +10,7 @@ defmodule You.Accounts.UserNotifier do
     email =
       new()
       |> to(recipient)
-      |> from(
-        {from_name || @default_from_name,
-         Application.get_env(:you, :mail_from, "contact@example.com")}
-      )
+      |> from({from_name || @default_from_name, Mailer.from_address()})
       |> subject(subject)
       |> text_body(body)
 

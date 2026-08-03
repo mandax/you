@@ -38,6 +38,8 @@ defmodule You.Config.Bundle do
 
   @endpoint_fields ~w(url events enabled secret)a
 
+  @forbidden_setting_keys Enum.map(Settings.forbidden_keys(), &Atom.to_string/1)
+
   @doc """
   Builds the bundle payload for this instance.
   """
@@ -82,6 +84,25 @@ defmodule You.Config.Bundle do
   def import(%{"version" => _}), do: {:error, :unsupported_version}
   def import(_payload), do: {:error, :malformed}
 
+  @doc """
+  Counts what `import/1` would change per section, without writing anything.
+
+  What the console shows an operator before `import/1` is called: the same
+  version check, none of the writes.
+  """
+  def preview(%{"version" => version} = payload) when version <= @version do
+    {:ok,
+     %{
+       settings: map_size(payload["settings"] || %{}),
+       apps: length(payload["apps"] || []),
+       identity_providers: length(payload["identity_providers"] || []),
+       webhook_endpoints: length(payload["webhook_endpoints"] || [])
+     }}
+  end
+
+  def preview(%{"version" => _}), do: {:error, :unsupported_version}
+  def preview(_payload), do: {:error, :malformed}
+
   defp export_settings do
     Settings.all() |> Map.new(fn {key, value} -> {Atom.to_string(key), value} end)
   end
@@ -115,6 +136,12 @@ defmodule You.Config.Bundle do
     end
   end
 
+  # Skipping `Settings.forbidden_keys/0` explicitly, rather than relying on
+  # those keys being absent from `Settings.all/0`, keeps this safe even on the
+  # day one of those names is added to `@defaults` for an unrelated reason —
+  # otherwise a bundle carrying it would raise `ArgumentError` inside the
+  # import transaction, and the failure would look like a corrupt bundle
+  # rather than a code change.
   defp apply_settings(settings) do
     Enum.count(settings, fn {key, value} ->
       case cast_setting_key(key) do
@@ -123,6 +150,8 @@ defmodule You.Config.Bundle do
       end
     end)
   end
+
+  defp cast_setting_key(key) when key in @forbidden_setting_keys, do: nil
 
   defp cast_setting_key(key) do
     known = Settings.all() |> Map.keys() |> Map.new(&{Atom.to_string(&1), &1})

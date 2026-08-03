@@ -58,5 +58,15 @@ defmodule YouWeb.MailboxAccessTest do
 
       assert redirected_to(conn) == "/console"
     end
+
+    test "configuring SMTP from the console closes the mailbox off without a restart", %{
+      conn: conn
+    } do
+      You.Settings.set(:smtp_host, "smtp.example.com")
+
+      conn = get(conn, ~p"/console/mailbox")
+
+      assert redirected_to(conn) == "/console"
+    end
   end
 end

@@ -178,6 +178,15 @@ if config_env() == :prod do
 
   # No SMTP falls back to an in-memory mailbox at /console/mailbox rather than
   # dropping mail silently. `You.Mailer.production_ready?/0` stays false.
+  #
+  # Started regardless of whether SMTP is configured at boot: `You.Mailer`
+  # switches adapters at send time from `You.Settings`, so an admin can clear
+  # `smtp_host` in the console and fall back to this mailbox without a
+  # restart. `config/prod.exs` compiles `local: false` in; without this, an
+  # instance that booted with SMTP configured would have no storage process
+  # to fall back to and delivery would crash instead of degrading.
+  config :swoosh, local: true
+
   case env.("SMTP_HOST") do
     smtp_host when is_binary(smtp_host) ->
       smtp_auth =
@@ -202,7 +211,6 @@ if config_env() == :prod do
 
     _ ->
       config :you, You.Mailer, adapter: Swoosh.Adapters.Local
-      config :swoosh, local: true
       config :you, :mail_transport, :local
 
       Logger.warning(

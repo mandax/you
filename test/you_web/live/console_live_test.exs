@@ -470,6 +470,25 @@ defmodule YouWeb.ConsoleLiveTest do
       assert Settings.get(:audit_webhook_url) == "https://hooks.example.com/audit"
     end
 
+    test "flipping deployment mode reshapes the console for this session", %{conn: conn} do
+      {:ok, _app, _secret} =
+        Admin.create_app(%{
+          slug: "solo",
+          name: "Solo",
+          callback_url: "https://solo.example.com/cb"
+        })
+
+      on_exit(fn -> Application.put_env(:you, :mode, :multi) end)
+
+      {:ok, lv, html} = live(conn, "/console?view=settings")
+      refute html =~ ~s(href="/console/apps/solo")
+
+      render_submit(form(lv, "form[phx-submit=save_settings]"), %{"you_mode" => "single"})
+
+      assert Application.get_env(:you, :mode) == :single
+      assert render(lv) =~ ~s(href="/console/apps/solo")
+    end
+
     test "secrets are write-only: never rendered, blank keeps current, clear removes", %{
       conn: conn
     } do

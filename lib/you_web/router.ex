@@ -80,6 +80,8 @@ defmodule YouWeb.Router do
       live "/", ConsoleLive, :index
       live "/apps/:slug", AppLive.Show, :show
     end
+
+    post "/backup/export", ConsoleBackupController, :export
   end
 
   # Admin-only and local-transport-only: it holds magic links and 2FA codes,

@@ -12,6 +12,23 @@ defmodule You.Settings do
   - `epmd_port`: 4369
   - `scim_bearer_token`: ""
   - `audit_webhook_url`: ""
+  - `you_mode`: "multi"
+  - `smtp_host`, `smtp_username`, `smtp_password`, `mail_from`: ""
+  - `smtp_port`: 587
+  - `api_token`: ""
+  - `analytics_src`, `analytics_domain`: ""
+
+  Every key here is reachable from `deploy environment` and the console alike:
+  the environment seeds a key's row the first time an instance boots without
+  one (`You.Settings.EnvSeed`); once that row exists, the console owns it and
+  a redeploy with the same environment variable never clobbers a later edit.
+
+  A handful of bootstrap and key-material values — `DATABASE_PATH`,
+  `SECRET_KEY_BASE`, `JWT_SIGNING_KEY`, `JWT_KEY_ID`, `JWT_PREVIOUS_KEYS`,
+  `PHX_HOST`, `PHX_SCHEME`, `POOL_SIZE`, `BIND_IP` — are deliberately absent
+  from `@defaults` and rejected by `set/2`: putting them behind a console
+  login is either circular (the login depends on them) or a way to lock an
+  operator out.
   """
 
   alias You.Settings.Setting
@@ -32,8 +49,34 @@ defmodule You.Settings do
     feature_magic_link: true,
     feature_social_login: true,
     feature_webhooks: true,
-    feature_landing_page: true
+    feature_landing_page: true,
+    you_mode: "multi",
+    smtp_host: "",
+    smtp_port: 587,
+    smtp_username: "",
+    smtp_password: "",
+    mail_from: "",
+    api_token: "",
+    analytics_src: "",
+    analytics_domain: ""
   }
+
+  @doc """
+  Environment variables that must never be settable from the console.
+
+  Bootstrap or key material: `DATABASE_PATH` names the file the console runs
+  against, `SECRET_KEY_BASE`/`JWT_*` sign the sessions and tokens a console
+  login depends on, and `PHX_HOST`/`PHX_SCHEME`/`POOL_SIZE`/`BIND_IP` shape
+  how the instance is reached at all. `set/2` rejects these atoms outright, so
+  a future key added under one of these names cannot become console-editable
+  by accident.
+  """
+  @forbidden_keys ~w(
+    database_path secret_key_base jwt_signing_key jwt_key_id jwt_previous_keys
+    phx_host phx_scheme pool_size bind_ip
+  )a
+
+  def forbidden_keys, do: @forbidden_keys
 
   # Toggled from the feature screen. Everything else in @defaults is a tuning
   # value, not a switch.
@@ -111,7 +154,16 @@ defmodule You.Settings do
   @doc """
   Sets a setting value. Upserts: creates if missing, updates if exists.
   Accepts both integers and strings.
+
+  Raises `ArgumentError` for a key in `forbidden_keys/0` — bootstrap or key
+  material has no console path, on purpose, so this cannot be bypassed by
+  calling `set/2` directly.
   """
+  def set(key, _value) when key in @forbidden_keys do
+    raise ArgumentError,
+          "#{key} is environment-only and cannot be set from the console"
+  end
+
   def set(key, value) when is_atom(key) and is_boolean(value) do
     do_set(key, to_string(value))
   end
@@ -124,8 +176,11 @@ defmodule You.Settings do
     do_set(key, value)
   end
 
+  @synced_keys ~w(you_mode api_token analytics_src analytics_domain)a
+
   defp do_set(key, value_str) do
     key_str = Atom.to_string(key)
+    changed? = load(key) != cast_value(value_str, @defaults[key])
 
     case Repo.get_by(Setting, key: key_str) do
       nil ->
@@ -136,9 +191,42 @@ defmodule You.Settings do
     end
 
     if cache?(), do: :persistent_term.put({__MODULE__, key}, load(key))
+    if changed? and key in @synced_keys, do: sync_application_env(key)
 
     :ok
   end
+
+  # `you_mode`, `api_token` and the analytics pair are read at request time
+  # from `Application` env by `You.Mode`, `YouWeb.Plugs.ManagementAuth` and
+  # the root layout respectively. A console edit is mirrored into that same
+  # env immediately, so it takes effect on the next call without restructuring
+  # those call sites. SMTP and the mail-from address are different: `You.Mailer`
+  # reads them straight from `You.Settings` at send time (see its
+  # `@moduledoc`), so no sync is needed for those keys.
+  defp sync_application_env(:you_mode) do
+    Application.put_env(:you, :mode, if(get(:you_mode) == "single", do: :single, else: :multi))
+  end
+
+  defp sync_application_env(:api_token) do
+    Application.put_env(:you, :api_token, present(get(:api_token)))
+  end
+
+  defp sync_application_env(key) when key in [:analytics_src, :analytics_domain],
+    do: sync_analytics_env()
+
+  defp sync_analytics_env do
+    case {present(get(:analytics_src)), present(get(:analytics_domain))} do
+      {src, domain} when is_binary(src) and is_binary(domain) ->
+        Application.put_env(:you, :analytics, src: src, domain: domain)
+
+      _ ->
+        Application.put_env(:you, :analytics, nil)
+    end
+  end
+
+  defp present(nil), do: nil
+  defp present(""), do: nil
+  defp present(value), do: value
 
   defp cast_value(value, default) when is_boolean(default), do: value == "true"
   defp cast_value(value, default) when is_integer(default), do: String.to_integer(value)

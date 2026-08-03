@@ -80,8 +80,18 @@ config :logger, :default_formatter,
   format: "$time $metadata[$level] $message\n",
   metadata: [:request_id]
 
+# Never log request params under these keys — most importantly the bundle
+# password on `POST /console/backup/export`, which decrypts every secret a
+# config bundle carries.
+config :phoenix, :filter_parameters, ["password", "secret", "token"]
+
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason
+
+# The extension a sealed configuration bundle downloads with
+# (`YouWeb.ConsoleBackupController.export/2`), so the console's import upload
+# can restrict its file picker to it.
+config :mime, :types, %{"application/octet-stream" => ["you-bundle"]}
 
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.

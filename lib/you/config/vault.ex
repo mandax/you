@@ -16,11 +16,26 @@ defmodule You.Config.Vault do
   @format "you.config.v1"
   @iterations 600_000
   @digest :sha256
+  @min_password_length 12
+
+  @doc "The shortest password `seal/2` will accept."
+  def min_password_length, do: @min_password_length
 
   @doc """
   Encrypts `payload` under `password`, returning the JSON envelope as a string.
+
+  Raises `ArgumentError` for a password shorter than `min_password_length/0`.
+  A bundle carries every secret the instance holds — SMTP credentials, the
+  management API token, webhook signing secrets, upstream provider client
+  secrets — and 600k PBKDF2 iterations do not rescue a short password. This
+  holds for every caller, not just the console's export form.
   """
   def seal(payload, password) when is_map(payload) and is_binary(password) do
+    if String.length(password) < @min_password_length do
+      raise ArgumentError,
+            "bundle password must be at least #{@min_password_length} characters"
+    end
+
     salt = :crypto.strong_rand_bytes(16)
     iv = :crypto.strong_rand_bytes(12)
     key = derive(password, salt)
