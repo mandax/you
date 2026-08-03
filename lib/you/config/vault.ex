@@ -11,6 +11,20 @@ defmodule You.Config.Vault do
   The envelope is JSON with base64 fields rather than an opaque blob, so an
   operator can see the format and KDF parameters of a file they are asked to
   keep. Only the payload is secret.
+
+  New envelopes are sealed with Argon2id. `m_cost` is capped at 16 (64 MiB)
+  deliberately, not left at whatever the library defaults to: this runs
+  during disaster recovery as often as it runs during a routine export, and
+  that is exactly when an operator's box is most likely to be a small VPS
+  under memory pressure and least likely to have anyone around who can
+  debug an OOM. Memory is the parameter with a failure mode, so it stays
+  conservative. `t_cost` has no such failure mode — it only costs wall
+  clock on an action a human performs once and deliberately waits for — so
+  it is raised instead, to 16, to spend the rest of the "a second or two"
+  budget this KDF is allowed. Do not lower `t_cost` to "speed this up":
+  that is the whole point of raising it. If `m_cost` ever needs to change,
+  raise it only with headroom for constrained hardware in mind; `t_cost`
+  has no such constraint and can be raised freely.
   """
 
   @format "you.config.v1"
@@ -18,11 +32,11 @@ defmodule You.Config.Vault do
   @digest :sha256
 
   @argon2_m_cost 16
-  @argon2_t_cost 4
+  @argon2_t_cost 16
   @argon2_parallelism 4
   @argon2_type 2
   @max_argon2_m_cost 20
-  @max_argon2_t_cost 10
+  @max_argon2_t_cost 32
   @max_argon2_parallelism 8
 
   @min_password_length 12

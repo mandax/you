@@ -66,6 +66,20 @@ defmodule You.ConfigBundleTest do
       assert {:ok, %{"hello" => "world"}} = Vault.open(sealed, @password)
     end
 
+    test "a bundle sealed with the default argon2id parameters opens under its own bounds" do
+      sealed = Vault.seal(%{"hello" => "world"}, @password)
+      kdf = Jason.decode!(sealed)["kdf"]
+
+      assert kdf == %{
+               "algorithm" => "argon2id",
+               "m_cost" => 16,
+               "t_cost" => 16,
+               "parallelism" => 4
+             }
+
+      assert {:ok, %{"hello" => "world"}} = Vault.open(sealed, @password)
+    end
+
     test "a bundle sealed with the older pbkdf2 kdf still opens" do
       sealed = seal_with_pbkdf2(%{"hello" => "world"}, @password)
 
