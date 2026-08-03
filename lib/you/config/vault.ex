@@ -15,6 +15,7 @@ defmodule You.Config.Vault do
 
   @format "you.config.v1"
   @iterations 600_000
+  @max_iterations 2_000_000
   @digest :sha256
   @min_password_length 12
 
@@ -85,7 +86,7 @@ defmodule You.Config.Vault do
          {:ok, iv} <- Base.decode64(iv),
          {:ok, tag} <- Base.decode64(tag),
          {:ok, ciphertext} <- Base.decode64(payload),
-         iterations when is_integer(iterations) <- get_in(json, ["kdf", "iterations"]) do
+         {:ok, iterations} <- valid_iterations(json["kdf"]) do
       aad = json |> Map.drop(["tag", "payload"]) |> Jason.encode!()
 
       {:ok,
@@ -96,6 +97,21 @@ defmodule You.Config.Vault do
   end
 
   defp parts(_json), do: {:error, :malformed}
+
+  # Matches on a map so a non-map `"kdf"` (a string, a list, absent
+  # entirely) fails the clause instead of raising: `get_in/2` used to reach
+  # into `json["kdf"]["iterations"]` here, which raised `FunctionClauseError`
+  # the moment `"kdf"` itself was not a map. The upper bound exists because
+  # this number is untrusted and is fed straight to `:crypto.pbkdf2_hmac/5`,
+  # which blocks the calling scheduler for the entire derivation — an
+  # unbounded value is a way to pin a scheduler thread from a file an admin
+  # merely opened for preview.
+  defp valid_iterations(%{"iterations" => iterations})
+       when is_integer(iterations) and iterations > 0 and iterations <= @max_iterations do
+    {:ok, iterations}
+  end
+
+  defp valid_iterations(_kdf), do: :error
 
   defp decrypt(parts, password) do
     key = derive(password, parts.salt, parts.iterations)

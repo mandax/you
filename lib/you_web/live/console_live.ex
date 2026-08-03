@@ -2186,14 +2186,111 @@ defmodule YouWeb.ConsoleLive do
           Could not read this bundle: {import_error_copy(@import_error)}.
         </p>
 
-        <div :if={@import_preview} class="space-y-3 rounded-md border border-border bg-muted/30 p-3">
+        <div :if={@import_preview} class="space-y-4 rounded-md border border-border bg-muted/30 p-3">
           <div class="text-xs font-medium">This bundle will change:</div>
-          <dl class="space-y-1.5 text-xs">
-            <.kv k="Settings" v={to_string(@import_preview.settings)} />
-            <.kv k="Apps" v={to_string(@import_preview.apps)} />
-            <.kv k="Identity providers" v={to_string(@import_preview.identity_providers)} />
-            <.kv k="Webhook endpoints" v={to_string(@import_preview.webhook_endpoints)} />
-          </dl>
+
+          <div
+            :if={@import_preview.privileged?}
+            class="flex items-start gap-2 rounded-md border border-signal-down/40 bg-signal-down/10 px-3 py-2 text-xs text-signal-down"
+          >
+            <span class="lucide-triangle-alert size-4 shrink-0 block" />
+            <span>
+              This bundle changes privileged instance configuration — credentials, distribution
+              access, mail routing, or a first-party app or enabled identity provider. Review every
+              highlighted line below before applying.
+            </span>
+          </div>
+
+          <div
+            :if={@import_preview.ignored_settings != []}
+            class="rounded-md border border-signal-warn/40 bg-signal-warn/10 px-3 py-2 text-xs"
+          >
+            Ignored — instance identity, never carried by a bundle:
+            <span class="font-mono">{Enum.join(@import_preview.ignored_settings, ", ")}</span>
+          </div>
+
+          <div :if={@import_preview.settings != []} class="space-y-1">
+            <div class="font-mono text-[11px] uppercase tracking-wide text-muted-foreground">
+              Settings
+            </div>
+            <dl class="space-y-1 text-xs">
+              <div
+                :for={s <- @import_preview.settings}
+                class={[
+                  "flex justify-between gap-4 border-b border-border/60 pb-1 last:border-0",
+                  privileged_row?(s.privileged?, s.status != :unchanged) &&
+                    "font-medium text-signal-down"
+                ]}
+              >
+                <dt class="font-mono">{s.key}</dt>
+                <dd class="font-mono text-right break-all">{setting_change_text(s)}</dd>
+              </div>
+            </dl>
+          </div>
+
+          <div :if={@import_preview.apps != []} class="space-y-1">
+            <div class="font-mono text-[11px] uppercase tracking-wide text-muted-foreground">
+              Apps
+            </div>
+            <dl class="space-y-1 text-xs">
+              <div
+                :for={a <- @import_preview.apps}
+                class={[
+                  "flex justify-between gap-4 border-b border-border/60 pb-1 last:border-0",
+                  privileged_row?(a.privileged?, a.action != :unchanged) &&
+                    "font-medium text-signal-down"
+                ]}
+              >
+                <dt class="font-mono">
+                  {a.slug} <span class="text-muted-foreground">({action_label(a.action)})</span>
+                  <span :if={a.first_party} class="text-signal-down">1st-party</span>
+                </dt>
+                <dd class="font-mono text-right break-all">{a.callback_url}</dd>
+              </div>
+            </dl>
+          </div>
+
+          <div :if={@import_preview.identity_providers != []} class="space-y-1">
+            <div class="font-mono text-[11px] uppercase tracking-wide text-muted-foreground">
+              Identity providers
+            </div>
+            <dl class="space-y-1 text-xs">
+              <div
+                :for={p <- @import_preview.identity_providers}
+                class={[
+                  "space-y-0.5 border-b border-border/60 pb-1 last:border-0",
+                  privileged_row?(p.privileged?, p.action != :unchanged) &&
+                    "font-medium text-signal-down"
+                ]}
+              >
+                <div class="flex justify-between gap-4">
+                  <dt class="font-mono">
+                    {p.slug} <span class="text-muted-foreground">({action_label(p.action)})</span>
+                    <span :if={p.enabled} class="text-signal-down">enabled</span>
+                  </dt>
+                </div>
+                <dd class="font-mono break-all text-muted-foreground">
+                  authorize: {p.authorize_url} · token: {p.token_url} · userinfo: {p.userinfo_url}
+                </dd>
+              </div>
+            </dl>
+          </div>
+
+          <div :if={@import_preview.webhook_endpoints != []} class="space-y-1">
+            <div class="font-mono text-[11px] uppercase tracking-wide text-muted-foreground">
+              Webhook endpoints
+            </div>
+            <dl class="space-y-1 text-xs">
+              <div
+                :for={e <- @import_preview.webhook_endpoints}
+                class="flex justify-between gap-4 border-b border-border/60 pb-1 last:border-0"
+              >
+                <dt class="font-mono text-muted-foreground">({action_label(e.action)})</dt>
+                <dd class="font-mono text-right break-all">{e.url}</dd>
+              </div>
+            </dl>
+          </div>
+
           <div class="flex justify-end gap-2">
             <.button type="button" variant="outline" phx-click="cancel_import">Cancel</.button>
             <.button
@@ -2213,6 +2310,29 @@ defmodule YouWeb.ConsoleLive do
   defp import_error_copy(:wrong_password), do: "wrong password"
   defp import_error_copy(:malformed), do: "not a bundle"
   defp import_error_copy(:unsupported_version), do: "exported by a newer version of You"
+
+  defp privileged_row?(privileged?, changed?), do: privileged? and changed?
+
+  defp action_label(:create), do: "create"
+  defp action_label(:update), do: "update"
+  defp action_label(:unchanged), do: "unchanged"
+
+  defp setting_change_text(%{secret?: true, status: status}), do: status_label(status)
+
+  defp setting_change_text(%{status: :unchanged, new: new}),
+    do: "unchanged (#{display_value(new)})"
+
+  defp setting_change_text(%{old: old, new: new}),
+    do: "#{display_value(old)} → #{display_value(new)}"
+
+  defp status_label(:unchanged), do: "unchanged"
+  defp status_label(:set), do: "set"
+  defp status_label(:cleared), do: "cleared"
+  defp status_label(:changed), do: "changed"
+
+  defp display_value(nil), do: "(empty)"
+  defp display_value(""), do: "(empty)"
+  defp display_value(value), do: to_string(value)
 
   # ── small shared pieces ───────────────────────────────────────
   attr :title, :string, required: true
