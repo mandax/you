@@ -1,5 +1,5 @@
 defmodule YouWeb.OIDCControllerTest do
-  use YouWeb.ConnCase
+  use YouWeb.ConnCase, async: false
 
   alias You.Accounts
   alias You.AccountsFixtures
@@ -7,21 +7,42 @@ defmodule YouWeb.OIDCControllerTest do
   alias You.JWT
 
   defp app_fixture do
+    n = System.unique_integer([:positive])
+
     {:ok, app, secret} =
       Admin.create_app(%{
-        slug: "test-app-#{System.unique_integer([:positive])}",
+        slug: "test-app-#{n}",
         name: "Test App",
-        callback_url: "http://localhost/callback"
+        callback_url: "http://localhost/callback-#{n}"
       })
 
     {app, secret}
   end
 
+  defp pkce_pair do
+    verifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+    {verifier, :crypto.hash(:sha256, verifier) |> Base.url_encode64(padding: false)}
+  end
+
+  defp basic_auth(conn, client_id, client_secret) do
+    put_req_header(
+      conn,
+      "authorization",
+      "Basic " <> Base.encode64("#{client_id}:#{client_secret}")
+    )
+  end
+
+  # Exchanges a code as a confidential client: the supported way to redeem a
+  # code that carries no PKCE challenge.
   defp exchange_code(conn, user, scopes, extra_params \\ %{}) do
-    {:ok, code} = Accounts.generate_auth_code(user, scopes)
+    {app, secret} = app_fixture()
+    {:ok, code} = Accounts.generate_auth_code(user, scopes, nil, app.slug)
+
+    params =
+      Map.merge(%{code: code, client_id: app.slug, client_secret: secret}, extra_params)
 
     conn
-    |> post(~p"/oauth/token", Map.merge(%{code: code}, extra_params))
+    |> post(~p"/oauth/token", params)
     |> json_response(200)
   end
 
@@ -55,6 +76,7 @@ defmodule YouWeb.OIDCControllerTest do
       assert revocation_endpoint == "#{issuer}/oauth/revoke"
       assert jwks_uri == "#{issuer}/.well-known/jwks.json"
       assert Enum.sort(grant_types) == ["authorization_code", "refresh_token"]
+      assert "client_secret_basic" in auth_methods
       assert "client_secret_post" in auth_methods
       assert "none" in auth_methods
       assert "iss" in claims_supported
@@ -84,16 +106,20 @@ defmodule YouWeb.OIDCControllerTest do
   describe "POST /oauth/token (authorization_code)" do
     setup do
       user = AccountsFixtures.user_fixture()
-      {:ok, code} = Accounts.generate_auth_code(user)
-      %{user: user, code: code}
+      {app, secret} = app_fixture()
+      {:ok, code} = Accounts.generate_auth_code(user, ["email"], nil, app.slug)
+      %{user: user, app: app, secret: secret, code: code}
     end
 
     test "returns access_token, id_token and refresh_token for a valid auth code", %{
       conn: conn,
       user: user,
+      app: app,
+      secret: secret,
       code: code
     } do
-      conn = post(conn, ~p"/oauth/token", code: code)
+      conn =
+        post(conn, ~p"/oauth/token", code: code, client_id: app.slug, client_secret: secret)
 
       assert %{
                "access_token" => access_token,
@@ -117,21 +143,123 @@ defmodule YouWeb.OIDCControllerTest do
       assert id_claims["iss"] == YouWeb.Endpoint.url()
     end
 
+    test "accepts client credentials as HTTP Basic", %{
+      conn: conn,
+      app: app,
+      secret: secret,
+      code: code
+    } do
+      conn =
+        conn
+        |> basic_auth(app.slug, secret)
+        |> post(~p"/oauth/token", code: code)
+
+      assert %{"access_token" => _, "id_token" => id_token} = json_response(conn, 200)
+      assert {:ok, id_claims} = JWT.verify(id_token)
+      assert id_claims["aud"] == app.slug
+    end
+
     test "id_token carries the client_id as audience and scoped claims", %{
       conn: conn,
-      user: user
+      user: user,
+      app: app,
+      secret: secret
     } do
-      response =
-        exchange_code(conn, user, ["email", "profile"], %{client_id: "consumer-app"})
+      {:ok, code} = Accounts.generate_auth_code(user, ["email", "profile"], nil, app.slug)
 
-      assert {:ok, id_claims} = JWT.verify(response["id_token"])
-      assert id_claims["aud"] == "consumer-app"
+      conn =
+        post(conn, ~p"/oauth/token", code: code, client_id: app.slug, client_secret: secret)
+
+      assert %{"id_token" => id_token} = json_response(conn, 200)
+      assert {:ok, id_claims} = JWT.verify(id_token)
+      assert id_claims["aud"] == app.slug
       assert id_claims["email"] == user.email
       assert id_claims["name"] == user.email
     end
 
-    test "returns invalid_grant for an invalid auth code", %{conn: conn} do
-      conn = post(conn, ~p"/oauth/token", code: "this-code-does-not-exist")
+    test "returns invalid_client for a wrong client_secret", %{
+      conn: conn,
+      app: app,
+      code: code
+    } do
+      conn =
+        post(conn, ~p"/oauth/token",
+          code: code,
+          client_id: app.slug,
+          client_secret: "wrong-secret"
+        )
+
+      assert %{"error" => "invalid_client"} = json_response(conn, 401)
+    end
+
+    test "returns invalid_client for an unknown client_id", %{conn: conn, code: code} do
+      conn =
+        post(conn, ~p"/oauth/token",
+          code: code,
+          client_id: "no-such-app",
+          client_secret: "whatever"
+        )
+
+      assert %{"error" => "invalid_client"} = json_response(conn, 401)
+    end
+
+    test "returns invalid_client when neither a secret nor a verifier is presented", %{
+      conn: conn,
+      code: code
+    } do
+      conn = post(conn, ~p"/oauth/token", code: code)
+
+      assert %{"error" => "invalid_client"} = json_response(conn, 401)
+    end
+
+    test "returns invalid_client for a client_id with no secret at all", %{
+      conn: conn,
+      app: app,
+      code: code
+    } do
+      conn = post(conn, ~p"/oauth/token", code: code, client_id: app.slug)
+
+      assert %{"error" => "invalid_client"} = json_response(conn, 401)
+    end
+
+    test "a code minted without a challenge is refused to a client with no secret", %{
+      conn: conn,
+      user: user,
+      app: app
+    } do
+      {:ok, code} = Accounts.generate_auth_code(user, ["email"], nil, app.slug)
+
+      conn =
+        post(conn, ~p"/oauth/token", code: code, client_id: app.slug, code_verifier: "anything")
+
+      assert %{"error" => "invalid_client"} = json_response(conn, 401)
+    end
+
+    test "a code minted for app A is refused to app B", %{conn: conn, user: user, app: app} do
+      {other, other_secret} = app_fixture()
+      {:ok, code} = Accounts.generate_auth_code(user, ["email"], nil, app.slug)
+
+      conn =
+        post(conn, ~p"/oauth/token",
+          code: code,
+          client_id: other.slug,
+          client_secret: other_secret
+        )
+
+      assert %{"error" => "invalid_grant"} = json_response(conn, 400)
+    end
+
+    test "returns invalid_grant for an invalid auth code", %{
+      conn: conn,
+      app: app,
+      secret: secret
+    } do
+      conn =
+        post(conn, ~p"/oauth/token",
+          code: "this-code-does-not-exist",
+          client_id: app.slug,
+          client_secret: secret
+        )
 
       assert %{"error" => "invalid_grant"} = json_response(conn, 400)
     end
@@ -142,27 +270,42 @@ defmodule YouWeb.OIDCControllerTest do
       assert %{"error" => "invalid_request"} = json_response(conn, 400)
     end
 
-    test "auth code is single-use", %{conn: conn, code: code} do
-      # First use succeeds
-      conn1 = post(conn, ~p"/oauth/token", code: code)
-      assert json_response(conn1, 200)
+    test "auth code is single-use", %{conn: conn, app: app, secret: secret, code: code} do
+      params = %{code: code, client_id: app.slug, client_secret: secret}
 
-      # Second use with the same code fails
-      conn2 = post(conn, ~p"/oauth/token", code: code)
-      assert %{"error" => "invalid_grant"} = json_response(conn2, 400)
+      assert json_response(post(conn, ~p"/oauth/token", params), 200)
+
+      assert %{"error" => "invalid_grant"} =
+               json_response(post(conn, ~p"/oauth/token", params), 400)
     end
 
-    test "PKCE: correct verifier succeeds, wrong one is rejected", %{conn: conn, user: user} do
-      verifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
-      challenge = :crypto.hash(:sha256, verifier) |> Base.url_encode64(padding: false)
+    test "public client: PKCE alone authenticates the exchange", %{
+      conn: conn,
+      user: user,
+      app: app
+    } do
+      {verifier, challenge} = pkce_pair()
 
-      {:ok, bad} = Accounts.generate_auth_code(user, ["email"], challenge)
+      {:ok, bad} = Accounts.generate_auth_code(user, ["email"], challenge, app.slug)
       resp = post(conn, ~p"/oauth/token", code: bad, code_verifier: "nope")
       assert %{"error" => "invalid_grant"} = json_response(resp, 400)
 
-      {:ok, good} = Accounts.generate_auth_code(user, ["email"], challenge)
+      {:ok, good} = Accounts.generate_auth_code(user, ["email"], challenge, app.slug)
       resp = post(conn, ~p"/oauth/token", code: good, code_verifier: verifier)
       assert %{"access_token" => _} = json_response(resp, 200)
+    end
+
+    test "public client: a PKCE code with no verifier is refused", %{
+      conn: conn,
+      user: user,
+      app: app
+    } do
+      {_verifier, challenge} = pkce_pair()
+      {:ok, code} = Accounts.generate_auth_code(user, ["email"], challenge, app.slug)
+
+      conn = post(conn, ~p"/oauth/token", code: code, client_id: app.slug)
+
+      assert %{"error" => "invalid_client"} = json_response(conn, 401)
     end
   end
 
@@ -219,6 +362,36 @@ defmodule YouWeb.OIDCControllerTest do
       conn = post(conn, ~p"/oauth/token", grant_type: "refresh_token")
 
       assert %{"error" => "invalid_request"} = json_response(conn, 400)
+    end
+
+    test "rejects presented client credentials that do not verify", %{conn: conn, user: user} do
+      {app, _secret} = app_fixture()
+      first = exchange_code(conn, user, ["email"])
+
+      conn =
+        post(conn, ~p"/oauth/token",
+          grant_type: "refresh_token",
+          refresh_token: first["refresh_token"],
+          client_id: app.slug,
+          client_secret: "wrong-secret"
+        )
+
+      assert %{"error" => "invalid_client"} = json_response(conn, 401)
+    end
+
+    test "a refresh token bound to app A is refused to app B", %{conn: conn, user: user} do
+      {app, secret} = app_fixture()
+      refresh_token = Accounts.create_refresh_token(user, ["email"], "some-other-app")
+
+      conn =
+        post(conn, ~p"/oauth/token",
+          grant_type: "refresh_token",
+          refresh_token: refresh_token,
+          client_id: app.slug,
+          client_secret: secret
+        )
+
+      assert %{"error" => "invalid_grant"} = json_response(conn, 400)
     end
   end
 

@@ -450,16 +450,26 @@ defmodule You.Accounts do
   @doc """
   Consumes an authorization code, returning the user if valid.
 
-  When the code was issued with a PKCE `code_challenge`, `code_verifier` is
-  required and must satisfy `base64url(sha256(code_verifier)) == code_challenge`;
-  otherwise the code is rejected. The code is single-use; it is always deleted
-  once found, so a failed verification cannot be retried.
+  The redeeming client must prove it is entitled to the code, one of two ways:
 
-  Returns `{:ok, user, scopes}`, `{:error, :invalid_grant}` (PKCE failure), or
+    * PKCE — the code was issued with a `code_challenge` and the caller presents
+      a `code_verifier` satisfying
+      `base64url(sha256(code_verifier)) == code_challenge`.
+    * Client authentication — the caller has already verified a confidential
+      client's secret (or is trusted by transport, as over Erlang distribution)
+      and passes `client_authenticated: true`.
+
+  A code issued without a challenge is redeemable **only** by an authenticated
+  client. The code is single-use; it is always deleted once found, so a failed
+  verification cannot be retried.
+
+  Returns `{:ok, user, scopes, app_slug}`, `{:error, :invalid_grant}` (PKCE
+  failure), `{:error, :invalid_client}` (neither proof presented), or
   `{:error, :not_found}`.
   """
-  def consume_auth_code(code, code_verifier \\ nil) when is_binary(code) do
+  def consume_auth_code(code, code_verifier \\ nil, opts \\ []) when is_binary(code) do
     expiry = You.Settings.get(:code_expiry_minutes)
+    authenticated? = Keyword.get(opts, :client_authenticated, false)
 
     with {:ok, query} <- UserToken.verify_auth_code_query(code, expiry) do
       case Repo.one(query) do
@@ -467,10 +477,9 @@ defmodule You.Accounts do
           meta = parse_meta(token.meta)
           Repo.delete!(token)
 
-          if pkce_ok?(meta["code_challenge"], code_verifier) do
-            {:ok, user, meta["scopes"] || ["email"], meta["app"]}
-          else
-            {:error, :invalid_grant}
+          case code_proof(meta["code_challenge"], code_verifier, authenticated?) do
+            :ok -> {:ok, user, meta["scopes"] || ["email"], meta["app"]}
+            {:error, reason} -> {:error, reason}
           end
 
         nil ->
@@ -490,8 +499,13 @@ defmodule You.Accounts do
     end
   end
 
-  # No challenge was bound → PKCE not required (backward compatible).
-  defp pkce_ok?(nil, _verifier), do: true
+  defp code_proof(nil, _verifier, true), do: :ok
+  defp code_proof(nil, _verifier, _authenticated?), do: {:error, :invalid_client}
+
+  defp code_proof(challenge, verifier, _authenticated?) do
+    if pkce_ok?(challenge, verifier), do: :ok, else: {:error, :invalid_grant}
+  end
+
   defp pkce_ok?(_challenge, verifier) when not is_binary(verifier), do: false
 
   defp pkce_ok?(challenge, verifier) do

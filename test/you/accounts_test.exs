@@ -138,7 +138,10 @@ defmodule You.AccountsTest do
     test "consume_auth_code returns user and scopes for valid code" do
       user = AccountsFixtures.user_fixture()
       {:ok, code} = Accounts.generate_auth_code(user)
-      assert {:ok, consumed, scopes, _app} = Accounts.consume_auth_code(code)
+
+      assert {:ok, consumed, scopes, _app} =
+               Accounts.consume_auth_code(code, nil, client_authenticated: true)
+
       assert consumed.id == user.id
       assert scopes == ["email"]
     end
@@ -150,8 +153,10 @@ defmodule You.AccountsTest do
     test "consume_auth_code consumes the code so it cannot be reused" do
       user = AccountsFixtures.user_fixture()
       {:ok, code} = Accounts.generate_auth_code(user)
-      {:ok, _, _, _} = Accounts.consume_auth_code(code)
-      assert {:error, :not_found} = Accounts.consume_auth_code(code)
+      {:ok, _, _, _} = Accounts.consume_auth_code(code, nil, client_authenticated: true)
+
+      assert {:error, :not_found} =
+               Accounts.consume_auth_code(code, nil, client_authenticated: true)
     end
   end
 end

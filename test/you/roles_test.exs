@@ -82,7 +82,10 @@ defmodule You.RolesTest do
     {:ok, _} = Roles.set_role(app, user, "admin")
 
     {:ok, code} = You.Accounts.generate_auth_code(user, ["roles"], nil, app.slug)
-    assert {:ok, consumed, ["roles"], slug} = You.Accounts.consume_auth_code(code)
+
+    assert {:ok, consumed, ["roles"], slug} =
+             You.Accounts.consume_auth_code(code, nil, client_authenticated: true)
+
     assert consumed.id == user.id
     assert slug == app.slug
 
