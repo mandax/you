@@ -469,13 +469,22 @@ defmodule YouWeb.ConsoleLive do
   end
 
   def handle_event("save_settings", params, socket) do
-    Enum.each(@settings_fields, fn %{key: key} ->
-      raw = params[Atom.to_string(key)]
+    changed =
+      Enum.flat_map(@settings_fields, fn %{key: key} ->
+        raw = params[Atom.to_string(key)]
 
-      if is_binary(raw) and not (key in @secret_settings and raw == "") do
-        Settings.set(key, parse_value(key, raw))
-      end
-    end)
+        if is_binary(raw) and not (key in @secret_settings and raw == "") do
+          value = parse_value(key, raw)
+          previous = Settings.get(key)
+          Settings.set(key, value)
+
+          if previous == value, do: [], else: [key]
+        else
+          []
+        end
+      end)
+
+    audit_settings(socket, changed)
 
     You.Accounts.CookieSync.apply_cookie()
     You.Audit.Streamer.reload()
@@ -501,6 +510,7 @@ defmodule YouWeb.ConsoleLive do
 
       setting ->
         Settings.set(setting, "")
+        audit_settings(socket, [setting])
         You.Accounts.CookieSync.apply_cookie()
         You.Audit.Streamer.reload()
         {:noreply, load_settings(socket)}
@@ -646,6 +656,17 @@ defmodule YouWeb.ConsoleLive do
           socket
         end
     end
+  end
+
+  # Which keys changed, never their values: the settings screen holds the
+  # Erlang cookie, the SCIM token and the SMTP password, and an audit trail
+  # that copies them is a second place to steal them from. Repointing
+  # `audit_webhook_url` is itself recorded, so silencing the trail cannot be
+  # done silently.
+  defp audit_settings(_socket, []), do: :ok
+
+  defp audit_settings(socket, keys) do
+    audit_admin(socket, "update_settings", keys |> Enum.map(&to_string/1) |> Enum.join(", "))
   end
 
   defp audit_admin(socket, action, target) do
