@@ -223,6 +223,7 @@ defmodule YouWeb.Router do
     get "/users/settings/totp", UserSettingsController, :totp_setup
     post "/users/settings/totp", UserSettingsController, :totp_enable
     delete "/users/settings/totp", UserSettingsController, :totp_disable
+    post "/users/settings/totp/recovery-codes", UserSettingsController, :regenerate_recovery_codes
     post "/users/settings/email-2fa", UserSettingsController, :email_2fa_enable
     delete "/users/settings/email-2fa", UserSettingsController, :email_2fa_disable
   end

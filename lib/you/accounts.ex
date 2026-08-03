@@ -596,6 +596,38 @@ defmodule You.Accounts do
     end)
   end
 
+  @doc """
+  Regenerates a user's recovery codes, replacing the entire existing set.
+
+  Every existing code is deleted first, used or not, and a fresh set of 8 is
+  issued in its place. A code that was never used is gone just as surely as
+  one that was: this is the only way to recover from a low or exhausted set
+  without disabling and re-enrolling TOTP from scratch.
+
+  Requires TOTP to already be enabled. Emits an account-level audit event,
+  since regenerating invalidates every code that came before it.
+
+  Returns `{:ok, [string]}` or `{:error, :totp_not_enabled}`.
+  """
+  def regenerate_recovery_codes(%User{totp_enabled: true} = user) do
+    result =
+      Repo.transact(fn ->
+        Repo.delete_all(from r in RecoveryCode, where: r.user_id == ^user.id)
+        {:ok, generate_recovery_codes(user)}
+      end)
+
+    with {:ok, _codes} <- result do
+      :telemetry.execute([:you, :audit, :account, :update], %{}, %{
+        user_id: user.id,
+        action: "regenerate_recovery_codes"
+      })
+    end
+
+    result
+  end
+
+  def regenerate_recovery_codes(%User{}), do: {:error, :totp_not_enabled}
+
   ## Email 2FA (one-time code emailed as a second factor)
 
   @email_2fa_validity_minutes 10

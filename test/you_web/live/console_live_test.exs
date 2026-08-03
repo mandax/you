@@ -265,6 +265,79 @@ defmodule YouWeb.ConsoleLiveTest do
       refute Accounts.get_user!(other.id).email == other.email
     end
 
+    test "reset_2fa clears TOTP, wipes recovery codes, revokes sessions, and is audited", %{
+      conn: conn
+    } do
+      other = You.AccountsFixtures.user_fixture()
+      {:ok, %{secret: secret}} = Accounts.generate_totp_setup(other)
+      other = Accounts.get_user!(other.id)
+
+      {:ok, %{recovery_codes: old_codes}} =
+        Accounts.enable_totp(other, NimbleTOTP.verification_code(secret))
+
+      other = Accounts.get_user!(other.id)
+      assert other.totp_enabled
+      assert Accounts.count_unused_recovery_codes(other) == 8
+
+      session_token = Accounts.generate_user_session_token(other)
+
+      :telemetry.attach(
+        "test-reset-2fa-audit",
+        [:you, :audit, :admin, :action],
+        fn _event, _measurements, metadata, test_pid ->
+          send(test_pid, {:audit, metadata})
+        end,
+        self()
+      )
+
+      {:ok, lv, _} = live(conn, "/console?view=users")
+      render_click(lv, "edit_user", %{"id" => other.id})
+      html = render_click(lv, "reset_2fa", %{"id" => other.id})
+
+      assert html =~ "Two-factor authentication reset"
+
+      reset_user = Accounts.get_user!(other.id)
+      refute reset_user.totp_enabled
+      assert reset_user.totp_secret == nil
+      assert Accounts.count_unused_recovery_codes(reset_user) == 0
+      assert Accounts.get_user_by_session_token(session_token) == nil
+
+      for code <- old_codes do
+        assert {:error, :invalid_code} = Accounts.verify_recovery_code(reset_user, code)
+      end
+
+      assert_receive {:audit, %{action: "reset_2fa", target: email}}
+      assert email == other.email
+
+      :telemetry.detach("test-reset-2fa-audit")
+    end
+
+    test "a user can re-enroll TOTP after an admin reset", %{conn: conn} do
+      other = You.AccountsFixtures.user_fixture()
+      {:ok, %{secret: secret}} = Accounts.generate_totp_setup(other)
+      other = Accounts.get_user!(other.id)
+      {:ok, _} = Accounts.enable_totp(other, NimbleTOTP.verification_code(secret))
+      other = Accounts.get_user!(other.id)
+
+      {:ok, lv, _} = live(conn, "/console?view=users")
+      render_click(lv, "edit_user", %{"id" => other.id})
+      render_click(lv, "reset_2fa", %{"id" => other.id})
+
+      reset_user = Accounts.get_user!(other.id)
+      refute reset_user.totp_enabled
+
+      {:ok, %{secret: new_secret}} = Accounts.generate_totp_setup(reset_user)
+      reset_user = Accounts.get_user!(reset_user.id)
+
+      assert {:ok, %{totp_enabled: true, recovery_codes: new_codes}} =
+               Accounts.enable_totp(reset_user, NimbleTOTP.verification_code(new_secret))
+
+      assert length(new_codes) == 8
+      final_user = Accounts.get_user!(reset_user.id)
+      assert final_user.totp_enabled
+      assert Accounts.count_unused_recovery_codes(final_user) == 8
+    end
+
     test "filters narrow the user list", %{conn: conn} do
       You.AccountsFixtures.user_fixture(%{email: "findme@example.com"})
       {:ok, lv, _} = live(conn, "/console?view=users")
