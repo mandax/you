@@ -511,12 +511,35 @@ defmodule YouWeb.ConsoleLive do
   #
   # Export is a controller download, not a LiveView event: `handle_event`
   # cannot stream a file. The form in `backup_view/1` posts straight to
-  # `YouWeb.ConsoleBackupController` — this event only flips
+  # `YouWeb.ConsoleBackupController` — this event only checks the two
+  # password fields agree and are long enough, then flips
   # `phx-trigger-action` so the browser submits that form natively, carrying
-  # the password field's live DOM value with it. Nothing here ever holds the
-  # password.
+  # the password field's live DOM value with it. Neither password is kept
+  # past this check — `params` is discarded either way.
+  def handle_event(
+        "prepare_export",
+        %{"password" => password, "password_confirmation" => confirmation},
+        socket
+      ) do
+    cond do
+      String.length(password) < Vault.min_password_length() ->
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           "The export password must be at least #{Vault.min_password_length()} characters."
+         )}
+
+      password != confirmation ->
+        {:noreply, put_flash(socket, :error, "Passwords do not match.")}
+
+      true ->
+        {:noreply, assign(socket, trigger_export: true)}
+    end
+  end
+
   def handle_event("prepare_export", _params, socket) do
-    {:noreply, assign(socket, trigger_export: true)}
+    {:noreply, put_flash(socket, :error, "Enter and confirm a password to export a bundle.")}
   end
 
   def handle_event("cancel_upload", %{"ref" => ref}, socket) do
@@ -2060,9 +2083,10 @@ defmodule YouWeb.ConsoleLive do
     <div class="max-w-2xl space-y-4">
       <.settings_group title="Export">
         <p class="text-sm text-muted-foreground">
-          Downloads settings, apps, providers and webhooks — sealed with the password below.
-          Anyone with the file and the password can read every secret this instance holds, so treat
-          it the way you'd treat the secrets themselves.
+          Downloads settings, apps, providers and webhooks, sealed with the password below. The
+          file contains SMTP credentials, the management API token, webhook signing secrets and
+          upstream provider client secrets — everything needed to impersonate this instance's
+          integrations. Treat it, and the password, accordingly.
         </p>
         <.form
           for={%{}}
@@ -2071,19 +2095,39 @@ defmodule YouWeb.ConsoleLive do
           id="export-form"
           phx-submit="prepare_export"
           phx-trigger-action={@trigger_export}
-          class="flex items-end gap-2 [&_>div]:mb-0"
+          class="space-y-3"
         >
-          <div class="flex-1">
-            <.input
-              type="password"
-              name="password"
-              label="Password"
-              value=""
-              autocomplete="new-password"
-              required
-            />
+          <div class="flex items-end gap-2 [&_>div]:mb-0">
+            <div class="flex-1">
+              <.input
+                type="password"
+                name="password"
+                label={"Password (#{Vault.min_password_length()}+ characters)"}
+                value=""
+                autocomplete="new-password"
+                minlength={Vault.min_password_length()}
+                required
+              />
+            </div>
           </div>
-          <.button type="submit">Export bundle</.button>
+          <div class="flex items-end gap-2 [&_>div]:mb-0">
+            <div class="flex-1">
+              <.input
+                type="password"
+                name="password_confirmation"
+                label="Confirm password"
+                value=""
+                autocomplete="new-password"
+                minlength={Vault.min_password_length()}
+                required
+              />
+            </div>
+            <.button type="submit">Export bundle</.button>
+          </div>
+          <p class="font-mono text-[11px] text-muted-foreground">
+            Used exactly twice — now, and on the day you need to restore this. There is no reset:
+            get it wrong here and the file is unrecoverable.
+          </p>
         </.form>
       </.settings_group>
 

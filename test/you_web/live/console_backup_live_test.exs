@@ -33,10 +33,40 @@ defmodule YouWeb.ConsoleBackupLiveTest do
     {:ok, lv, html} = live(conn, "/console?view=backup")
     refute html =~ "phx-trigger-action"
 
-    html = render_submit(form(lv, "#export-form"), %{"password" => @password})
+    html =
+      render_submit(form(lv, "#export-form"), %{
+        "password" => @password,
+        "password_confirmation" => @password
+      })
 
     assert html =~ ~s(action="/console/backup/export")
     assert html =~ "phx-trigger-action"
+  end
+
+  test "a short export password is refused", %{conn: conn} do
+    {:ok, lv, _html} = live(conn, "/console?view=backup")
+
+    html =
+      render_submit(form(lv, "#export-form"), %{
+        "password" => "short",
+        "password_confirmation" => "short"
+      })
+
+    assert html =~ "at least"
+    refute html =~ "phx-trigger-action"
+  end
+
+  test "a mismatched confirmation is refused", %{conn: conn} do
+    {:ok, lv, _html} = live(conn, "/console?view=backup")
+
+    html =
+      render_submit(form(lv, "#export-form"), %{
+        "password" => @password,
+        "password_confirmation" => "something else entirely"
+      })
+
+    assert html =~ "do not match"
+    refute html =~ "phx-trigger-action"
   end
 
   test "previewing a bundle shows counts per section without changing anything", %{conn: conn} do

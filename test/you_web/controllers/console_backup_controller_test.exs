@@ -39,6 +39,15 @@ defmodule YouWeb.ConsoleBackupControllerTest do
     assert redirected_to(conn) == ~p"/console?view=backup"
   end
 
+  test "a password shorter than the minimum is rejected without downloading anything", %{
+    conn: conn
+  } do
+    conn = post(conn, ~p"/console/backup/export", %{"password" => "short"})
+
+    assert redirected_to(conn) == ~p"/console?view=backup"
+    assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "at least"
+  end
+
   test "emits an admin audit event", %{conn: conn, admin: admin} do
     :telemetry.attach(
       "backup-export-test",

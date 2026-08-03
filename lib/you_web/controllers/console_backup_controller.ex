@@ -23,20 +23,26 @@ defmodule YouWeb.ConsoleBackupController do
   every secret this instance holds in one file, which is the most privileged
   single action the console offers.
   """
-  def export(conn, %{"password" => password}) when is_binary(password) and password != "" do
-    payload = Bundle.export() |> Vault.seal(password)
-    filename = filename(conn)
+  def export(conn, %{"password" => password}) when is_binary(password) do
+    case validate_password(password) do
+      :ok ->
+        payload = Bundle.export() |> Vault.seal(password)
+        filename = filename(conn)
 
-    :telemetry.execute([:you, :audit, :admin, :action], %{}, %{
-      admin_user_id: conn.assigns.current_scope.user.id,
-      action: "export_config_bundle",
-      target: filename
-    })
+        :telemetry.execute([:you, :audit, :admin, :action], %{}, %{
+          admin_user_id: conn.assigns.current_scope.user.id,
+          action: "export_config_bundle",
+          target: filename
+        })
 
-    conn
-    |> put_resp_content_type("application/octet-stream")
-    |> put_resp_header("content-disposition", ~s(attachment; filename="#{filename}"))
-    |> send_resp(200, payload)
+        conn
+        |> put_resp_content_type("application/octet-stream")
+        |> put_resp_header("content-disposition", ~s(attachment; filename="#{filename}"))
+        |> send_resp(200, payload)
+
+      {:error, message} ->
+        conn |> put_flash(:error, message) |> redirect(to: ~p"/console?view=backup")
+    end
   end
 
   def export(conn, _params) do
@@ -46,4 +52,14 @@ defmodule YouWeb.ConsoleBackupController do
   end
 
   defp filename(conn), do: "#{conn.host}-#{Date.utc_today()}.you-bundle"
+
+  defp validate_password(""), do: {:error, "A password is required to export a bundle."}
+
+  defp validate_password(password) do
+    if String.length(password) < Vault.min_password_length() do
+      {:error, "The export password must be at least #{Vault.min_password_length()} characters."}
+    else
+      :ok
+    end
+  end
 end

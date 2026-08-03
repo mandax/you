@@ -58,6 +58,18 @@ defmodule You.ConfigBundleTest do
       assert {:error, :malformed} = Vault.open("{}", @password)
       assert {:error, :malformed} = Vault.open("not json", @password)
     end
+
+    test "refuses to seal under a password shorter than the minimum" do
+      short = String.duplicate("a", Vault.min_password_length() - 1)
+
+      assert_raise ArgumentError, fn -> Vault.seal(%{"hello" => "world"}, short) end
+    end
+
+    test "accepts a password exactly at the minimum" do
+      exact = String.duplicate("a", Vault.min_password_length())
+
+      assert Vault.seal(%{"hello" => "world"}, exact)
+    end
   end
 
   describe "round trip to another instance" do
@@ -148,6 +160,16 @@ defmodule You.ConfigBundleTest do
 
       assert Repo.get_by(You.Admin.App, slug: "local-only")
       assert Repo.get_by(You.Admin.App, slug: "portable")
+    end
+
+    test "a settings key that must stay environment-only is ignored, not raised on" do
+      payload = %{
+        "version" => 1,
+        "settings" => %{"secret_key_base" => "should-never-be-settable"}
+      }
+
+      assert {:ok, summary} = Bundle.import(payload)
+      assert summary.settings == 0
     end
   end
 end
