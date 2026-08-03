@@ -62,6 +62,10 @@ defmodule You.IAM.Server do
   Pass `code_verifier` when the code was issued with a PKCE challenge; it must
   satisfy `base64url(sha256(code_verifier)) == code_challenge`.
 
+  Callers reach this over Erlang distribution, which is full trust (the caller
+  already holds the distribution cookie), so the exchange counts as an
+  authenticated client and needs no `client_secret`.
+
   Returns `{:ok, %{user_id, email, jwt, refresh_token}}` or `{:error, reason}`
   (`:invalid_grant` on PKCE failure).
   """
@@ -192,7 +196,7 @@ defmodule You.IAM.Server do
 
   def handle_call({:exchange_code, code, code_verifier}, _from, state) do
     result =
-      case Accounts.consume_auth_code(code, code_verifier) do
+      case Accounts.consume_auth_code(code, code_verifier, client_authenticated: true) do
         {:ok, user, scopes, app_slug} ->
           scopes = scopes || ["email"]
 
@@ -389,18 +393,9 @@ defmodule You.IAM.Server do
     end
   end
 
-  # Constant-time app secret check.
+  # Constant-time app secret check, shared with the OAuth HTTP endpoints.
   defp verify_client_secret(client_id, client_secret) do
-    case Repo.get_by(App, slug: client_id) do
-      %App{client_secret_hash: hash} = app when is_binary(hash) ->
-        if is_binary(client_secret) and
-             :crypto.hash_equals(hash, :crypto.hash(:sha256, client_secret)),
-           do: {:ok, app},
-           else: {:error, :invalid_client}
-
-      _ ->
-        {:error, :invalid_client}
-    end
+    You.OIDC.authenticate_client(client_id, client_secret)
   end
 
   defp authenticate_credentials(params) do

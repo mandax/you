@@ -139,8 +139,10 @@ Exchange the code for a JWT with whichever integration fits:
 - **Elixir over Erlang distribution** — `You.SDK.exchange_code(code)`. See
   [integration.md](integration.md) and
   [ops/erlang-distribution.md](ops/erlang-distribution.md).
-- **Anything else, over OIDC** — `POST /oauth/token` with the code, verifying
-  against `/.well-known/jwks.json`. See [api.md](api.md).
+- **Anything else, over OIDC** — `POST /oauth/token` with the code plus your
+  client credentials (or a PKCE verifier, for a browser or mobile client),
+  verifying against `/.well-known/jwks.json`. See
+  [integration.md](integration.md).
 
 ## 7. Back it up
 

@@ -29,7 +29,9 @@ defmodule YouWeb.OAuthFlowTest do
     assert loc =~ "state=st-123"
 
     # the code resolves to this user (proves it was minted for them)
-    assert {:ok, resolved, ["email"], _app} = Accounts.consume_auth_code(code_param(loc))
+    assert {:ok, resolved, ["email"], _app} =
+             Accounts.consume_auth_code(code_param(loc), nil, client_authenticated: true)
+
     assert resolved.id == user.id
   end
 
