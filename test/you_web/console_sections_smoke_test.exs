@@ -32,7 +32,7 @@ defmodule YouWeb.ConsoleSectionsSmokeTest do
   end
 
   test "every section renders, then survives a tick and a mutation", %{conn: conn} do
-    for view <- ~w(overview users apps providers audit webhooks features settings) do
+    for view <- ~w(overview users apps providers audit webhooks features settings backup) do
       {:ok, lv, html} = live(conn, "/console?view=#{view}")
       assert html =~ "YOU"
 
@@ -42,7 +42,7 @@ defmodule YouWeb.ConsoleSectionsSmokeTest do
   end
 
   test "navigating between sections loads each one's data", %{conn: conn} do
-    for view <- ~w(users apps providers audit webhooks settings overview) do
+    for view <- ~w(users apps providers audit webhooks settings backup overview) do
       {:ok, lv, _} = live(conn, ~p"/console?view=overview")
 
       {:ok, _lv, html} =

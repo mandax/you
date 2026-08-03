@@ -82,6 +82,25 @@ defmodule You.Config.Bundle do
   def import(%{"version" => _}), do: {:error, :unsupported_version}
   def import(_payload), do: {:error, :malformed}
 
+  @doc """
+  Counts what `import/1` would change per section, without writing anything.
+
+  What the console shows an operator before `import/1` is called: the same
+  version check, none of the writes.
+  """
+  def preview(%{"version" => version} = payload) when version <= @version do
+    {:ok,
+     %{
+       settings: map_size(payload["settings"] || %{}),
+       apps: length(payload["apps"] || []),
+       identity_providers: length(payload["identity_providers"] || []),
+       webhook_endpoints: length(payload["webhook_endpoints"] || [])
+     }}
+  end
+
+  def preview(%{"version" => _}), do: {:error, :unsupported_version}
+  def preview(_payload), do: {:error, :malformed}
+
   defp export_settings do
     Settings.all() |> Map.new(fn {key, value} -> {Atom.to_string(key), value} end)
   end

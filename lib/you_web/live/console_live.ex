@@ -14,6 +14,7 @@ defmodule YouWeb.ConsoleLive do
 
   alias You.{Admin, Accounts, Settings, Webhooks, Roles, IdentityProviders}
   alias You.Audit.Streamer
+  alias You.Config.{Bundle, Vault}
 
   # Shown but locked. An admin should be able to see that password login
   # exists and cannot be switched off, rather than wonder where it went.
@@ -42,7 +43,9 @@ defmodule YouWeb.ConsoleLive do
     "features" =>
       "What this instance offers. Switching something off removes it from the console and the login page.",
     "settings" =>
-      "Instance-wide tuning: token lifetimes, Erlang distribution, and integration secrets."
+      "Instance-wide tuning: token lifetimes, Erlang distribution, and integration secrets.",
+    "backup" =>
+      "Export an encrypted snapshot of this instance's settings, apps, providers and webhooks — or restore one. Never a database backup: no users, tokens or sessions."
   }
 
   @feature_copy %{
@@ -86,6 +89,12 @@ defmodule YouWeb.ConsoleLive do
 
     {:ok,
      socket
+     |> allow_upload(:bundle,
+       accept: ~w(.you-bundle .json),
+       max_entries: 1,
+       max_file_size: 25_000_000,
+       progress: &handle_bundle_progress/3
+     )
      |> assign(
        page_title: "Console",
        nav: nav(),
@@ -112,7 +121,12 @@ defmodule YouWeb.ConsoleLive do
        features: Settings.features() |> Map.new(&{&1, Settings.get(&1)}),
        onboarding: not Settings.get(:onboarding_completed),
        single_mode: You.Mode.single?(),
-       mail_ready: You.Mailer.production_ready?()
+       mail_ready: You.Mailer.production_ready?(),
+       trigger_export: false,
+       import_ciphertext: nil,
+       import_payload: nil,
+       import_preview: nil,
+       import_error: nil
      )}
   end
 
@@ -493,6 +507,94 @@ defmodule YouWeb.ConsoleLive do
     end
   end
 
+  # ── backup ────────────────────────────────────────────────────
+  #
+  # Export is a controller download, not a LiveView event: `handle_event`
+  # cannot stream a file. The form in `backup_view/1` posts straight to
+  # `YouWeb.ConsoleBackupController` — this event only flips
+  # `phx-trigger-action` so the browser submits that form natively, carrying
+  # the password field's live DOM value with it. Nothing here ever holds the
+  # password.
+  def handle_event("prepare_export", _params, socket) do
+    {:noreply, assign(socket, trigger_export: true)}
+  end
+
+  def handle_event("cancel_upload", %{"ref" => ref}, socket) do
+    {:noreply, cancel_upload(socket, :bundle, ref)}
+  end
+
+  # `live_file_input/1` needs the enclosing form to declare `phx-change` to
+  # track upload progress; there is nothing else on this form to validate.
+  def handle_event("validate_import", _params, socket), do: {:noreply, socket}
+
+  def handle_event("preview_import", %{"password" => password}, socket) do
+    case socket.assigns.import_ciphertext do
+      nil ->
+        {:noreply, put_flash(socket, :error, "Choose a bundle file first.")}
+
+      ciphertext ->
+        with {:ok, payload} <- Vault.open(ciphertext, password),
+             {:ok, summary} <- Bundle.preview(payload) do
+          {:noreply,
+           assign(socket, import_payload: payload, import_preview: summary, import_error: nil)}
+        else
+          {:error, reason} ->
+            {:noreply,
+             assign(socket, import_payload: nil, import_preview: nil, import_error: reason)}
+        end
+    end
+  end
+
+  def handle_event("apply_import", _params, socket) do
+    case socket.assigns.import_payload && Bundle.import(socket.assigns.import_payload) do
+      {:ok, summary} ->
+        audit_admin(socket, "import_config_bundle", import_target(summary))
+
+        {:noreply,
+         socket
+         |> reset_import()
+         |> put_flash(:info, "Bundle imported: #{import_target(summary)}.")}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Import failed: #{import_error_copy(reason)}")}
+
+      nil ->
+        {:noreply, put_flash(socket, :error, "Preview a bundle before applying it.")}
+    end
+  end
+
+  def handle_event("cancel_import", _params, socket), do: {:noreply, reset_import(socket)}
+
+  # Consumes the file as soon as the upload itself completes, rather than
+  # later in `preview_import`: `allow_upload/3`'s `:progress` callback runs
+  # synchronously in the same message that reports 100%, which is the
+  # documented place to call `consume_uploaded_entry/3`. Consuming at preview
+  # time instead would tie the temp file's lifetime to a password the
+  # operator hasn't typed yet, and a wrong password would force a re-upload.
+  defp handle_bundle_progress(:bundle, entry, socket) do
+    if entry.done? do
+      contents =
+        consume_uploaded_entry(socket, entry, fn %{path: path} -> {:ok, File.read!(path)} end)
+
+      {:noreply, assign(socket, import_ciphertext: contents)}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  defp reset_import(socket) do
+    assign(socket,
+      import_ciphertext: nil,
+      import_payload: nil,
+      import_preview: nil,
+      import_error: nil
+    )
+  end
+
+  defp import_target(summary) do
+    Enum.map_join(summary, ", ", fn {section, count} -> "#{count} #{section}" end)
+  end
+
   # Case-insensitive substring match across the given fields. Filtering is
   # presentation only — nothing is re-queried, so a search cannot change what a
   # bulk action would touch.
@@ -551,6 +653,7 @@ defmodule YouWeb.ConsoleLive do
   defp load_view(socket, "webhooks"), do: load_endpoints(socket)
   defp load_view(socket, "features"), do: socket
   defp load_view(socket, "settings"), do: load_settings(socket)
+  defp load_view(socket, "backup"), do: socket
   defp load_view(socket, _view), do: socket
 
   # Instance-wide counts for the overview cards. `Repo.aggregate/2` rather
@@ -692,6 +795,14 @@ defmodule YouWeb.ConsoleLive do
             base_url={@base_url}
             oidc_providers={@oidc_providers}
             saved={@saved}
+          />
+        <% "backup" -> %>
+          <.backup_view
+            uploads={@uploads}
+            trigger_export={@trigger_export}
+            import_preview={@import_preview}
+            import_error={@import_error}
+            has_ciphertext={@import_ciphertext != nil}
           />
       <% end %>
 
@@ -1936,6 +2047,128 @@ defmodule YouWeb.ConsoleLive do
     </div>
     """
   end
+
+  # ── section: backup ───────────────────────────────────────────
+  attr :uploads, :map, required: true
+  attr :trigger_export, :boolean, required: true
+  attr :import_preview, :any, default: nil
+  attr :import_error, :any, default: nil
+  attr :has_ciphertext, :boolean, required: true
+
+  defp backup_view(assigns) do
+    ~H"""
+    <div class="max-w-2xl space-y-4">
+      <.settings_group title="Export">
+        <p class="text-sm text-muted-foreground">
+          Downloads settings, apps, providers and webhooks — sealed with the password below.
+          Anyone with the file and the password can read every secret this instance holds, so treat
+          it the way you'd treat the secrets themselves.
+        </p>
+        <.form
+          for={%{}}
+          action={~p"/console/backup/export"}
+          method="post"
+          id="export-form"
+          phx-submit="prepare_export"
+          phx-trigger-action={@trigger_export}
+          class="flex items-end gap-2 [&_>div]:mb-0"
+        >
+          <div class="flex-1">
+            <.input
+              type="password"
+              name="password"
+              label="Password"
+              value=""
+              autocomplete="new-password"
+              required
+            />
+          </div>
+          <.button type="submit">Export bundle</.button>
+        </.form>
+      </.settings_group>
+
+      <.settings_group title="Import">
+        <p class="text-sm text-muted-foreground">
+          Upserts by natural key and never deletes — an instance that has diverged keeps whatever
+          the bundle doesn't mention. Review the counts below before applying.
+        </p>
+
+        <form
+          id="import-form"
+          phx-submit="preview_import"
+          phx-change="validate_import"
+          class="space-y-3"
+        >
+          <.live_file_input upload={@uploads.bundle} class="text-sm" />
+          <div :for={entry <- @uploads.bundle.entries} class="flex items-center gap-2 text-xs">
+            <span class="font-mono text-muted-foreground">
+              {entry.client_name} ({entry.progress}%)
+            </span>
+            <button
+              type="button"
+              phx-click="cancel_upload"
+              phx-value-ref={entry.ref}
+              class="text-signal-down hover:underline"
+            >
+              remove
+            </button>
+          </div>
+          <div :if={@has_ciphertext} class="flex items-center gap-2">
+            <p class="font-mono text-[11px] text-signal-ok">
+              File loaded — enter the password and decrypt.
+            </p>
+            <button
+              type="button"
+              phx-click="cancel_import"
+              class="font-mono text-[11px] text-muted-foreground hover:underline"
+            >
+              remove
+            </button>
+          </div>
+
+          <.input
+            type="password"
+            name="password"
+            label="Password"
+            value=""
+            autocomplete="off"
+            required
+          />
+
+          <.button type="submit" variant="outline">Decrypt &amp; preview</.button>
+        </form>
+
+        <p :if={@import_error} class="font-mono text-[11px] text-signal-down">
+          Could not read this bundle: {import_error_copy(@import_error)}.
+        </p>
+
+        <div :if={@import_preview} class="space-y-3 rounded-md border border-border bg-muted/30 p-3">
+          <div class="text-xs font-medium">This bundle will change:</div>
+          <dl class="space-y-1.5 text-xs">
+            <.kv k="Settings" v={to_string(@import_preview.settings)} />
+            <.kv k="Apps" v={to_string(@import_preview.apps)} />
+            <.kv k="Identity providers" v={to_string(@import_preview.identity_providers)} />
+            <.kv k="Webhook endpoints" v={to_string(@import_preview.webhook_endpoints)} />
+          </dl>
+          <div class="flex justify-end gap-2">
+            <.button type="button" variant="outline" phx-click="cancel_import">Cancel</.button>
+            <.button
+              type="button"
+              phx-click="apply_import"
+              data-confirm="Apply this bundle? Matching settings, apps, providers and webhooks are overwritten; nothing is deleted."
+            >
+              Apply import
+            </.button>
+          </div>
+        </div>
+      </.settings_group>
+    </div>
+    """
+  end
+
+  defp import_error_copy(:wrong_password), do: "wrong password"
+  defp import_error_copy(:malformed), do: "not a bundle"
+  defp import_error_copy(:unsupported_version), do: "exported by a newer version of You"
 
   # ── small shared pieces ───────────────────────────────────────
   attr :title, :string, required: true
