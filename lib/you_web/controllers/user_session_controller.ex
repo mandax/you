@@ -35,13 +35,13 @@ defmodule YouWeb.UserSessionController do
     if conn.assigns[:current_scope] && conn.assigns.current_scope.user &&
          get_session(conn, :callback_url) do
       user = conn.assigns.current_scope.user
+      app = app_for(conn)
 
-      case You.Mode.single?() && YouWeb.OAuthFlow.authorize_signed_in(conn, user) do
+      case app && app.first_party && YouWeb.OAuthFlow.authorize_signed_in(conn, user) do
         %Plug.Conn{} = conn ->
           conn
 
         _ ->
-          app = app_for(conn)
           app_name = if app, do: app.name, else: get_session(conn, :callback_url)
 
           render(

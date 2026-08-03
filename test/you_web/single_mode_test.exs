@@ -39,40 +39,77 @@ defmodule YouWeb.SingleModeTest do
   describe "consent screen" do
     setup [:register_and_log_in_user, :single_mode]
 
-    test "is skipped: the user goes straight back to the app with a code", %{conn: conn} do
+    test "is skipped for the first-party app regardless of mode", %{conn: conn, app: app} do
+      {:ok, _app} = Admin.update_app(app, %{first_party: true})
+
       conn = get(conn, ~p"/users/log-in?callback_url=#{@callback_url}&scope=email")
 
       assert redirected_to(conn) =~ "#{@callback_url}?code="
     end
 
-    test "still records consent, so flipping to multi mode leaves no gap", %{
-      conn: conn,
-      user: user,
-      app: app
-    } do
+    test "still records consent for a first-party app, so flipping to multi mode leaves no gap",
+         %{
+           conn: conn,
+           user: user,
+           app: app
+         } do
+      {:ok, app} = Admin.update_app(app, %{first_party: true})
+
       get(conn, ~p"/users/log-in?callback_url=#{@callback_url}&scope=email")
 
       assert [consented] = Accounts.list_consented_apps(user)
       assert consented.id == app.id
     end
 
-    test "echoes the consumer's state back on the redirect", %{conn: conn} do
+    test "echoes the consumer's state back on the redirect", %{conn: conn, app: app} do
+      {:ok, _app} = Admin.update_app(app, %{first_party: true})
+
       conn = get(conn, ~p"/users/log-in?callback_url=#{@callback_url}&state=xyz")
 
       assert redirected_to(conn) =~ "state=xyz"
     end
-  end
 
-  describe "consent screen in multi mode" do
-    setup :register_and_log_in_user
-
-    test "still asks the user to authorize", %{conn: conn} do
+    test "still shows for a third-party app, even in single-app mode", %{conn: conn} do
       html =
         conn
         |> get(~p"/users/log-in?callback_url=#{@callback_url}&scope=email")
         |> html_response(200)
 
       assert html =~ "Authorize"
+    end
+  end
+
+  describe "consent screen in multi mode" do
+    setup :register_and_log_in_user
+
+    test "still asks a third-party app to authorize", %{conn: conn} do
+      html =
+        conn
+        |> get(~p"/users/log-in?callback_url=#{@callback_url}&scope=email")
+        |> html_response(200)
+
+      assert html =~ "Authorize"
+    end
+
+    test "skips it for a first-party app, same as single-app mode", %{conn: conn, app: app} do
+      {:ok, _app} = Admin.update_app(app, %{first_party: true})
+
+      conn = get(conn, ~p"/users/log-in?callback_url=#{@callback_url}&scope=email")
+
+      assert redirected_to(conn) =~ "#{@callback_url}?code="
+    end
+
+    test "still records consent for a first-party app in multi mode", %{
+      conn: conn,
+      user: user,
+      app: app
+    } do
+      {:ok, app} = Admin.update_app(app, %{first_party: true})
+
+      get(conn, ~p"/users/log-in?callback_url=#{@callback_url}&scope=email")
+
+      assert [consented] = Accounts.list_consented_apps(user)
+      assert consented.id == app.id
     end
   end
 
