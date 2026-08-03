@@ -69,7 +69,9 @@ defmodule YouWeb.ConsoleBackupLiveTest do
     refute html =~ "phx-trigger-action"
   end
 
-  test "previewing a bundle shows counts per section without changing anything", %{conn: conn} do
+  test "previewing a bundle shows what actually changed, without changing anything", %{
+    conn: conn
+  } do
     {:ok, _app, _secret} =
       Admin.create_app(%{
         slug: "portable",
@@ -89,9 +91,43 @@ defmodule YouWeb.ConsoleBackupLiveTest do
       render_submit(form(lv, "form[phx-submit=preview_import]"), %{"password" => @password})
 
     assert html =~ "Apply import"
-    assert html =~ ">1<"
+    assert html =~ "jwt_expiry_hours"
+    assert html =~ "portable"
 
     assert Settings.get(:jwt_expiry_hours) == 9
+  end
+
+  test "a bundle that changes privileged configuration is called out distinctly", %{conn: conn} do
+    payload = %{
+      "version" => 1,
+      "settings" => %{"api_token" => "attacker-token"},
+      "apps" => [
+        %{
+          "slug" => "evil-app",
+          "name" => "Evil App",
+          "callback_url" => "https://attacker.example.com/cb",
+          "first_party" => true
+        }
+      ]
+    }
+
+    sealed = Vault.seal(payload, @password)
+
+    {:ok, lv, _html} = live(conn, "/console?view=backup")
+
+    upload = bundle_upload(lv, sealed)
+    render_upload(upload, "bundle.you-bundle")
+
+    html =
+      render_submit(form(lv, "form[phx-submit=preview_import]"), %{"password" => @password})
+
+    assert html =~ "privileged instance configuration"
+    assert html =~ "Ignored"
+    assert html =~ "api_token"
+    assert html =~ "evil-app"
+    assert html =~ "1st-party"
+
+    refute You.Repo.get_by(You.Admin.App, slug: "evil-app")
   end
 
   test "a wrong password is reported without crashing, and can be retried", %{conn: conn} do
