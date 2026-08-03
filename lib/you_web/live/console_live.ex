@@ -57,7 +57,7 @@ defmodule YouWeb.ConsoleLive do
 
   # Write-only in the console: never rendered into the DOM, blank on save
   # keeps the current value, cleared via the explicit "clear" button.
-  @secret_settings [:erlang_cookie, :scim_bearer_token]
+  @secret_settings [:erlang_cookie, :scim_bearer_token, :smtp_password, :api_token]
 
   @settings_fields [
     %{key: :session_expiry_hours, label: "Session expiry (hours)"},
@@ -68,7 +68,16 @@ defmodule YouWeb.ConsoleLive do
     %{key: :epmd_port, label: "EPMD port"},
     %{key: :erlang_cookie, label: "Erlang cookie"},
     %{key: :scim_bearer_token, label: "SCIM bearer token"},
-    %{key: :audit_webhook_url, label: "Audit webhook URL"}
+    %{key: :audit_webhook_url, label: "Audit webhook URL"},
+    %{key: :you_mode, label: "Deployment mode"},
+    %{key: :smtp_host, label: "SMTP host"},
+    %{key: :smtp_port, label: "SMTP port"},
+    %{key: :smtp_username, label: "SMTP username"},
+    %{key: :smtp_password, label: "SMTP password"},
+    %{key: :mail_from, label: "Mail from address"},
+    %{key: :api_token, label: "Management API token"},
+    %{key: :analytics_src, label: "Analytics script URL"},
+    %{key: :analytics_domain, label: "Analytics domain"}
   ]
 
   @impl true
@@ -450,13 +459,23 @@ defmodule YouWeb.ConsoleLive do
       raw = params[Atom.to_string(key)]
 
       if is_binary(raw) and not (key in @secret_settings and raw == "") do
-        Settings.set(key, parse_value(raw))
+        Settings.set(key, parse_value(key, raw))
       end
     end)
 
     You.Accounts.CookieSync.apply_cookie()
     You.Audit.Streamer.reload()
-    {:noreply, socket |> load_settings() |> assign(saved: true)}
+    You.Mode.invalidate_app_cache()
+
+    {:noreply,
+     socket
+     |> load_settings()
+     |> assign(
+       saved: true,
+       single_mode: You.Mode.single?(),
+       nav: nav(),
+       mail_ready: You.Mailer.production_ready?()
+     )}
   end
 
   def handle_event("clear_setting", %{"key" => key}, socket) do
@@ -579,7 +598,10 @@ defmodule YouWeb.ConsoleLive do
   defp load_settings(socket),
     do: assign(socket, settings: Settings.all())
 
-  defp parse_value(raw) do
+  defp parse_value(:you_mode, "single"), do: "single"
+  defp parse_value(:you_mode, _raw), do: "multi"
+
+  defp parse_value(_key, raw) do
     if raw =~ ~r/^\d+$/, do: String.to_integer(raw), else: raw
   end
 
@@ -698,9 +720,8 @@ defmodule YouWeb.ConsoleLive do
         </div>
         <p class="mt-1 text-muted-foreground">
           Mail is being kept in an in-memory mailbox instead of being delivered. Magic links, email
-          2FA, address confirmation and password resets will not reach users. Set
-          <span class="font-mono text-xs">SMTP_HOST</span>
-          and restart, or read the queued mail at
+          2FA, address confirmation and password resets will not reach users. Configure SMTP from
+          the Settings section, or read the queued mail at
           <.link href={~p"/console/mailbox"} class="text-primary underline">
             /console/mailbox
           </.link>
@@ -1817,6 +1838,70 @@ defmodule YouWeb.ConsoleLive do
           />
           <p class="pt-1 font-mono text-[11px] text-muted-foreground">
             SCIM base: {@base_url}/scim/v2 · secrets are write-only, use clear to disable
+          </p>
+        </.settings_group>
+
+        <.settings_group title="Deployment mode">
+          <label class="flex items-center justify-between gap-4 text-sm">
+            <span class="text-muted-foreground">Mode</span>
+            <select
+              name="you_mode"
+              class="h-8 rounded-md border border-input bg-background px-2 font-mono text-xs"
+            >
+              <option value="multi" selected={@settings[:you_mode] != "single"}>multi</option>
+              <option value="single" selected={@settings[:you_mode] == "single"}>single</option>
+            </select>
+          </label>
+          <p class="pt-1 font-mono text-[11px] text-muted-foreground">
+            Single mode replaces the apps registry with one application. Applies to this console
+            session on save; other open console tabs pick it up on their next page load.
+          </p>
+        </.settings_group>
+
+        <.settings_group title="Mail">
+          <.setting_field name="smtp_host" label="SMTP host" value={@settings[:smtp_host]} />
+          <.setting_field name="smtp_port" label="SMTP port" value={@settings[:smtp_port]} />
+          <.setting_field
+            name="smtp_username"
+            label="SMTP username"
+            value={@settings[:smtp_username]}
+          />
+          <.secret_setting_field
+            name="smtp_password"
+            label="SMTP password"
+            value={@settings[:smtp_password]}
+          />
+          <.setting_field name="mail_from" label="Mail from address" value={@settings[:mail_from]} />
+          <p class="pt-1 font-mono text-[11px] text-muted-foreground">
+            Applies to the next email sent — nothing to restart. Clear the host to fall back to
+            the in-memory mailbox at /console/mailbox.
+          </p>
+        </.settings_group>
+
+        <.settings_group title="Management API">
+          <.secret_setting_field
+            name="api_token"
+            label="Bearer token"
+            value={@settings[:api_token]}
+          />
+          <p class="pt-1 font-mono text-[11px] text-muted-foreground">
+            Unset or empty disables the management API. Applies immediately.
+          </p>
+        </.settings_group>
+
+        <.settings_group title="Analytics">
+          <.setting_field
+            name="analytics_src"
+            label="Script URL"
+            value={@settings[:analytics_src]}
+          />
+          <.setting_field
+            name="analytics_domain"
+            label="Domain"
+            value={@settings[:analytics_domain]}
+          />
+          <p class="pt-1 font-mono text-[11px] text-muted-foreground">
+            Both fields are required for the snippet to appear. Plausible-compatible.
           </p>
         </.settings_group>
 
