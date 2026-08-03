@@ -56,9 +56,11 @@ defmodule YouWeb.OAuthFlow do
   Finishes an authorization for a user who is already signed in to You: record
   consent, mint a code, redirect back to the consumer.
 
-  This is what the consent screen posts to, and what single-app mode calls
-  instead of rendering that screen. Consent is recorded either way, so an
-  instance that later flips to multi-app mode has no gap in its consent
+  This is what the consent screen posts to, and what `UserSessionController.new/2`
+  calls instead of rendering that screen when the in-flight app is
+  `first_party` — deployment mode plays no part in that decision. Consent is
+  recorded either way, so an app that starts first-party and is later
+  demoted (or an instance that changes mode) has no gap in its consent
   records.
 
   Returns `{:error, :no_callback}` when the session carries no registered

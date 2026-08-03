@@ -130,9 +130,9 @@ https://id.example.com/users/log-in?callback_url=https://app.example.com/auth/ca
 ```
 
 After signing in, You redirects to your callback with `?code=…`. There is no
-consent screen: in single-app mode the app is the instance, so the user is
-signing in rather than authorizing a third party. (Consent is still recorded,
-so flipping to multi-app mode later leaves no gap.)
+consent screen: the app provisioned for single-app mode is flagged
+`first_party`, so the user is signing in rather than authorizing a third
+party. (Consent is still recorded, so a later mode flip leaves no gap.)
 
 Exchange the code for a JWT with whichever integration fits:
 
@@ -159,7 +159,9 @@ docker compose cp you:/data/you/backup.db ./you-backup.db
 ## Growing out of single-app mode
 
 Remove `YOU_MODE` (and the `SINGLE_APP_*` variables) from `.env` and restart.
-The apps registry reappears in the console with your app already in it, the
-consent screen comes back (including for the app provisioned here), and the account hub
-goes back to listing every app a user has connected. No migration, no
-reinstall — the schema was never different.
+The apps registry reappears in the console with your app already in it, and
+the account hub goes back to listing every app a user has connected. The
+consent screen still does not appear for the app provisioned here — it stays
+`first_party` — but any other app you register in the console will get one,
+same as it would have in single-app mode. No migration, no reinstall — the
+schema was never different.
