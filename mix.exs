@@ -76,6 +76,7 @@ defmodule You.MixProject do
       {:absinthe, "~> 1.7"},
       {:absinthe_plug, "~> 1.5"},
       {:bcrypt_elixir, "~> 3.0"},
+      {:argon2_elixir, "~> 4.0"},
       {:nimble_totp, "~> 1.0"},
       {:eqrcode, "~> 0.2"},
       {:swoosh, "~> 1.16"},

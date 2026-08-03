@@ -14,9 +14,17 @@ defmodule You.Config.Vault do
   """
 
   @format "you.config.v1"
-  @iterations 600_000
-  @max_iterations 2_000_000
+  @max_pbkdf2_iterations 2_000_000
   @digest :sha256
+
+  @argon2_m_cost 16
+  @argon2_t_cost 4
+  @argon2_parallelism 4
+  @argon2_type 2
+  @max_argon2_m_cost 20
+  @max_argon2_t_cost 10
+  @max_argon2_parallelism 8
+
   @min_password_length 12
 
   @doc "The shortest password `seal/2` will accept."
@@ -28,8 +36,13 @@ defmodule You.Config.Vault do
   Raises `ArgumentError` for a password shorter than `min_password_length/0`.
   A bundle carries every secret the instance holds — SMTP credentials, the
   management API token, webhook signing secrets, upstream provider client
-  secrets — and 600k PBKDF2 iterations do not rescue a short password. This
-  holds for every caller, not just the console's export form.
+  secrets — and no amount of KDF cost rescues a short password. This holds
+  for every caller, not just the console's export form.
+
+  New envelopes are always sealed with Argon2id: it is memory-hard, which
+  removes most of the advantage a GPU or ASIC gives an attacker against an
+  offline copy of a bundle. `open/2` still understands envelopes sealed with
+  the older PBKDF2-HMAC-SHA256 KDF, dispatching on the `"kdf"` header field.
   """
   def seal(payload, password) when is_map(payload) and is_binary(password) do
     if String.length(password) < @min_password_length do
@@ -39,11 +52,18 @@ defmodule You.Config.Vault do
 
     salt = :crypto.strong_rand_bytes(16)
     iv = :crypto.strong_rand_bytes(12)
-    key = derive(password, salt)
+
+    key =
+      derive_argon2id(password, salt, @argon2_m_cost, @argon2_t_cost, @argon2_parallelism)
 
     header = %{
       "format" => @format,
-      "kdf" => %{"algorithm" => "pbkdf2-hmac-sha256", "iterations" => @iterations},
+      "kdf" => %{
+        "algorithm" => "argon2id",
+        "m_cost" => @argon2_m_cost,
+        "t_cost" => @argon2_t_cost,
+        "parallelism" => @argon2_parallelism
+      },
       "salt" => Base.encode64(salt),
       "iv" => Base.encode64(iv)
     }
@@ -86,11 +106,10 @@ defmodule You.Config.Vault do
          {:ok, iv} <- Base.decode64(iv),
          {:ok, tag} <- Base.decode64(tag),
          {:ok, ciphertext} <- Base.decode64(payload),
-         {:ok, iterations} <- valid_iterations(json["kdf"]) do
+         {:ok, kdf} <- valid_kdf(json["kdf"]) do
       aad = json |> Map.drop(["tag", "payload"]) |> Jason.encode!()
 
-      {:ok,
-       %{salt: salt, iv: iv, tag: tag, ciphertext: ciphertext, aad: aad, iterations: iterations}}
+      {:ok, %{salt: salt, iv: iv, tag: tag, ciphertext: ciphertext, aad: aad, kdf: kdf}}
     else
       _ -> {:error, :malformed}
     end
@@ -99,22 +118,36 @@ defmodule You.Config.Vault do
   defp parts(_json), do: {:error, :malformed}
 
   # Matches on a map so a non-map `"kdf"` (a string, a list, absent
-  # entirely) fails the clause instead of raising: `get_in/2` used to reach
-  # into `json["kdf"]["iterations"]` here, which raised `FunctionClauseError`
-  # the moment `"kdf"` itself was not a map. The upper bound exists because
-  # this number is untrusted and is fed straight to `:crypto.pbkdf2_hmac/5`,
-  # which blocks the calling scheduler for the entire derivation — an
-  # unbounded value is a way to pin a scheduler thread from a file an admin
-  # merely opened for preview.
-  defp valid_iterations(%{"iterations" => iterations})
-       when is_integer(iterations) and iterations > 0 and iterations <= @max_iterations do
-    {:ok, iterations}
+  # entirely) fails every clause instead of raising: a bare
+  # `json["kdf"]["iterations"]` used to raise `FunctionClauseError` the
+  # moment `"kdf"` itself was not a map. Every numeric field is bounded
+  # before it reaches a KDF: an unbounded iteration count is a
+  # CPU-exhaustion DoS and an unbounded `m_cost` is a memory-exhaustion
+  # DoS, both from a file an admin merely opened for preview, before any
+  # password has been checked. The tagged tuple this returns is what the
+  # derive functions dispatch on.
+  defp valid_kdf(%{"algorithm" => "pbkdf2-hmac-sha256", "iterations" => iterations})
+       when is_integer(iterations) and iterations > 0 and iterations <= @max_pbkdf2_iterations do
+    {:ok, {:pbkdf2, iterations}}
   end
 
-  defp valid_iterations(_kdf), do: :error
+  defp valid_kdf(%{
+         "algorithm" => "argon2id",
+         "m_cost" => m_cost,
+         "t_cost" => t_cost,
+         "parallelism" => parallelism
+       })
+       when is_integer(m_cost) and m_cost > 0 and m_cost <= @max_argon2_m_cost and
+              is_integer(t_cost) and t_cost > 0 and t_cost <= @max_argon2_t_cost and
+              is_integer(parallelism) and parallelism > 0 and
+              parallelism <= @max_argon2_parallelism do
+    {:ok, {:argon2id, m_cost, t_cost, parallelism}}
+  end
+
+  defp valid_kdf(_kdf), do: :error
 
   defp decrypt(parts, password) do
-    key = derive(password, parts.salt, parts.iterations)
+    key = derive(password, parts.salt, parts.kdf)
 
     case :crypto.crypto_one_time_aead(
            :aes_256_gcm,
@@ -137,7 +170,25 @@ defmodule You.Config.Vault do
     end
   end
 
-  defp derive(password, salt, iterations \\ @iterations) do
+  defp derive(password, salt, {:pbkdf2, iterations}) do
     :crypto.pbkdf2_hmac(@digest, password, salt, iterations, 32)
+  end
+
+  defp derive(password, salt, {:argon2id, m_cost, t_cost, parallelism}) do
+    derive_argon2id(password, salt, m_cost, t_cost, parallelism)
+  end
+
+  defp derive_argon2id(password, salt, m_cost, t_cost, parallelism) do
+    hex =
+      Argon2.Base.hash_password(password, salt,
+        t_cost: t_cost,
+        m_cost: m_cost,
+        parallelism: parallelism,
+        hashlen: 32,
+        argon2_type: @argon2_type,
+        format: :raw_hash
+      )
+
+    Base.decode16!(hex, case: :lower)
   end
 end

@@ -33,11 +33,42 @@ defmodule You.ConfigBundleTest do
     end)
   end
 
+  defp seal_with_pbkdf2(payload, password, iterations \\ 10) do
+    salt = :crypto.strong_rand_bytes(16)
+    iv = :crypto.strong_rand_bytes(12)
+    key = :crypto.pbkdf2_hmac(:sha256, password, salt, iterations, 32)
+
+    header = %{
+      "format" => "you.config.v1",
+      "kdf" => %{"algorithm" => "pbkdf2-hmac-sha256", "iterations" => iterations},
+      "salt" => Base.encode64(salt),
+      "iv" => Base.encode64(iv)
+    }
+
+    plaintext = Jason.encode!(payload)
+    aad = Jason.encode!(header)
+
+    {ciphertext, tag} =
+      :crypto.crypto_one_time_aead(:aes_256_gcm, key, iv, plaintext, aad, true)
+
+    header
+    |> Map.put("tag", Base.encode64(tag))
+    |> Map.put("payload", Base.encode64(ciphertext))
+    |> Jason.encode!()
+  end
+
   describe "vault" do
-    test "round-trips under the right password" do
+    test "round-trips under the right password, sealed with argon2id" do
       sealed = Vault.seal(%{"hello" => "world"}, @password)
 
       refute sealed =~ "world"
+      assert Jason.decode!(sealed)["kdf"]["algorithm"] == "argon2id"
+      assert {:ok, %{"hello" => "world"}} = Vault.open(sealed, @password)
+    end
+
+    test "a bundle sealed with the older pbkdf2 kdf still opens" do
+      sealed = seal_with_pbkdf2(%{"hello" => "world"}, @password)
+
       assert {:ok, %{"hello" => "world"}} = Vault.open(sealed, @password)
     end
 
@@ -47,9 +78,40 @@ defmodule You.ConfigBundleTest do
       assert {:error, :wrong_password} = Vault.open(sealed, "not it")
     end
 
+    test "refuses the wrong password against a pbkdf2 bundle" do
+      sealed = seal_with_pbkdf2(%{"hello" => "world"}, @password)
+
+      assert {:error, :wrong_password} = Vault.open(sealed, "not it")
+    end
+
     test "refuses a tampered envelope" do
       sealed = Vault.seal(%{"hello" => "world"}, @password)
       tampered = Jason.decode!(sealed) |> Map.put("kdf", %{"iterations" => 1}) |> Jason.encode!()
+
+      assert {:error, _} = Vault.open(tampered, @password)
+    end
+
+    test "refuses a tampered algorithm" do
+      sealed = Vault.seal(%{"hello" => "world"}, @password)
+
+      tampered =
+        sealed
+        |> Jason.decode!()
+        |> update_in(["kdf", "algorithm"], fn _ -> "pbkdf2-hmac-sha256" end)
+        |> put_in(["kdf", "iterations"], 10)
+        |> Jason.encode!()
+
+      assert {:error, _} = Vault.open(tampered, @password)
+    end
+
+    test "refuses a tampered cost parameter" do
+      sealed = Vault.seal(%{"hello" => "world"}, @password)
+
+      tampered =
+        sealed
+        |> Jason.decode!()
+        |> put_in(["kdf", "t_cost"], 1)
+        |> Jason.encode!()
 
       assert {:error, _} = Vault.open(tampered, @password)
     end
@@ -333,8 +395,8 @@ defmodule You.ConfigBundleTest do
       assert {:error, :malformed} = Vault.open(tampered, @password)
     end
 
-    test "refuses zero iterations instead of raising" do
-      sealed = Vault.seal(%{"hello" => "world"}, @password)
+    test "refuses zero pbkdf2 iterations instead of raising" do
+      sealed = seal_with_pbkdf2(%{"hello" => "world"}, @password)
 
       tampered =
         Jason.decode!(sealed)
@@ -344,8 +406,8 @@ defmodule You.ConfigBundleTest do
       assert {:error, :malformed} = Vault.open(tampered, @password)
     end
 
-    test "refuses negative iterations instead of raising" do
-      sealed = Vault.seal(%{"hello" => "world"}, @password)
+    test "refuses negative pbkdf2 iterations instead of raising" do
+      sealed = seal_with_pbkdf2(%{"hello" => "world"}, @password)
 
       tampered =
         Jason.decode!(sealed)
@@ -355,12 +417,34 @@ defmodule You.ConfigBundleTest do
       assert {:error, :malformed} = Vault.open(tampered, @password)
     end
 
-    test "refuses an unreasonably large iteration count" do
-      sealed = Vault.seal(%{"hello" => "world"}, @password)
+    test "refuses an unreasonably large pbkdf2 iteration count" do
+      sealed = seal_with_pbkdf2(%{"hello" => "world"}, @password)
 
       tampered =
         Jason.decode!(sealed)
         |> Map.update!("kdf", &Map.put(&1, "iterations", 50_000_000))
+        |> Jason.encode!()
+
+      assert {:error, :malformed} = Vault.open(tampered, @password)
+    end
+
+    test "refuses zero argon2 m_cost instead of raising" do
+      sealed = Vault.seal(%{"hello" => "world"}, @password)
+
+      tampered =
+        Jason.decode!(sealed)
+        |> Map.update!("kdf", &Map.put(&1, "m_cost", 0))
+        |> Jason.encode!()
+
+      assert {:error, :malformed} = Vault.open(tampered, @password)
+    end
+
+    test "refuses an unreasonably large argon2 m_cost" do
+      sealed = Vault.seal(%{"hello" => "world"}, @password)
+
+      tampered =
+        Jason.decode!(sealed)
+        |> Map.update!("kdf", &Map.put(&1, "m_cost", 1_000_000))
         |> Jason.encode!()
 
       assert {:error, :malformed} = Vault.open(tampered, @password)
