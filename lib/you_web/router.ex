@@ -181,6 +181,12 @@ defmodule YouWeb.Router do
     delete "/apps/:id/roles/:user_id", AppsController, :remove_role
 
     get "/audit", AuditController, :index
+
+    # POST throughout, export included: a bundle password in a query string
+    # would land in access logs and browser history.
+    post "/config/bundle", ConfigController, :export
+    post "/config/bundle/preview", ConfigController, :preview
+    post "/config/bundle/import", ConfigController, :import
   end
 
   ## Authentication routes

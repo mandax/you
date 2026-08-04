@@ -237,6 +237,78 @@ curl -H "Authorization: Bearer $API_TOKEN" https://you.example.com/api/v1/audit
 Newest first, capped at 100 events. This is the live in-memory activity view,
 not a durable log. For retention, configure the audit webhook.
 
+## Configuration bundles
+
+A bundle is this instance's settings, apps, identity providers and webhook
+endpoints, sealed under a password you choose. Configuration, not data: no
+users, tokens, sessions or consents. Instance identity — `erlang_cookie`,
+`api_token`, `scim_bearer_token` — is refused in both directions, so a
+restore never clones another instance's credentials.
+
+Every action is a POST, export included: the password would otherwise land in
+access logs and browser history as a query string.
+
+### Export
+
+```sh
+curl -X POST -H "Authorization: Bearer $API_TOKEN" \
+  -H "content-type: application/json" \
+  -d "{\"password\": \"$BUNDLE_PASSWORD\"}" \
+  https://you.example.com/api/v1/config/bundle > config.you-bundle
+```
+
+Responds with the sealed envelope as `application/octet-stream` — the same
+bytes the console's download button produces. The password must be at least
+12 characters (`422 password_too_short` otherwise).
+
+### Preview
+
+```sh
+jq -n --arg p "$BUNDLE_PASSWORD" --rawfile b config.you-bundle \
+  '{password: $p, bundle: $b}' |
+  curl -X POST -H "Authorization: Bearer $API_TOKEN" \
+    -H "content-type: application/json" --data-binary @- \
+    https://you.example.com/api/v1/config/bundle/preview
+```
+
+Reports what an import would change — which settings differ, which apps and
+providers are created or updated, and which instance-identity keys were
+present and will be ignored — without writing anything. A wrong password is
+`401 wrong_password`; a file that is not a bundle is `422 malformed`.
+
+### Import
+
+Same body, `POST /api/v1/config/bundle/import`. Upserts by natural key
+(settings by key, apps by slug, providers by slug, webhooks by url) and never
+deletes: an instance that has diverged keeps whatever the bundle does not
+mention. Applied in one transaction.
+
+### From the command line
+
+Disaster recovery is exactly when the console — and possibly the HTTP
+endpoint — may be the thing that is unavailable. The same three operations run
+locally:
+
+```sh
+mix you.bundle export config.you-bundle [--force]
+mix you.bundle preview config.you-bundle
+mix you.bundle import config.you-bundle
+```
+
+In a release, where Mix is not installed:
+
+```sh
+bin/you eval 'You.Release.export_bundle("/data/you/config.you-bundle")'
+bin/you eval 'You.Release.preview_bundle("/data/you/config.you-bundle")'
+bin/you eval 'You.Release.import_bundle("/data/you/config.you-bundle")'
+```
+
+The password is read from `YOU_BUNDLE_PASSWORD_FILE` (the file's contents),
+then `YOU_BUNDLE_PASSWORD`, then an interactive prompt. There is deliberately
+no `--password` flag: a password on a command line lands in shell history, in
+`ps` output, and in CI logs. For CI, mount a secret and point
+`YOU_BUNDLE_PASSWORD_FILE` at it.
+
 ## Which API should I use?
 
 Use the **management API** (this document) when you operate You itself:
