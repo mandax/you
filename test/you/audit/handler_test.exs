@@ -53,6 +53,31 @@ defmodule You.Audit.HandlerTest do
     assert event["event"] == "user.registered"
   end
 
+  test "persists an invitation to the admin log, where the role grant is", %{tmp_dir: tmp_dir} do
+    target = "invitee-#{System.unique_integer([:positive])}@example.com"
+
+    :telemetry.execute([:you, :audit, :admin, :action], %{}, %{
+      action: "invite_user",
+      target: target,
+      app_slug: "billing",
+      role: "admin"
+    })
+
+    :timer.sleep(50)
+
+    events =
+      Path.join(tmp_dir, "admin.jsonl")
+      |> File.read!()
+      |> String.trim()
+      |> String.split("\n")
+      |> Enum.map(&Jason.decode!/1)
+
+    event = Enum.find(events, &(&1["target"] == target))
+    assert event
+    assert event["action"] == "invite_user"
+    assert event["role"] == "admin"
+  end
+
   test "writes every event the webhook surface advertises", %{tmp_dir: tmp_dir} do
     for event_name <- You.Webhooks.telemetry_events() do
       :telemetry.execute(event_name, %{}, %{probe: You.Webhooks.event_type(event_name)})

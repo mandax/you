@@ -157,6 +157,95 @@ defmodule You.InvitationsTest do
     end
   end
 
+  # Issuing one grants a role by another name, so it belongs in the same trail
+  # as set_role. The set_role event acceptance eventually fires does not say an
+  # invitation was behind it, which is why all three points are recorded.
+  describe "the audit trail" do
+    setup do
+      test_pid = self()
+      handler = "invitation-audit-#{System.unique_integer([:positive])}"
+
+      :telemetry.attach(
+        handler,
+        [:you, :audit, :admin, :action],
+        fn _event, _measurements, metadata, _config ->
+          send(test_pid, {:audit, metadata})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(handler) end)
+      :ok
+    end
+
+    test "records who invited whom, to what, with which role", %{app: app} do
+      admin = user_fixture()
+
+      {:ok, _invitation, _token} =
+        Invitations.create(%{
+          email: "invitee@example.com",
+          app_id: app.id,
+          role: "admin",
+          invited_by_id: admin.id
+        })
+
+      assert_receive {:audit, metadata}
+      assert metadata.action == "invite_user"
+      assert metadata.admin_user_id == admin.id
+      assert metadata.app_slug == "billing"
+      assert metadata.target == "invitee@example.com"
+      assert metadata.role == "admin"
+    end
+
+    test "records a withdrawal", %{app: app} do
+      {invitation, _token} = invite!(app, %{email: "invitee@example.com"})
+      flush_audit()
+
+      assert Invitations.revoke(invitation.id) == 1
+
+      assert_receive {:audit, %{action: "revoke_invitation", target: "invitee@example.com"}}
+    end
+
+    test "stays quiet when there was nothing to withdraw", %{app: app} do
+      {invitation, _token} = invite!(app)
+      {:ok, user} = Invitations.resolve_user(invitation)
+      {:ok, _user} = Invitations.accept(invitation, user)
+      flush_audit()
+
+      assert Invitations.revoke(invitation.id) == 0
+
+      refute_receive {:audit, %{action: "revoke_invitation"}}, 100
+    end
+
+    test "records the acceptance, which is when the access actually lands", %{app: app} do
+      {invitation, _token} = invite!(app, %{email: "invitee@example.com", role: "admin"})
+      {:ok, user} = Invitations.resolve_user(invitation)
+      flush_audit()
+
+      {:ok, _user} = Invitations.accept(invitation, user)
+
+      assert_receive {:audit, %{action: "accept_invitation"} = metadata}
+      assert metadata.target == "invitee@example.com"
+      assert metadata.app_slug == "billing"
+      assert metadata.role == "admin"
+    end
+
+    test "a refused invitation records nothing", %{app: app} do
+      assert {:error, :invalid_role} =
+               Invitations.create(%{email: "a@b.c", app_id: app.id, role: "owner"})
+
+      refute_receive {:audit, %{action: "invite_user"}}, 100
+    end
+
+    defp flush_audit do
+      receive do
+        {:audit, _metadata} -> flush_audit()
+      after
+        0 -> :ok
+      end
+    end
+  end
+
   describe "the email" do
     test "names the app and the role, and carries the link", %{app: app} do
       {:ok, _invitation} =

@@ -523,7 +523,12 @@ defmodule You.Accounts do
 
   A code issued without a challenge is redeemable **only** by an authenticated
   client. The code is single-use; it is always deleted once found, so a failed
-  verification cannot be retried.
+  verification cannot be retried — including when it turns out to be expired.
+
+  How long a code lives is the issuing app's decision (`code_expiry_minutes`),
+  which is not knowable until the code's metadata has been read. The lookup is
+  therefore bounded by the longest expiry any app can pin, as an upper bound
+  only, and the code is checked against its own app's expiry afterwards.
 
   Returns `{:ok, user, scopes, app_slug}`, `{:error, :invalid_grant}` (PKCE
   failure), `{:error, :invalid_client}` (neither proof presented), or
@@ -532,11 +537,6 @@ defmodule You.Accounts do
   def consume_auth_code(code, code_verifier \\ nil, opts \\ []) when is_binary(code) do
     authenticated? = Keyword.get(opts, :client_authenticated, false)
 
-    # The query is bounded by the longest expiry any app can pin, which is only
-    # an upper bound — the code is then checked against its own app's expiry,
-    # which is not knowable until its metadata has been read. Deletion happens
-    # either way: a code that turns out to be expired is spent, not left for a
-    # second attempt.
     with {:ok, query} <-
            UserToken.verify_auth_code_query(code, You.Admin.max_code_expiry_minutes()),
          {user, token} <- Repo.one(query),

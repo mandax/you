@@ -51,18 +51,30 @@ defmodule You.Invitations do
     attrs = Map.new(attrs, fn {key, value} -> {to_string(key), value} end)
     token = :crypto.strong_rand_bytes(@rand_size)
 
-    with :ok <- validate_role(attrs) do
-      %Invitation{}
-      |> Invitation.changeset(Map.put(attrs, "token", :crypto.hash(@hash_algorithm, token)))
-      |> Repo.insert()
-      |> case do
-        {:ok, invitation} ->
-          {:ok, Repo.preload(invitation, :app), Base.url_encode64(token, padding: false)}
+    with :ok <- validate_role(attrs),
+         {:ok, invitation} <-
+           %Invitation{}
+           |> Invitation.changeset(Map.put(attrs, "token", :crypto.hash(@hash_algorithm, token)))
+           |> Repo.insert() do
+      invitation = Repo.preload(invitation, :app)
+      audit(invitation, "invite_user")
 
-        {:error, changeset} ->
-          {:error, changeset}
-      end
+      {:ok, invitation, Base.url_encode64(token, padding: false)}
     end
+  end
+
+  # Issuing, withdrawing and accepting an invitation are each as privileged as
+  # the `set_role` they stand in for, and the `set_role` event that acceptance
+  # eventually fires does not say an invitation was behind it — so without
+  # these, nobody can reconstruct who invited whom to what.
+  defp audit(%Invitation{} = invitation, action) do
+    :telemetry.execute([:you, :audit, :admin, :action], %{}, %{
+      admin_user_id: invitation.invited_by_id,
+      action: action,
+      app_slug: invitation.app && invitation.app.slug,
+      target: invitation.email,
+      role: invitation.role
+    })
   end
 
   defp validate_role(%{"role" => role} = attrs) when is_binary(role) and role != "" do
@@ -120,12 +132,21 @@ defmodule You.Invitations do
   `{:error, :already_accepted}`. Returns `{:ok, user}`.
   """
   def accept(%Invitation{} = invitation, %User{} = user) do
-    Repo.transact(fn ->
-      with {:ok, invitation} <- claim(invitation, user),
-           :ok <- apply_role(invitation, user) do
-        {:ok, user}
-      end
-    end)
+    result =
+      Repo.transact(fn ->
+        with {:ok, claimed} <- claim(invitation, user),
+             :ok <- apply_role(claimed, user) do
+          {:ok, claimed}
+        end
+      end)
+
+    # Emitted after the commit, not inside it: an audit handler writes to disk
+    # and a webhook subscriber makes an HTTP call, neither of which belongs
+    # under SQLite's single write lock.
+    with {:ok, claimed} <- result do
+      audit(claimed, "accept_invitation")
+      {:ok, user}
+    end
   end
 
   # Marks the invitation spent, but only if it still is. The guard is in the
@@ -188,10 +209,19 @@ defmodule You.Invitations do
 
   @doc "Withdraws a pending invitation. Returns the number deleted (0 or 1)."
   def revoke(id) do
-    {count, _} =
-      Repo.delete_all(from i in Invitation, where: i.id == ^id and is_nil(i.accepted_at))
+    query =
+      from i in Invitation,
+        where: i.id == ^id and is_nil(i.accepted_at),
+        select: i
 
-    count
+    case Repo.delete_all(query) do
+      {1, [invitation]} ->
+        invitation |> Repo.preload(:app) |> audit("revoke_invitation")
+        1
+
+      {count, _} ->
+        count
+    end
   end
 
   defp deliver(invitation, url) do
