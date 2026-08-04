@@ -25,13 +25,10 @@ defmodule YouWeb.SingleModeTest do
   end
 
   defp single_mode(_context) do
-    Application.put_env(:you, :mode, :single)
+    You.Settings.set(:you_mode, "single")
     Application.put_env(:you, :single_app, slug: "solo", callback_url: @callback_url)
 
-    on_exit(fn ->
-      Application.put_env(:you, :mode, :multi)
-      Application.delete_env(:you, :single_app)
-    end)
+    on_exit(fn -> Application.delete_env(:you, :single_app) end)
 
     :ok
   end

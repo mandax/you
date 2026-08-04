@@ -2,9 +2,7 @@ defmodule YouWeb.Plugs.ManagementAuthTest do
   use YouWeb.ConnCase, async: false
 
   setup do
-    previous = Application.get_env(:you, :api_token)
-    Application.put_env(:you, :api_token, "test-api-token")
-    on_exit(fn -> Application.put_env(:you, :api_token, previous) end)
+    You.Settings.set(:api_token, "test-api-token")
     :ok
   end
 
@@ -42,9 +40,8 @@ defmodule YouWeb.Plugs.ManagementAuthTest do
     assert %{"data" => _} = json_response(conn, 200)
   end
 
-  test "unset api_token disables the API with 403", %{conn: conn} do
-    Application.delete_env(:you, :api_token)
-    on_exit(fn -> Application.put_env(:you, :api_token, @token) end)
+  test "an unset api_token disables the API with 403", %{conn: conn} do
+    You.Settings.set(:api_token, "")
 
     conn =
       conn
@@ -54,9 +51,8 @@ defmodule YouWeb.Plugs.ManagementAuthTest do
     assert %{"error" => "management_api_disabled"} = json_response(conn, 403)
   end
 
-  test "empty api_token disables the API with 403", %{conn: conn} do
-    Application.put_env(:you, :api_token, "")
-    on_exit(fn -> Application.put_env(:you, :api_token, @token) end)
+  test "a whitespace-only api_token disables the API with 403", %{conn: conn} do
+    You.Settings.set(:api_token, "   ")
 
     conn =
       conn

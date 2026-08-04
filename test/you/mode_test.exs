@@ -6,13 +6,10 @@ defmodule You.ModeTest do
   alias You.Repo
 
   defp single_mode(config) do
-    Application.put_env(:you, :mode, :single)
+    You.Settings.set(:you_mode, "single")
     Application.put_env(:you, :single_app, config)
 
-    on_exit(fn ->
-      Application.put_env(:you, :mode, :multi)
-      Application.delete_env(:you, :single_app)
-    end)
+    on_exit(fn -> Application.delete_env(:you, :single_app) end)
   end
 
   describe "mode" do

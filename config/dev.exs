@@ -46,7 +46,6 @@ config :you, YouWeb.Endpoint,
 config :you, dev_routes: true
 
 # Management REST API bearer token (dev only — set API_TOKEN in prod)
-config :you, :api_token, "dev-api-token"
 
 config :logger, :default_formatter, format: "[$level] $message\n"
 

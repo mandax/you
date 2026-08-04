@@ -10,6 +10,13 @@ defmodule You.Application do
     children = [
       YouWeb.Telemetry,
       You.Repo,
+      # Seeds console-editable settings from the environment, then provisions
+      # the single app. Both are no-ops after their first successful boot, and
+      # both need You.Repo. They come before the endpoint because `you_mode`
+      # is one of the settings they seed: starting them later would leave a
+      # window where the first requests are served as multi mode.
+      You.Settings.EnvSeed,
+      You.Mode.Provisioner,
       You.IdentityProviders.Seeder,
       {DNSCluster, query: Application.get_env(:you, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: You.PubSub},
@@ -26,13 +33,6 @@ defmodule You.Application do
       else
         children
       end
-
-    # Seeds console-editable settings from the environment, then provisions
-    # the single app. Both are no-ops after their first successful boot;
-    # appended so they run after You.Repo is up, in this order so
-    # You.Mode.single?/0 already reflects YOU_MODE by the time provisioning
-    # decides whether to run.
-    children = children ++ [You.Settings.EnvSeed, You.Mode.Provisioner]
 
     # Always include the Streamer; it is a no-op when unconfigured. Appended
     # (not prepended) because it reads the audit-webhook setting from the DB at

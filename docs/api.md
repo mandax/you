@@ -15,8 +15,9 @@ All endpoints live under `/api/v1` and require a bearer token:
 Authorization: Bearer <API_TOKEN>
 ```
 
-The token is configured with the `API_TOKEN` environment variable
-(`config :you, :api_token`). If it is unset or empty the API is disabled and
+The token is the `api_token` instance setting: `API_TOKEN` seeds it on first
+boot, and the console owns it after that, so rotating it takes effect on the
+next request without a restart. If it is unset or blank the API is disabled and
 every request returns `403 {"error": "management_api_disabled"}`. Comparisons
 are constant-time. The API is rate-limited per client IP (default: 120
 requests per minute); on excess you get `429 {"error": "rate_limited"}` with a

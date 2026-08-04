@@ -2,9 +2,7 @@ defmodule YouWeb.API.V1.AuditControllerTest do
   use YouWeb.ConnCase, async: false
 
   setup %{conn: conn} do
-    previous = Application.get_env(:you, :api_token)
-    Application.put_env(:you, :api_token, "test-api-token")
-    on_exit(fn -> Application.put_env(:you, :api_token, previous) end)
+    You.Settings.set(:api_token, "test-api-token")
 
     %{conn: put_req_header(conn, "authorization", "Bearer test-api-token")}
   end

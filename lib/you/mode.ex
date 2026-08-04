@@ -4,9 +4,14 @@ defmodule You.Mode do
   apps) or `:single` (one app, seeded from the environment on first boot).
 
   Single mode is a runtime flag, not a build variant: same image, same schema,
-  same tables. Flipping `YOU_MODE` back to multi is a restart, never a
+  same tables. Flipping it back to multi is a restart at most, never a
   migration, and the single app is an ordinary row in `apps` that nothing
   downstream — JWT claims, role resolution, consent — treats specially.
+
+  The mode lives in the `you_mode` setting, which `YOU_MODE` seeds on first
+  boot and the console owns thereafter. The environment-only half is
+  `config :you, :single_app` — the slug, name and URLs used to provision that
+  first app — which is seed data, not live configuration.
   """
 
   import Ecto.Query, only: [from: 2]
@@ -15,7 +20,9 @@ defmodule You.Mode do
   alias You.Repo
 
   @doc "The configured deployment mode."
-  def mode, do: Application.get_env(:you, :mode, :multi)
+  def mode do
+    if You.Settings.get(:you_mode) == "single", do: :single, else: :multi
+  end
 
   @doc "Whether this instance serves a single app."
   def single?, do: mode() == :single
