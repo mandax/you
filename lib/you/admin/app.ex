@@ -13,6 +13,8 @@ defmodule You.Admin.App do
     # instance default until someone deliberately gives it its own.
     field :jwt_expiry_hours, :integer
     field :code_expiry_minutes, :integer
+    # Static extra claims merged into this app's JWTs. See `custom_claims/1`.
+    field :custom_claims, :map
     field :logo_url, :string
     field :brand_color, :string
     field :headline, :string
@@ -40,6 +42,37 @@ defmodule You.Admin.App do
 
   @max_jwt_expiry_hours 720
   @max_code_expiry_minutes 60
+
+  # Claims You itself issues, plus the registered JWT claims. An app that could
+  # set these could rewrite its own token: `sub` is the identity the consumer
+  # trusts, `role` is what it authorizes on, `exp` is the only thing making a
+  # token expire.
+  @reserved_claims ~w(sub app email name role iss aud exp nbf iat jti typ scope scopes)
+
+  # A JWT travels in an Authorization header. Proxies and app servers cap
+  # header size — 4 KB is the common default, and the token has a signature
+  # and the standard claims to fit in too. Bounding the app-controlled part
+  # keeps a configuration mistake from turning into 431s at the edge.
+  @max_custom_claims_bytes 1024
+  @max_custom_claims 32
+
+  @doc "Claim names an app may not set, because You sets them."
+  def reserved_claims, do: @reserved_claims
+
+  @doc "The most bytes of JSON an app's custom claims may serialize to."
+  def max_custom_claims_bytes, do: @max_custom_claims_bytes
+
+  @doc """
+  The static extra claims to merge into JWTs issued for this app.
+
+  Always a map with string keys, empty when the app has declared none. The
+  reserved set is filtered here as well as rejected at write time: a row that
+  predates a name joining the reserved set must not be able to shadow it.
+  """
+  def custom_claims(%__MODULE__{custom_claims: claims}) when is_map(claims),
+    do: Map.drop(claims, @reserved_claims)
+
+  def custom_claims(_app), do: %{}
 
   @doc "The longest lifetime an app may pin for its JWTs, in hours."
   def max_jwt_expiry_hours, do: @max_jwt_expiry_hours
@@ -177,7 +210,8 @@ defmodule You.Admin.App do
       :default_role,
       :first_party,
       :jwt_expiry_hours,
-      :code_expiry_minutes
+      :code_expiry_minutes,
+      :custom_claims
     ])
     |> validate_required([:slug, :name, :callback_url])
     # An app with no allowed roles can never have a role assigned, so every
@@ -214,11 +248,58 @@ defmodule You.Admin.App do
       greater_than: 0,
       less_than_or_equal_to: @max_code_expiry_minutes
     )
+    |> validate_change(:custom_claims, &validate_custom_claims/2)
     |> unique_constraint(:slug)
     |> unique_constraint(:callback_url,
       message: "is already registered to another app"
     )
   end
+
+  # Rejected at write time as well as filtered at read time, so an admin who
+  # typos `sub` is told, rather than having it silently dropped from a token
+  # they then debug.
+  defp validate_custom_claims(field, claims) when is_map(claims) do
+    reserved = claims |> Map.keys() |> Enum.filter(&(to_string(&1) in @reserved_claims))
+
+    cond do
+      reserved != [] ->
+        [{field, "cannot set claims You issues: #{Enum.join(Enum.sort(reserved), ", ")}"}]
+
+      map_size(claims) > @max_custom_claims ->
+        [{field, "cannot declare more than #{@max_custom_claims} claims"}]
+
+      Enum.any?(claims, fn {key, _value} -> not valid_claim_name?(key) end) ->
+        [{field, "claim names must be 1-64 characters of letters, digits, _, - or ."}]
+
+      Enum.any?(claims, fn {_key, value} -> not valid_claim_value?(value) end) ->
+        [{field, "claim values must be strings, numbers, booleans, or lists of those"}]
+
+      byte_size(Jason.encode!(claims)) > @max_custom_claims_bytes ->
+        [{field, "must serialize to at most #{@max_custom_claims_bytes} bytes"}]
+
+      true ->
+        []
+    end
+  end
+
+  defp validate_custom_claims(field, _claims),
+    do: [{field, "must be an object of claim names to values"}]
+
+  defp valid_claim_name?(name) do
+    name = to_string(name)
+    String.length(name) in 1..64 and String.match?(name, ~r/^[A-Za-z0-9_.\-]+$/)
+  end
+
+  # Scalars and flat lists of scalars only. Nesting is not refused out of
+  # caution about JSON — it is refused because a token is a place for facts a
+  # consumer gates on, and anything that wants a shape belongs behind userinfo.
+  defp valid_claim_value?(value) when is_binary(value) or is_number(value) or is_boolean(value),
+    do: true
+
+  defp valid_claim_value?(value) when is_list(value),
+    do: Enum.all?(value, &(is_binary(&1) or is_number(&1) or is_boolean(&1)))
+
+  defp valid_claim_value?(_value), do: false
 
   defp validate_http_url(field, url) do
     case URI.parse(url) do

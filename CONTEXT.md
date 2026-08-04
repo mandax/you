@@ -18,6 +18,10 @@ _Avoid_: Auth token, login cookie, global session
 
 **App JWT**:
 A per-app credential issued to a specific service. Carries `sub` (user ID), `email`, `app` (which app it's for), `role`, `jti`, `iat`, `exp`. Obtained by exchanging an auth code. Revocable individually via the JTI blocklist.
+
+How long it lives is the app's decision (`jwt_expiry_hours` on the app row), falling back to the instance setting when the app has not pinned one.
+
+**Custom claim**: a static value an app declares in `custom_claims` and You merges into every JWT it issues for that app — a tenant id, a plan, feature flags — so the app reads them from the token instead of a second round-trip. Additive only: the claims above are refused as names and applied on top regardless, so an app can never rewrite the identity, the role a consumer authorizes on, or its own expiry. Scalars and flat lists only; anything with a shape belongs behind userinfo.
 _Avoid_: Session token, bearer token, access token
 
 **Role**:

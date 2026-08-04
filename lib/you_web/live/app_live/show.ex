@@ -53,6 +53,18 @@ defmodule YouWeb.AppLive.Show do
     |> reload(socket, "App updated.")
   end
 
+  def handle_event("update_custom_claims", %{"custom_claims" => json}, socket) do
+    case decode_claims(json) do
+      {:ok, claims} ->
+        socket.assigns.app
+        |> Admin.update_app(%{"custom_claims" => claims})
+        |> reload(socket, "Custom claims updated.")
+
+      :error ->
+        {:noreply, put_flash(socket, :error, "That is not valid JSON.")}
+    end
+  end
+
   def handle_event("update_lifetimes", params, socket) do
     attrs =
       params
@@ -445,7 +457,54 @@ defmodule YouWeb.AppLive.Show do
         </div>
       </form>
     </.panel>
+
+    <.panel
+      title="Custom claims"
+      description="Static values merged into every JWT issued for this app, so it can read them from the token instead of fetching them."
+    >
+      <form id="app-claims-form" phx-submit="update_custom_claims" class="max-w-xl space-y-4">
+        <.input
+          type="textarea"
+          name="custom_claims"
+          label="Claims (JSON object)"
+          rows="6"
+          value={claims_json(@app)}
+          placeholder={~s({"tenant_id": "acme", "plan": "pro"})}
+        />
+        <p class="text-xs text-muted-foreground">
+          Values may be strings, numbers, booleans, or lists of those. Claims You issues — {Enum.join(
+            You.Admin.App.reserved_claims(),
+            ", "
+          )} — cannot be set here.
+          At most {You.Admin.App.max_custom_claims_bytes()} bytes: a JWT travels in a header.
+        </p>
+        <div class="flex justify-end">
+          <.button type="submit">Save</.button>
+        </div>
+      </form>
+    </.panel>
     """
+  end
+
+  defp claims_json(%{custom_claims: claims}) when is_map(claims) and map_size(claims) > 0,
+    do: Jason.encode!(claims, pretty: true)
+
+  defp claims_json(_app), do: ""
+
+  # An empty box means "no extra claims", stored as an empty object rather
+  # than left as whatever the app had before.
+  defp decode_claims(json) do
+    case String.trim(json || "") do
+      "" -> {:ok, %{}}
+      trimmed -> decode_claims_json(trimmed)
+    end
+  end
+
+  defp decode_claims_json(json) do
+    case Jason.decode(json) do
+      {:ok, claims} when is_map(claims) -> {:ok, claims}
+      _ -> :error
+    end
   end
 
   # An empty field means "follow the instance", which on the column is NULL —

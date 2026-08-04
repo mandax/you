@@ -137,6 +137,7 @@ curl -H "Authorization: Bearer $API_TOKEN" https://you.example.com/api/v1/apps
       "first_party": false,
       "jwt_expiry_hours": null,
       "code_expiry_minutes": null,
+      "custom_claims": {},
       "inserted_at": "2026-07-25T10:00:00",
       "updated_at": "2026-07-25T10:00:00"
     }
@@ -170,7 +171,7 @@ curl -X POST -H "Authorization: Bearer $API_TOKEN" \
 
 This is the only time the secret is shown, so store it now. Required fields:
 `slug`, `name`, `callback_url`. Optional: `launch_url`, `first_party`,
-`jwt_expiry_hours`, `code_expiry_minutes`.
+`jwt_expiry_hours`, `code_expiry_minutes`, `custom_claims`.
 
 ### Update an app
 
@@ -182,8 +183,8 @@ curl -X PATCH -H "Authorization: Bearer $API_TOKEN" \
 ```
 
 Updatable fields: `name`, `callback_url`, `launch_url`, `first_party`,
-`jwt_expiry_hours`, `code_expiry_minutes`. `200` with the updated app under
-`data`.
+`jwt_expiry_hours`, `code_expiry_minutes`, `custom_claims`. `200` with the
+updated app under `data`.
 
 `jwt_expiry_hours` and `code_expiry_minutes` are per-app overrides: `null`
 means the app follows the instance setting, which is the default and what
@@ -195,6 +196,28 @@ employment it was issued during.
 
 Session expiry stays instance-wide. That is the You portal cookie, one per
 browser across every app, so it has no app to belong to.
+
+`custom_claims` is a JSON object of static claims merged into every JWT
+issued for the app — its tenant id, plan, or feature flags, so the app reads
+them from the token instead of making a second round-trip:
+
+```sh
+curl -X PATCH -H "Authorization: Bearer $API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"custom_claims": {"tenant_id": "acme", "plan": "pro", "seats": 25}}' \
+  https://you.example.com/api/v1/apps/1
+```
+
+They can only add. The claims You issues — `sub`, `app`, `email`, `name`,
+`role`, and the registered JWT claims — are refused here and applied on top
+regardless, so an app can never rewrite the identity or the role a consumer
+authorizes on, or the expiry that makes its token expire.
+
+Values may be strings, numbers, booleans, or lists of those. Nesting is
+refused: a token is a place for facts a consumer gates on, and anything
+wanting a shape belongs behind userinfo. At most 32 claims and 1024 bytes of
+JSON — a JWT travels in an `Authorization` header, and header limits at the
+edge are not yours to raise.
 
 ### Delete an app
 

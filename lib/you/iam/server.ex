@@ -260,8 +260,10 @@ defmodule You.IAM.Server do
           if :crypto.hash_equals(hash, :crypto.hash(:sha256, client_secret)) do
             jwt_expiry = You.Admin.jwt_expiry_seconds(slug)
 
-            {:ok, jwt} =
-              JWT.sign(%{sub: slug, app: "you", type: "service"}, jwt_expiry)
+            service_claims =
+              Map.merge(Claims.custom_claims(slug), %{sub: slug, app: "you", type: "service"})
+
+            {:ok, jwt} = JWT.sign(service_claims, jwt_expiry)
 
             :telemetry.execute([:you, :audit, :token, :client_credentials], %{}, %{
               client_id: slug,

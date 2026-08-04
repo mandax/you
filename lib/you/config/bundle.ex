@@ -32,7 +32,7 @@ defmodule You.Config.Bundle do
                  accent_color accent_color_dark theme_mode headline subtitle tos_url
                  privacy_url email_from_name enabled_providers enabled_methods
                  allowed_roles default_role first_party jwt_expiry_hours
-                 code_expiry_minutes)a
+                 code_expiry_minutes custom_claims)a
 
   @provider_fields ~w(slug display_name kind client_id issuer authorize_url token_url
                       userinfo_url scopes icon enabled sort_order)a
