@@ -152,6 +152,9 @@ defmodule YouWeb.Router do
     scope "/" do
       pipe_through :rate_limit_headless_register
       post "/register", HeadlessAuthController, :register
+      # Both mint or claim an account, so they share the registration bucket.
+      post "/guest", HeadlessAuthController, :guest
+      post "/upgrade", HeadlessAuthController, :upgrade
     end
   end
 

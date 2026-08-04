@@ -22,6 +22,11 @@ defmodule You.IAM.Claims do
   def build_scoped_claims(user, scopes, app_slug \\ nil) do
     base = %{sub: user.id, app: "you"}
 
+    # Only on guests: an absent `guest` claim means a real account, so a
+    # consumer reading `payload["guest"]` gets nil rather than a claim it has
+    # to remember to check for false.
+    base = if You.Guests.guest?(user), do: Map.put(base, :guest, true), else: base
+
     issued =
       Enum.reduce(scopes, base, fn
         "email", acc -> Map.put(acc, :email, user.email)

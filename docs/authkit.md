@@ -226,6 +226,46 @@ POST /api/auth/login
 On `mfa_required`, re-submit the same request with the user's TOTP code in
 `totp_code`. On `invalid_mfa`, let the user retry.
 
+On `mfa_required` from an account using emailed 2FA rather than TOTP, the code
+has already been sent; re-submit with it in `email_2fa_code`.
+
+### Guest accounts
+
+Off by default. Switch **Guest accounts** on at `/console?view=features` first;
+it mints user rows on request, so it is an operator's decision.
+
+```
+POST /api/auth/guest
+```
+
+Same client auth as `/api/auth/login`, no user credentials. Returns `201` with
+the same bundle shape, and a JWT carrying `"guest": true` — a real account
+carries no `guest` claim at all, so `payload["guest"]` is the whole check. An
+app can hold a cart, a draft, or a game in progress against that user id
+before anyone has typed an email.
+
+```
+POST /api/auth/upgrade
+Authorization: Bearer <the guest's access token>
+```
+
+Body: `email`, `password`, plus client auth. The guest's own token is the
+credential — it is the only one a guest has. Returns a fresh bundle for **the
+same user id**, which is the point: roles, consents, and every row the app
+wrote against that id survive the signup, with nothing to merge.
+
+| Reason | HTTP status | Body |
+|--------|-------------|------|
+| `:guests_disabled` | `403` | `{"error": "guests_disabled"}` |
+| `:invalid_token` | `401` | `{"error": "invalid_token"}` |
+| `:not_a_guest` | `409` | `{"error": "not_a_guest"}` |
+| `:email_taken` | `409` | `{"error": "email_taken"}` |
+
+A guest has no login: the token issued at creation is the only way back to
+that identity, so an app that loses it has lost the guest. That is the trade
+for not asking anyone to prove anything. Guests never upgraded are deleted
+after 30 days.
+
 ---
 
 ## 3. Making an app first-party

@@ -30,9 +30,12 @@ defmodule You.Accounts do
       iex> get_user_by_email("unknown@example.com")
       nil
 
+  Guests are never returned: their address is a placeholder nobody can receive
+  mail at, so resolving one here would hand a magic link, a reset, or an
+  invitation to an account that cannot answer for it.
   """
   def get_user_by_email(email) when is_binary(email) do
-    Repo.get_by(User, email: email)
+    Repo.one(from u in User, where: u.email == ^email and not u.is_guest)
   end
 
   @doc """

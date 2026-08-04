@@ -58,6 +58,14 @@ A second factor belongs to the *account*, not to the method that proved the firs
 Passkeys are the exception: a passkey is already a possession factor with user verification, so it stands alone rather than being a first factor awaiting a second.
 _Avoid_: MFA, two-step verification
 
+**Guest**:
+An account with `is_guest` set, a placeholder address at `anonymous.you` that receives no mail, and no password — created by a first-party app so it can hold state for someone before they sign up. Its JWT carries `guest: true`; a real account carries no `guest` claim at all, and `guest` is a reserved claim name so an app cannot forge one.
+
+Upgrading sets a real email and password on **the same row**, so the user id a consumer app has already written into its own schema does not change. That is the whole feature: without it the app has two identities to merge.
+
+A guest has no login — the token issued at creation is the only way back to that identity. Guests never upgraded are deleted after 30 days. Off by default (`feature_guest_login`): it mints user rows on request.
+_Avoid_: Anonymous user, temp account, pre-auth session
+
 **Invitation**:
 An admin-issued offer for a named email to join an app, optionally with a role. The only way to onboard one person deliberately — registration is self-service, and SCIM is a push from an upstream directory. Emailed as a single-use link, stored as a SHA-256 hash, valid 7 days.
 

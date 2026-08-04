@@ -55,6 +55,9 @@ defmodule YouWeb.ConsoleLive do
     feature_magic_link: {"Magic links", "Passwordless sign-in by emailed link."},
     feature_social_login: {"Social sign-in", "Upstream identity providers on the login page."},
     feature_webhooks: {"Webhooks", "Signed outbound events."},
+    feature_guest_login:
+      {"Guest accounts",
+       "Anonymous accounts a first-party app can create before signup, upgraded in place when the person signs up. Off by default: it mints user rows on request."},
     feature_landing_page:
       {"Public landing page",
        "What visitors see at /. Switched off, / goes to the console for admins and to the login page for everyone else — the right shape when this instance is infrastructure for your own app rather than a product with a homepage."}

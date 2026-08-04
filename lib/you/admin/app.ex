@@ -47,7 +47,7 @@ defmodule You.Admin.App do
   # set these could rewrite its own token: `sub` is the identity the consumer
   # trusts, `role` is what it authorizes on, `exp` is the only thing making a
   # token expire.
-  @reserved_claims ~w(sub app email name role iss aud exp nbf iat jti typ scope scopes)
+  @reserved_claims ~w(sub app email name role guest iss aud exp nbf iat jti typ scope scopes)
 
   # A JWT travels in an Authorization header. Proxies and app servers cap
   # header size — 4 KB is the common default, and the token has a signature

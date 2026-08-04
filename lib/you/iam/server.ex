@@ -129,6 +129,33 @@ defmodule You.IAM.Server do
     GenServer.call(__MODULE__, {:register, client_id, client_secret, params})
   end
 
+  @doc """
+  Creates an anonymous account for a trusted **first-party** app and returns a
+  token bundle, so the app can hold state for someone before they sign up.
+
+  The bundle's JWT carries `guest: true`. Returns `{:ok, bundle}` or
+  `{:error, :invalid_client | :not_first_party | :guests_disabled}`; guest
+  accounts are off by default (`feature_guest_login`).
+  """
+  def guest_login(client_id, client_secret, params \\ %{})
+      when is_binary(client_id) and is_binary(client_secret) and is_map(params) do
+    GenServer.call(__MODULE__, {:guest_login, client_id, client_secret, params})
+  end
+
+  @doc """
+  Turns the guest identified by `jwt` into a real account with the given
+  `email` and `password`, keeping the same user id, roles and consents.
+
+  Returns a fresh token bundle — the old one still carries `guest: true` — or
+  `{:error, reason}` where reason is `:invalid_client` | `:not_first_party` |
+  `:invalid_token` | `:not_a_guest` | `:email_taken` | `:invalid_registration`.
+  """
+  def upgrade_guest(client_id, client_secret, jwt, params)
+      when is_binary(client_id) and is_binary(client_secret) and is_binary(jwt) and
+             is_map(params) do
+    GenServer.call(__MODULE__, {:upgrade_guest, client_id, client_secret, jwt, params})
+  end
+
   # Server
 
   def start_link(opts) do
@@ -317,6 +344,51 @@ defmodule You.IAM.Server do
   end
 
   @doc false
+  def handle_call({:guest_login, client_id, client_secret, params}, _from, state) do
+    scopes = normalize_scopes(params)
+
+    result =
+      with {:ok, _app} <- verify_first_party_client(client_id, client_secret),
+           {:ok, user} <- You.Guests.create() do
+        refresh = Accounts.create_refresh_token(user, scopes, client_id)
+
+        :telemetry.execute([:you, :audit, :login, :attempt], %{}, %{
+          user_id: user.id,
+          method: "guest:#{client_id}",
+          result: :success
+        })
+
+        {:ok, token_bundle(user, scopes, refresh, client_id)}
+      end
+
+    with {:error, reason} <- result do
+      :telemetry.execute([:you, :audit, :login, :attempt], %{}, %{
+        method: "guest:#{client_id}",
+        result: :failure,
+        reason: reason
+      })
+    end
+
+    {:reply, result, state}
+  end
+
+  @doc false
+  def handle_call({:upgrade_guest, client_id, client_secret, jwt, params}, _from, state) do
+    scopes = normalize_scopes(params)
+
+    result =
+      with {:ok, _app} <- verify_first_party_client(client_id, client_secret),
+           {:ok, guest} <- guest_from_token(jwt),
+           {:ok, user} <- upgrade(guest, params) do
+        refresh = Accounts.create_refresh_token(user, scopes, client_id)
+
+        {:ok, token_bundle(user, scopes, refresh, client_id)}
+      end
+
+    {:reply, result, state}
+  end
+
+  @doc false
   def handle_call({:register, client_id, client_secret, params}, _from, state) do
     email = params[:email] || params["email"]
     password = params[:password] || params["password"]
@@ -346,6 +418,36 @@ defmodule You.IAM.Server do
     end
 
     {:reply, result, state}
+  end
+
+  # The guest's own token is the proof: it is the only credential a guest has,
+  # and it is what the app was handed when the guest was created.
+  defp guest_from_token(jwt) do
+    with {:ok, %{"sub" => sub}} <- JWT.verify(jwt),
+         %{} = user <- Repo.get(You.Accounts.User, sub) do
+      if You.Guests.guest?(user), do: {:ok, user}, else: {:error, :not_a_guest}
+    else
+      _ -> {:error, :invalid_token}
+    end
+  end
+
+  defp upgrade(guest, params) do
+    case You.Guests.upgrade(guest, params) do
+      {:ok, user} -> {:ok, user}
+      {:error, :not_a_guest} -> {:error, :not_a_guest}
+      {:error, %Ecto.Changeset{} = changeset} -> {:error, registration_error(changeset)}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp registration_error(changeset) do
+    taken? =
+      Enum.any?(changeset.errors, fn
+        {:email, {"has already been taken", _}} -> true
+        _ -> false
+      end)
+
+    if taken?, do: :email_taken, else: :invalid_registration
   end
 
   # Creates a user with the given email and password inside a transaction.

@@ -50,6 +50,7 @@ defmodule You.Settings do
     feature_social_login: true,
     feature_webhooks: true,
     feature_landing_page: true,
+    feature_guest_login: false,
     you_mode: "multi",
     smtp_host: "",
     smtp_port: 587,
@@ -90,7 +91,8 @@ defmodule You.Settings do
     :feature_magic_link,
     :feature_social_login,
     :feature_webhooks,
-    :feature_landing_page
+    :feature_landing_page,
+    :feature_guest_login
   ]
 
   @doc "The optional features an admin can switch off."
