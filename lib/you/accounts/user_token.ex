@@ -49,11 +49,27 @@ defmodule You.Accounts.UserToken do
   and devices in the UI and allow users to explicitly expire any
   session they deem invalid.
   """
-  def build_session_token(user) do
+  def build_session_token(user, app_slug \\ nil) do
     token = :crypto.strong_rand_bytes(@rand_size)
     dt = user.authenticated_at || DateTime.utc_now(:second)
-    {token, %UserToken{token: token, context: "session", user_id: user.id, authenticated_at: dt}}
+
+    {token,
+     %UserToken{
+       token: token,
+       context: "session",
+       user_id: user.id,
+       authenticated_at: dt,
+       meta: session_meta(app_slug)
+     }}
   end
+
+  # The app whose login flow created this session, so the account page can say
+  # what a session is for. A session is still one browser cookie shared across
+  # every app — this records where the user came in, not what it grants.
+  defp session_meta(app_slug) when is_binary(app_slug) and app_slug != "",
+    do: Jason.encode!(%{"app" => app_slug})
+
+  defp session_meta(_app_slug), do: nil
 
   @doc """
   Checks if the token is valid and returns its underlying lookup query.

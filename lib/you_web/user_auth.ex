@@ -109,8 +109,15 @@ defmodule YouWeb.UserAuth do
   end
 
   # Creates the session token and stores it in the session and cookies.
+  #
+  # The in-flight app is recorded on the token so the account page can say
+  # which sign-in a session came from. It does not scope the session — that is
+  # still one You cookie across every app — it only names the door the user
+  # came in through, which is what someone deciding whether to revoke it needs.
   defp create_or_extend_session(conn, user, params) do
-    token = Accounts.generate_user_session_token(user)
+    token =
+      Accounts.generate_user_session_token(user, YouWeb.OAuthFlow.app_slug_for_callback(conn))
+
     remember_me = get_session(conn, :user_remember_me)
 
     conn

@@ -244,8 +244,8 @@ defmodule You.Accounts do
   @doc """
   Generates a session token.
   """
-  def generate_user_session_token(user) do
-    {token, user_token} = UserToken.build_session_token(user)
+  def generate_user_session_token(user, app_slug \\ nil) do
+    {token, user_token} = UserToken.build_session_token(user, app_slug)
     Repo.insert!(user_token)
     token
   end
@@ -396,12 +396,65 @@ defmodule You.Accounts do
     threshold =
       DateTime.add(DateTime.utc_now(), -You.Settings.get(:session_expiry_hours) * 3600, :second)
 
-    Repo.all(
-      from t in UserToken,
-        where: t.user_id == ^user_id and t.context == "session" and t.inserted_at > ^threshold,
-        order_by: [desc: t.inserted_at]
-    )
+    sessions =
+      Repo.all(
+        from t in UserToken,
+          where: t.user_id == ^user_id and t.context == "session" and t.inserted_at > ^threshold,
+          order_by: [desc: t.inserted_at]
+      )
+
+    attach_session_apps(sessions)
   end
+
+  @doc """
+  Groups sessions by the app whose login created them, newest group first.
+
+  Returns `[{app_or_nil, [session]}]`. A session with no app was a sign-in to
+  You itself; it sorts last, under the account's own heading. A user revoking
+  a session needs to know what they are signing out of, and "Session, signed in
+  2026-08-01" four times over does not tell them.
+  """
+  def group_user_sessions(sessions) do
+    sessions
+    |> Enum.group_by(& &1.app)
+    |> Enum.sort_by(fn
+      {nil, _sessions} -> {1, ""}
+      {app, _sessions} -> {0, app.name}
+    end)
+  end
+
+  # One query for every app named across the sessions, rather than one per
+  # session. An app deleted since the session was created resolves to nil, the
+  # same as a session that never carried one.
+  defp attach_session_apps(sessions) do
+    slugs =
+      sessions
+      |> Enum.map(&session_app_slug/1)
+      |> Enum.reject(&is_nil/1)
+      |> Enum.uniq()
+
+    apps =
+      case slugs do
+        [] ->
+          %{}
+
+        slugs ->
+          Map.new(Repo.all(from a in You.Admin.App, where: a.slug in ^slugs), &{&1.slug, &1})
+      end
+
+    Enum.map(sessions, fn session ->
+      Map.put(session, :app, Map.get(apps, session_app_slug(session)))
+    end)
+  end
+
+  defp session_app_slug(%{meta: meta}) when is_binary(meta) do
+    case Jason.decode(meta) do
+      {:ok, %{"app" => slug}} when is_binary(slug) -> slug
+      _ -> nil
+    end
+  end
+
+  defp session_app_slug(_session), do: nil
 
   @doc """
   Revokes one of the user's sessions by token id. Scoped to the user, so a user
