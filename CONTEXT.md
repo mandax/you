@@ -5,7 +5,7 @@ Cross-app identity, authentication, authorization, and user settings platform. E
 ## Language
 
 **User**:
-A person with an account. Has a username, email, password hash, display name, and optional avatar. A user belongs to zero or more teams.
+A person with an account. Has an email, password hash, and optional second factors. A user's access is `(app_slug, user_id) → role_name` and nothing else — there is no grouping above the App (see **Tenant**). May be a [[Guest]]: an account with no credentials yet.
 _Avoid_: Account, member
 
 **Admin**:
