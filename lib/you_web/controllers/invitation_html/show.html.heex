@@ -1,0 +1,32 @@
+<Layouts.auth
+  flash={@flash}
+  current_scope={@current_scope}
+  bare={@bare}
+  brand_style={YouWeb.AppBranding.brand_style(assigns)}
+>
+  <div class="text-center">
+    <Layouts.auth_mark bare={@bare} app_name={@app_name} app_logo_url={@app_logo_url} />
+    <h1 class="text-xl font-medium tracking-tight">
+      You've been invited{if @invitation.app, do: " to #{@invitation.app.name}"}
+    </h1>
+    <p class="mt-2 text-sm text-muted-foreground">
+      This invitation is for <span class="font-medium">{@invitation.email}</span>{if @invitation.app &&
+                                                                                       @invitation.role,
+                                                                                     do:
+                                                                                       ", as #{@invitation.role}"}.
+    </p>
+  </div>
+
+  <%!-- A POST, not a link: a mail client prefetching the URL must not spend a
+        single-use invitation before the invitee has seen it. --%>
+  <.form for={%{}} id="accept_invitation_form" action={~p"/invitations/#{@token}"}>
+    <.button type="submit" phx-disable-with="Accepting..." class="w-full">
+      Accept invitation
+    </.button>
+  </.form>
+
+  <p class="mt-4 text-center text-xs text-muted-foreground">
+    Accepting signs you in. If you already have an account with this email, it is the one
+    you'll be signed in to.
+  </p>
+</Layouts.auth>

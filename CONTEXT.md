@@ -58,6 +58,12 @@ A second factor belongs to the *account*, not to the method that proved the firs
 Passkeys are the exception: a passkey is already a possession factor with user verification, so it stands alone rather than being a first factor awaiting a second.
 _Avoid_: MFA, two-step verification
 
+**Invitation**:
+An admin-issued offer for a named email to join an app, optionally with a role. The only way to onboard one person deliberately — registration is self-service, and SCIM is a push from an upstream directory. Emailed as a single-use link, stored as a SHA-256 hash, valid 7 days.
+
+Accepting proves control of the mailbox, so it is treated exactly like a [[Magic Link]]: it confirms the account (creating a passwordless one if there is none) and signs the user in through `YouWeb.SecondFactor`, so an enrolled second factor is still met. What the invitation adds on top is the role. Accepting is a POST, not the GET that opens the link — a mail client prefetching a URL must not spend a single-use invitation.
+_Avoid_: Invite code, signup link, referral
+
 **Email Template**:
 The copy of one of the five transactional emails You sends (magic link, confirmation, password reset, email change, 2FA code). Only *overrides* are stored: a template nobody has edited has no row and uses the copy compiled into `You.EmailTemplates`, so an instance that never opens the screen keeps picking up improvements to the default wording, and "reset to default" is a delete. Bodies interpolate `{{name}}` placeholders by string replacement, never evaluation; the ones a template cannot do without (`url` in a magic link, `code` in a 2FA email) are required by the changeset.
 _Avoid_: Email layout, mailer template, notification

@@ -206,6 +206,43 @@ defmodule YouWeb.AppLive.Show do
     end
   end
 
+  def handle_event("invite_member", %{"email" => email} = params, socket) do
+    app = socket.assigns.app
+
+    attrs = %{
+      email: email,
+      app_id: app.id,
+      role: params["role"] || params["value"] || app.default_role || "user",
+      invited_by_id: socket.assigns.current_scope.user.id
+    }
+
+    case You.Invitations.invite(attrs, &url(~p"/invitations/#{&1}")) do
+      {:ok, invitation} ->
+        {:noreply,
+         socket
+         |> assign_app(app)
+         |> put_flash(:info, "Invitation sent to #{invitation.email}.")}
+
+      {:error, :invalid_role} ->
+        {:noreply, put_flash(socket, :error, "Role is not allowed for this app.")}
+
+      {:error, %Ecto.Changeset{} = changeset} ->
+        {:noreply, put_flash(socket, :error, "Could not invite: #{error_summary(changeset)}")}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "Could not send that invitation.")}
+    end
+  end
+
+  def handle_event("revoke_invitation", %{"id" => id}, socket) do
+    with {:ok, invitation_id} <- safe_parse_id(id) do
+      You.Invitations.revoke(invitation_id)
+    end
+
+    {:noreply,
+     socket |> assign_app(socket.assigns.app) |> put_flash(:info, "Invitation withdrawn.")}
+  end
+
   def handle_event("filter_members", %{"query" => query}, socket) do
     {:noreply, assign(socket, member_filter: query)}
   end
@@ -281,6 +318,7 @@ defmodule YouWeb.AppLive.Show do
         subtitle: app.subtitle
       },
       members: Roles.list_for_app(app),
+      invitations: Enum.filter(You.Invitations.list_pending(), &(&1.app_id == app.id)),
       role_counts: Roles.count_by_role(app),
       pending_default_role: app.default_role || "user"
     )
@@ -386,6 +424,7 @@ defmodule YouWeb.AppLive.Show do
               filter={@member_filter}
               roles={allowed_roles(@app)}
               selected={@selected}
+              invitations={@invitations}
             />
           <% "credentials" -> %>
             <.credentials_tab app={@app} new_secret={@new_secret} />
@@ -910,10 +949,56 @@ defmodule YouWeb.AppLive.Show do
   attr :roles, :list, required: true
   attr :selected, :any, required: true
   attr :filter, :string, required: true
+  attr :invitations, :list, required: true
 
   defp members_tab(assigns) do
     ~H"""
     <div class="space-y-3">
+      <%!-- Registration and a SCIM push from an upstream directory are the only
+            other ways in, and neither lets an operator onboard one named
+            person. --%>
+      <div class="rounded-md border border-border bg-muted/20 px-3 py-3">
+        <form
+          id="invite-member-form"
+          phx-submit="invite_member"
+          class="flex flex-wrap items-end gap-2 [&_>div]:mb-0"
+        >
+          <div class="min-w-56 flex-1">
+            <.input type="email" name="email" value="" label="Invite by email" required />
+          </div>
+          <.select
+            id="invite-role"
+            name="role"
+            value="user"
+            options={Enum.map(@roles, &%{value: &1, label: &1})}
+          />
+          <.button type="submit">Send invitation</.button>
+        </form>
+
+        <ul :if={@invitations != []} class="mt-3 space-y-1 border-t border-border pt-3">
+          <li
+            :for={invitation <- @invitations}
+            class="flex items-center justify-between gap-3 text-xs"
+          >
+            <span class="font-mono text-muted-foreground">
+              {invitation.email} · {invitation.role || "user"} · invited {Calendar.strftime(
+                invitation.inserted_at,
+                "%Y-%m-%d"
+              )}
+            </span>
+            <button
+              type="button"
+              phx-click="revoke_invitation"
+              phx-value-id={invitation.id}
+              data-confirm={"Withdraw the invitation to #{invitation.email}?"}
+              class="text-muted-foreground hover:text-destructive"
+            >
+              Withdraw
+            </button>
+          </li>
+        </ul>
+      </div>
+
       <form phx-change="filter_members" class="flex items-center gap-2 [&_>div]:mb-0">
         <div class="flex-1">
           <.input

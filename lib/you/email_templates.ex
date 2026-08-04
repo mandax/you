@@ -121,6 +121,31 @@ defmodule You.EmailTemplates do
       """
     },
     %{
+      key: "invitation",
+      label: "Invitation",
+      description: "Sent when an admin invites someone to an app.",
+      variables: ~w(email url app_name role days),
+      required: ~w(url),
+      subject: "You have been invited to {{app_name}}",
+      body: """
+
+      ==============================
+
+      Hi {{email}},
+
+      You have been invited to join {{app_name}} as {{role}}.
+
+      Accept the invitation by visiting the URL below:
+
+      {{url}}
+
+      The link expires in {{days}} days. If you weren't expecting this, ignore
+      this email.
+
+      ==============================
+      """
+    },
+    %{
       key: "email_2fa",
       label: "Two-factor code",
       description: "The one-time code sent as a second factor after a password login.",

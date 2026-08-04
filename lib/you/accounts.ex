@@ -354,6 +354,12 @@ defmodule You.Accounts do
   end
 
   @doc """
+  Delivers an admin's invitation to an email address, which may not have an
+  account here yet. See `You.Invitations`.
+  """
+  defdelegate deliver_invitation(email, assigns), to: UserNotifier
+
+  @doc """
   Delivers the reset password instructions to the given user.
   """
   def deliver_user_reset_password_instructions(%User{} = user, reset_url_fun)

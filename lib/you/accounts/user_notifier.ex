@@ -63,6 +63,16 @@ defmodule You.Accounts.UserNotifier do
   end
 
   @doc """
+  Deliver an admin's invitation to join an app.
+
+  Addressed to an email rather than a user: the invitee may have no account
+  here yet, which is the case the invitation exists for.
+  """
+  def deliver_invitation(email, assigns) do
+    deliver(email, "invitation", Map.put(assigns, :email, email), assigns[:app_name])
+  end
+
+  @doc """
   Deliver instructions to reset a password.
   """
   def deliver_reset_password_instructions(user, url) do

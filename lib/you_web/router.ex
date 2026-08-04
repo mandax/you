@@ -249,6 +249,10 @@ defmodule YouWeb.Router do
     get "/users/log-in/email-2fa", UserSessionController, :email_2fa
     post "/users/log-in/authorize", UserSessionController, :authorize_action
     get "/users/log-in/:token", UserSessionController, :confirm
+    # Accepting is the POST: a mail client prefetching the link must not spend
+    # a single-use invitation before the invitee has seen what it grants.
+    get "/invitations/:token", InvitationController, :show
+    post "/invitations/:token", InvitationController, :accept
     get "/users/reset-password/:token", UserResetPasswordController, :edit
     put "/users/reset-password/:token", UserResetPasswordController, :update
     delete "/users/log-out", UserSessionController, :delete
