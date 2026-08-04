@@ -1,7 +1,7 @@
 defmodule You.Config.Bundle do
   @moduledoc """
   Exports and imports an instance's configuration: settings, apps, identity
-  providers and webhook endpoints.
+  providers, webhook endpoints and email templates.
 
   Configuration, not data — users, tokens, consents, sessions and per-user role
   assignments are deliberately absent. A bundle answers "make another instance
@@ -14,7 +14,7 @@ defmodule You.Config.Bundle do
   That is what lets a bundle be imported anywhere.
 
   Import upserts by natural key — settings by key, apps by slug, providers by
-  slug, webhooks by url — and never deletes. An instance that has diverged
+  slug, webhooks by url, email templates by key — and never deletes. An instance that has diverged
   keeps whatever the bundle does not mention.
   """
 
@@ -38,6 +38,8 @@ defmodule You.Config.Bundle do
                       userinfo_url scopes icon enabled sort_order)a
 
   @endpoint_fields ~w(url events enabled secret)a
+
+  @email_template_fields ~w(key subject body)a
 
   @forbidden_setting_keys Enum.map(Settings.forbidden_keys(), &Atom.to_string/1)
 
@@ -72,7 +74,8 @@ defmodule You.Config.Bundle do
       "settings" => export_settings(),
       "apps" => export_apps(),
       "identity_providers" => export_providers(),
-      "webhook_endpoints" => export_endpoints()
+      "webhook_endpoints" => export_endpoints(),
+      "email_templates" => export_email_templates()
     }
   end
 
@@ -96,7 +99,8 @@ defmodule You.Config.Bundle do
             settings: apply_settings(payload["settings"] || %{}),
             apps: apply_apps(payload["apps"] || []),
             identity_providers: apply_providers(payload["identity_providers"] || []),
-            webhook_endpoints: apply_endpoints(payload["webhook_endpoints"] || [])
+            webhook_endpoints: apply_endpoints(payload["webhook_endpoints"] || []),
+            email_templates: apply_email_templates(payload["email_templates"] || [])
           }
         end)
 
@@ -175,6 +179,19 @@ defmodule You.Config.Bundle do
   defp export_endpoints do
     Repo.all(from e in Endpoint, order_by: e.url)
     |> Enum.map(&(&1 |> Map.take(@endpoint_fields) |> stringify()))
+  end
+
+  # Only the overrides: a template at its default has no row, and shipping a
+  # copy of the default would freeze today's wording on the destination.
+  defp export_email_templates do
+    Repo.all(from t in You.EmailTemplates.EmailTemplate, order_by: t.key)
+    |> Enum.map(&(&1 |> Map.take(@email_template_fields) |> stringify()))
+  end
+
+  defp apply_email_templates(templates) do
+    Enum.count(templates, fn attrs ->
+      match?({:ok, _}, You.EmailTemplates.upsert(attrs["key"] || "", attrs))
+    end)
   end
 
   defp decrypted_secret(%IdentityProvider{client_secret: nil}), do: nil
@@ -398,7 +415,8 @@ defmodule You.Config.Bundle do
     with :ok <- validate_settings_shape(payload["settings"]),
          :ok <- validate_list_shape(payload["apps"]),
          :ok <- validate_list_shape(payload["identity_providers"]),
-         :ok <- validate_list_shape(payload["webhook_endpoints"]) do
+         :ok <- validate_list_shape(payload["webhook_endpoints"]),
+         :ok <- validate_list_shape(payload["email_templates"]) do
       :ok
     end
   end

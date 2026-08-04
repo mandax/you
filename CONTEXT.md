@@ -58,6 +58,10 @@ A second factor belongs to the *account*, not to the method that proved the firs
 Passkeys are the exception: a passkey is already a possession factor with user verification, so it stands alone rather than being a first factor awaiting a second.
 _Avoid_: MFA, two-step verification
 
+**Email Template**:
+The copy of one of the five transactional emails You sends (magic link, confirmation, password reset, email change, 2FA code). Only *overrides* are stored: a template nobody has edited has no row and uses the copy compiled into `You.EmailTemplates`, so an instance that never opens the screen keeps picking up improvements to the default wording, and "reset to default" is a delete. Bodies interpolate `{{name}}` placeholders by string replacement, never evaluation; the ones a template cannot do without (`url` in a magic link, `code` in a 2FA email) are required by the changeset.
+_Avoid_: Email layout, mailer template, notification
+
 **Magic Link**:
 A passwordless login flow. The user enters their email, You sends a short-lived signed link (15 min), and clicking it exchanges the link token for a JWT. Single-use, consumed on first click. A *first* factor, not a login: an account with a second factor enrolled still meets it after the link is clicked.
 _Avoid_: Passwordless login, email auth, one-time link

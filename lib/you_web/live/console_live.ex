@@ -40,6 +40,8 @@ defmodule YouWeb.ConsoleLive do
       "Privileged actions, newest first. This is the live in-memory view; configure the audit webhook for retention.",
     "webhooks" =>
       "Signed outbound events. Use them to react to identity changes in your own systems.",
+    "emails" =>
+      "The transactional mail You sends. A template you have not edited keeps using the default copy, so it still improves with You.",
     "features" =>
       "What this instance offers. Switching something off removes it from the console and the login page.",
     "settings" =>
@@ -118,6 +120,7 @@ defmodule YouWeb.ConsoleLive do
        app_filter: "",
        provider_filter: "",
        webhook_filter: "",
+       email_overrides: %{},
        features: Settings.features() |> Map.new(&{&1, Settings.get(&1)}),
        onboarding: not Settings.get(:onboarding_completed),
        single_mode: You.Mode.single?(),
@@ -487,6 +490,31 @@ defmodule YouWeb.ConsoleLive do
      |> put_flash(:info, "Features updated.")}
   end
 
+  # ── emails ────────────────────────────────────────────────────
+  def handle_event("save_email_template", %{"key" => key} = params, socket) do
+    case You.EmailTemplates.upsert(key, Map.take(params, ["subject", "body"])) do
+      {:ok, _template} ->
+        audit_admin(socket, "update_email_template", key)
+
+        {:noreply,
+         socket |> load_email_templates() |> put_flash(:info, "Email template updated.")}
+
+      {:error, %Ecto.Changeset{} = changeset} ->
+        {:noreply, put_flash(socket, :error, error_summary(changeset))}
+
+      {:error, :unknown_template} ->
+        {:noreply, put_flash(socket, :error, "No such email template.")}
+    end
+  end
+
+  def handle_event("reset_email_template", %{"key" => key}, socket) do
+    :ok = You.EmailTemplates.reset(key)
+    audit_admin(socket, "reset_email_template", key)
+
+    {:noreply,
+     socket |> load_email_templates() |> put_flash(:info, "Email template reset to default.")}
+  end
+
   def handle_event("save_settings", params, socket) do
     changed =
       Enum.flat_map(@settings_fields, fn %{key: key} ->
@@ -714,6 +742,7 @@ defmodule YouWeb.ConsoleLive do
   defp load_view(socket, "providers"), do: load_providers(socket)
   defp load_view(socket, "audit"), do: socket |> load_events() |> load_apps()
   defp load_view(socket, "webhooks"), do: load_endpoints(socket)
+  defp load_view(socket, "emails"), do: load_email_templates(socket)
   defp load_view(socket, "features"), do: socket
   defp load_view(socket, "settings"), do: load_settings(socket)
   defp load_view(socket, "backup"), do: socket
@@ -736,6 +765,9 @@ defmodule YouWeb.ConsoleLive do
   defp load_providers(socket), do: assign(socket, providers: IdentityProviders.list_providers())
   defp load_endpoints(socket), do: assign(socket, endpoints: Webhooks.list_endpoints())
   defp load_events(socket), do: assign(socket, events: Streamer.recent())
+
+  defp load_email_templates(socket),
+    do: assign(socket, email_overrides: You.EmailTemplates.overrides())
 
   # Drops blank/missing keys so a preset's endpoint template (or, on edit, the
   # provider's own stored values) is left in place rather than clobbered by an
@@ -851,6 +883,8 @@ defmodule YouWeb.ConsoleLive do
             webhook_secret={@webhook_secret}
             webhook_endpoint={@webhook_endpoint}
           />
+        <% "emails" -> %>
+          <.emails_view overrides={@email_overrides} />
         <% "features" -> %>
           <.features_view features={@features} onboarding={@onboarding} />
         <% "settings" -> %>
@@ -1696,6 +1730,87 @@ defmodule YouWeb.ConsoleLive do
   end
 
   defp legacy_role_event?(_event, _app_slug), do: false
+
+  # ── section: emails ───────────────────────────────────────────
+  #
+  # One form per template, each showing the current copy — the override if
+  # there is one, otherwise the default. Saving stores an override; "Reset to
+  # default" deletes it, so the template goes back to tracking You's wording
+  # rather than freezing today's.
+  attr :overrides, :map, required: true
+
+  defp emails_view(assigns) do
+    ~H"""
+    <div class="space-y-6">
+      <div
+        :for={definition <- You.EmailTemplates.definitions()}
+        class="rounded-lg border border-border"
+      >
+        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-muted/30 px-4 py-3">
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="text-sm font-medium">{definition.label}</span>
+              <span
+                :if={!Map.has_key?(@overrides, definition.key)}
+                class="rounded-full bg-muted px-2 py-0.5 font-mono text-[11px] text-muted-foreground"
+              >
+                default
+              </span>
+            </div>
+            <p class="mt-0.5 text-xs text-muted-foreground">{definition.description}</p>
+          </div>
+          <button
+            :if={Map.has_key?(@overrides, definition.key)}
+            type="button"
+            phx-click="reset_email_template"
+            phx-value-key={definition.key}
+            data-confirm={"Reset the #{definition.label} email to You's default copy?"}
+            class="text-xs text-muted-foreground hover:text-destructive"
+          >
+            Reset to default
+          </button>
+        </div>
+
+        <form
+          id={"email-template-#{definition.key}"}
+          phx-submit="save_email_template"
+          class="space-y-4 px-4 py-4"
+        >
+          <input type="hidden" name="key" value={definition.key} />
+          <.input
+            type="text"
+            name="subject"
+            label="Subject"
+            value={template_value(@overrides, definition, :subject)}
+          />
+          <.input
+            type="textarea"
+            name="body"
+            label="Body"
+            rows="12"
+            value={template_value(@overrides, definition, :body)}
+          />
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <p class="font-mono text-xs text-muted-foreground">
+              {Enum.map_join(definition.variables, " ", &"{{#{&1}}}")}
+              <span :if={definition.required != []} class="text-foreground/70">
+                — {Enum.map_join(definition.required, ", ", &"{{#{&1}}}")} required
+              </span>
+            </p>
+            <.button type="submit">Save</.button>
+          </div>
+        </form>
+      </div>
+    </div>
+    """
+  end
+
+  defp template_value(overrides, definition, field) do
+    case overrides[definition.key] do
+      nil -> Map.fetch!(definition, field)
+      override -> Map.fetch!(override, field)
+    end
+  end
 
   # ── section: webhooks ─────────────────────────────────────────
   attr :endpoints, :list, required: true
