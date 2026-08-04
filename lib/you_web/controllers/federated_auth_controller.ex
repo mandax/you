@@ -65,14 +65,14 @@ defmodule YouWeb.FederatedAuthController do
         result: :success
       })
 
-      # Hand the login back to the requesting app (mint a code → consumer
-      # callback) when this login was started from an OAuth flow; otherwise it's
-      # a plain sign-in to You.
+      # An identity provider proves the first factor only: an account with a
+      # second factor enrolled still has to meet it. Past that, the login goes
+      # back to the requesting app as an authorization code when this started
+      # from an OAuth flow, and is otherwise a plain sign-in to You.
       conn
       |> put_session(:oidc_state, nil)
       |> put_session(:oidc_provider, nil)
-      |> put_flash(:info, "Welcome back!")
-      |> YouWeb.OAuthFlow.complete_login(user)
+      |> YouWeb.SecondFactor.complete_login(user, "Welcome back!")
     else
       {:error, :state_mismatch} ->
         conn

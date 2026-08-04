@@ -568,9 +568,10 @@ defmodule You.Accounts do
   defp enable_totp_with_codes(user) do
     recovery_codes = generate_recovery_codes(user)
 
-    user
-    |> Ecto.Changeset.change(totp_enabled: true)
-    |> Repo.update!()
+    user =
+      user
+      |> Ecto.Changeset.change(totp_enabled: true)
+      |> Repo.update!()
 
     {:ok, %{user: user, totp_enabled: true, recovery_codes: recovery_codes}}
   end

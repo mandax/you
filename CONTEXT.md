@@ -47,11 +47,15 @@ A Bearer token used by apps to call You's internal endpoints (token validation, 
 _Avoid_: Token, secret, credential
 
 **Two-Factor Authentication (2FA)**:
-An optional second factor on login using TOTP (time-based one-time passwords). After password authentication, if the user has 2FA enabled, a TOTP code is required before the authorization code is issued. Recovery codes (8 single-use bcrypt-hashed codes) are generated at setup as a fallback.
+An optional second factor on login using TOTP (time-based one-time passwords) or a code emailed after the first factor. Recovery codes (8 single-use bcrypt-hashed codes) are generated at TOTP setup as a fallback.
+
+A second factor belongs to the *account*, not to the method that proved the first one. Every first factor meets it: password, magic link, and any identity provider all pass through `YouWeb.SecondFactor` before an authorization code is issued, and the headless grant refuses with `mfa_required` until the client resubmits with `totp_code` or `email_2fa_code`. Until #112 only the password path checked, which made a magic link a way around an enrolled authenticator.
+
+Passkeys are the exception: a passkey is already a possession factor with user verification, so it stands alone rather than being a first factor awaiting a second.
 _Avoid_: MFA, two-step verification
 
 **Magic Link**:
-A passwordless login flow. The user enters their email, You sends a short-lived signed link (15 min), and clicking it exchanges the link token for a JWT. Single-use, consumed on first click.
+A passwordless login flow. The user enters their email, You sends a short-lived signed link (15 min), and clicking it exchanges the link token for a JWT. Single-use, consumed on first click. A *first* factor, not a login: an account with a second factor enrolled still meets it after the link is clicked.
 _Avoid_: Passwordless login, email auth, one-time link
 
 **Authorization Code**:

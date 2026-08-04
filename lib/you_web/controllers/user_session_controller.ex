@@ -148,28 +148,7 @@ defmodule YouWeb.UserSessionController do
 
     case Accounts.login_user_by_magic_link(token) do
       {:ok, {user, _expired_tokens}} ->
-        if callback_url = safe_callback_url(conn) do
-          record_consent_for_app(conn, user)
-          scopes = get_session(conn, :scopes) || ["email"]
-          state = get_session(conn, :state)
-
-          {:ok, code} =
-            Accounts.generate_auth_code(
-              user,
-              scopes,
-              get_session(conn, :code_challenge),
-              YouWeb.OAuthFlow.app_slug_for_callback(conn)
-            )
-
-          conn
-          |> put_flash(:info, info)
-          |> UserAuth.create_user_session(user, user_params)
-          |> redirect_with_code(callback_url, code, state)
-        else
-          conn
-          |> put_flash(:info, info)
-          |> UserAuth.log_in_user(user, user_params)
-        end
+        YouWeb.SecondFactor.complete_login(conn, user, info, user_params)
 
       {:error, :not_found} ->
         conn
@@ -205,24 +184,7 @@ defmodule YouWeb.UserSessionController do
         result: :success
       })
 
-      cond do
-        user.totp_enabled ->
-          conn
-          |> put_session(:totp_user_id, user.id)
-          |> redirect(to: ~p"/users/log-in/totp")
-
-        user.email_2fa_enabled ->
-          Accounts.send_email_2fa_code(user)
-
-          conn
-          |> put_session(:email_2fa_user_id, user.id)
-          |> redirect(to: ~p"/users/log-in/email-2fa")
-
-        true ->
-          conn
-          |> put_flash(:info, "Welcome back!")
-          |> YouWeb.OAuthFlow.complete_login(user, user_params)
-      end
+      YouWeb.SecondFactor.complete_login(conn, user, "Welcome back!", user_params)
     else
       :telemetry.execute([:you, :audit, :login, :attempt], %{}, %{
         email: email,

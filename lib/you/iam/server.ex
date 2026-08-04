@@ -407,6 +407,22 @@ defmodule You.IAM.Server do
     end
   end
 
+  # Email 2FA needs a round trip the headless API has no page for, so the
+  # first call sends the code and refuses; the client resubmits with
+  # `email_2fa_code` the way it would with `totp_code`.
+  defp verify_login_mfa(%{email_2fa_enabled: true} = user, params) do
+    case params[:email_2fa_code] || params["email_2fa_code"] do
+      code when is_binary(code) and code != "" ->
+        with {:error, :invalid_code} <- Accounts.verify_email_2fa_code(user, code) do
+          {:error, :invalid_mfa}
+        end
+
+      _ ->
+        Accounts.send_email_2fa_code(user)
+        {:error, :mfa_required}
+    end
+  end
+
   defp verify_login_mfa(_user, _params), do: :ok
 
   defp normalize_scopes(params) do
