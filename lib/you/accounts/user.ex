@@ -12,6 +12,9 @@ defmodule You.Accounts.User do
     field :totp_enabled, :boolean, default: false
     field :email_2fa_enabled, :boolean, default: false
     field :is_admin, :boolean, default: false
+    # An account created without credentials so an app can hold state before
+    # signup. Cleared by `You.Accounts.upgrade_guest/2`. See `You.Guests`.
+    field :is_guest, :boolean, default: false
 
     timestamps(type: :utc_datetime)
   end

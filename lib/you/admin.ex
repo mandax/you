@@ -222,6 +222,55 @@ defmodule You.Admin do
   def get_app_by_slug(slug) when is_binary(slug), do: Repo.get_by(App, slug: slug)
 
   @doc """
+  How long the JWTs issued for `app` live, in seconds.
+
+  Accepts an `App`, a slug, or nil — the token-issuing paths variously hold
+  one of the three, and an unknown slug falls back to the instance setting
+  rather than raising: refusing to issue a token because an app row was
+  deleted mid-flow would be a worse failure than a default lifetime.
+  """
+  def jwt_expiry_seconds(app_or_slug),
+    do: resolve_app(app_or_slug) |> App.resolved_jwt_expiry_hours() |> Kernel.*(3600)
+
+  @doc "How long the authorization codes issued for `app` live, in minutes."
+  def code_expiry_minutes(app_or_slug),
+    do: resolve_app(app_or_slug) |> App.resolved_code_expiry_minutes()
+
+  defp resolve_app(%App{} = app), do: app
+  defp resolve_app(slug) when is_binary(slug), do: get_app_by_slug(slug)
+  defp resolve_app(_), do: nil
+
+  @doc """
+  The longest JWT lifetime any app on this instance can produce, in hours.
+
+  What instance-wide retention has to be measured against: the JTI blocklist
+  is pruned on a single clock, and pruning on the instance default alone would
+  drop revocations while an app with a longer lifetime still has live tokens
+  carrying those JTIs — a revoked token would start working again.
+  """
+  def max_jwt_expiry_hours do
+    max_expiry(:jwt_expiry_hours)
+  end
+
+  @doc """
+  The longest authorization-code lifetime any app can produce, in minutes.
+  Used to bound the lookup before an individual code is checked against its
+  own app's expiry.
+  """
+  def max_code_expiry_minutes do
+    max_expiry(:code_expiry_minutes)
+  end
+
+  defp max_expiry(key) do
+    instance = You.Settings.get(key)
+
+    case Repo.one(from a in App, select: max(field(a, ^key))) do
+      nil -> instance
+      configured -> max(instance, configured)
+    end
+  end
+
+  @doc """
   Updates an existing app's attributes.
 
   Returns `{:ok, app}` or `{:error, changeset}`.

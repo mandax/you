@@ -105,6 +105,38 @@ defmodule You.HeadlessAuthTest do
                  totp_code: code
                })
     end
+
+    test "an email-2FA user is challenged rather than signed straight in" do
+      {app, secret} = first_party_app()
+
+      user = AccountsFixtures.user_fixture() |> AccountsFixtures.set_password()
+      {:ok, user} = You.Accounts.enable_email_2fa(user)
+
+      assert {:error, :mfa_required} =
+               call(app.slug, secret, %{
+                 email: user.email,
+                 password: AccountsFixtures.valid_user_password()
+               })
+
+      code = issue_email_2fa_code(user)
+
+      assert {:ok, _bundle} =
+               call(app.slug, secret, %{
+                 email: user.email,
+                 password: AccountsFixtures.valid_user_password(),
+                 email_2fa_code: code
+               })
+    end
+
+    # The refusal above sends its code from inside You.IAM.Server, so that email
+    # lands in the server's mailbox and not the test's. Reissuing from here puts
+    # an equivalent code where it can be read.
+    defp issue_email_2fa_code(user) do
+      :ok = You.Accounts.send_email_2fa_code(user)
+      assert_receive {:email, %{subject: "Your verification code", text_body: body}}
+      [code] = Regex.run(~r/\b\d{6}\b/, body)
+      code
+    end
   end
 
   describe "register (headless sign-up grant)" do

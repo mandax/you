@@ -85,5 +85,46 @@ defmodule YouWeb.TotpLoginTest do
       assert response =~ "Two-Factor Authentication"
       refute response =~ "magic link"
     end
+
+    test "a successful TOTP verification emits login:totp", %{conn: conn, user: user} do
+      metadata = capture_totp_event(conn, user, NimbleTOTP.verification_code(user.totp_secret))
+
+      assert metadata.result == :success
+      assert metadata.method == "totp"
+      assert metadata.user_id == user.id
+    end
+
+    test "a failed TOTP verification emits login:totp", %{conn: conn, user: user} do
+      metadata = capture_totp_event(conn, user, "000000")
+
+      assert metadata.result == :failure
+      assert metadata.user_id == user.id
+    end
+
+    defp capture_totp_event(conn, user, code) do
+      test_pid = self()
+      handler_id = "totp-audit-test-#{System.unique_integer([:positive])}"
+
+      :telemetry.attach(
+        handler_id,
+        [:you, :audit, :login, :totp],
+        fn _event, _measurements, metadata, _config ->
+          send(test_pid, {:totp_event, metadata})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(handler_id) end)
+
+      conn =
+        post(conn, ~p"/users/log-in", %{
+          "user" => %{"email" => user.email, "password" => AccountsFixtures.valid_user_password()}
+        })
+
+      post(conn, ~p"/users/log-in/totp", %{"totp" => %{"code" => code}})
+
+      assert_receive {:totp_event, metadata}, 1_000
+      metadata
+    end
   end
 end

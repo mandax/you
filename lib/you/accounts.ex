@@ -30,9 +30,12 @@ defmodule You.Accounts do
       iex> get_user_by_email("unknown@example.com")
       nil
 
+  Guests are never returned: their address is a placeholder nobody can receive
+  mail at, so resolving one here would hand a magic link, a reset, or an
+  invitation to an account that cannot answer for it.
   """
   def get_user_by_email(email) when is_binary(email) do
-    Repo.get_by(User, email: email)
+    Repo.one(from u in User, where: u.email == ^email and not u.is_guest)
   end
 
   @doc """
@@ -244,8 +247,8 @@ defmodule You.Accounts do
   @doc """
   Generates a session token.
   """
-  def generate_user_session_token(user) do
-    {token, user_token} = UserToken.build_session_token(user)
+  def generate_user_session_token(user, app_slug \\ nil) do
+    {token, user_token} = UserToken.build_session_token(user, app_slug)
     Repo.insert!(user_token)
     token
   end
@@ -354,6 +357,12 @@ defmodule You.Accounts do
   end
 
   @doc """
+  Delivers an admin's invitation to an email address, which may not have an
+  account here yet. See `You.Invitations`.
+  """
+  defdelegate deliver_invitation(email, assigns), to: UserNotifier
+
+  @doc """
   Delivers the reset password instructions to the given user.
   """
   def deliver_user_reset_password_instructions(%User{} = user, reset_url_fun)
@@ -396,12 +405,65 @@ defmodule You.Accounts do
     threshold =
       DateTime.add(DateTime.utc_now(), -You.Settings.get(:session_expiry_hours) * 3600, :second)
 
-    Repo.all(
-      from t in UserToken,
-        where: t.user_id == ^user_id and t.context == "session" and t.inserted_at > ^threshold,
-        order_by: [desc: t.inserted_at]
-    )
+    sessions =
+      Repo.all(
+        from t in UserToken,
+          where: t.user_id == ^user_id and t.context == "session" and t.inserted_at > ^threshold,
+          order_by: [desc: t.inserted_at]
+      )
+
+    attach_session_apps(sessions)
   end
+
+  @doc """
+  Groups sessions by the app whose login created them, newest group first.
+
+  Returns `[{app_or_nil, [session]}]`. A session with no app was a sign-in to
+  You itself; it sorts last, under the account's own heading. A user revoking
+  a session needs to know what they are signing out of, and "Session, signed in
+  2026-08-01" four times over does not tell them.
+  """
+  def group_user_sessions(sessions) do
+    sessions
+    |> Enum.group_by(& &1.app)
+    |> Enum.sort_by(fn
+      {nil, _sessions} -> {1, ""}
+      {app, _sessions} -> {0, app.name}
+    end)
+  end
+
+  # One query for every app named across the sessions, rather than one per
+  # session. An app deleted since the session was created resolves to nil, the
+  # same as a session that never carried one.
+  defp attach_session_apps(sessions) do
+    slugs =
+      sessions
+      |> Enum.map(&session_app_slug/1)
+      |> Enum.reject(&is_nil/1)
+      |> Enum.uniq()
+
+    apps =
+      case slugs do
+        [] ->
+          %{}
+
+        slugs ->
+          Map.new(Repo.all(from a in You.Admin.App, where: a.slug in ^slugs), &{&1.slug, &1})
+      end
+
+    Enum.map(sessions, fn session ->
+      Map.put(session, :app, Map.get(apps, session_app_slug(session)))
+    end)
+  end
+
+  defp session_app_slug(%{meta: meta}) when is_binary(meta) do
+    case Jason.decode(meta) do
+      {:ok, %{"app" => slug}} when is_binary(slug) -> slug
+      _ -> nil
+    end
+  end
+
+  defp session_app_slug(_session), do: nil
 
   @doc """
   Revokes one of the user's sessions by token id. Scoped to the user, so a user
@@ -461,26 +523,39 @@ defmodule You.Accounts do
 
   A code issued without a challenge is redeemable **only** by an authenticated
   client. The code is single-use; it is always deleted once found, so a failed
-  verification cannot be retried.
+  verification cannot be retried — including when it turns out to be expired.
+
+  How long a code lives is the issuing app's decision (`code_expiry_minutes`),
+  which is not knowable until the code's metadata has been read. The lookup is
+  therefore bounded by the longest expiry any app can pin, as an upper bound
+  only, and the code is checked against its own app's expiry afterwards.
 
   Returns `{:ok, user, scopes, app_slug}`, `{:error, :invalid_grant}` (PKCE
   failure), `{:error, :invalid_client}` (neither proof presented), or
   `{:error, :not_found}`.
   """
   def consume_auth_code(code, code_verifier \\ nil, opts \\ []) when is_binary(code) do
-    expiry = You.Settings.get(:code_expiry_minutes)
     authenticated? = Keyword.get(opts, :client_authenticated, false)
 
-    with {:ok, query} <- UserToken.verify_auth_code_query(code, expiry),
+    with {:ok, query} <-
+           UserToken.verify_auth_code_query(code, You.Admin.max_code_expiry_minutes()),
          {user, token} <- Repo.one(query),
          meta = parse_meta(token.meta),
          _ = Repo.delete!(token),
+         :ok <- code_fresh?(token, meta["app"]),
          :ok <- code_proof(meta["code_challenge"], code_verifier, authenticated?) do
       {:ok, user, meta["scopes"] || ["email"], meta["app"]}
     else
       {:error, reason} -> {:error, reason}
       _ -> {:error, :not_found}
     end
+  end
+
+  defp code_fresh?(token, app_slug) do
+    cutoff =
+      DateTime.add(DateTime.utc_now(), -You.Admin.code_expiry_minutes(app_slug) * 60, :second)
+
+    if DateTime.compare(token.inserted_at, cutoff) == :gt, do: :ok, else: {:error, :not_found}
   end
 
   defp parse_meta(nil), do: %{}
@@ -568,9 +643,10 @@ defmodule You.Accounts do
   defp enable_totp_with_codes(user) do
     recovery_codes = generate_recovery_codes(user)
 
-    user
-    |> Ecto.Changeset.change(totp_enabled: true)
-    |> Repo.update!()
+    user =
+      user
+      |> Ecto.Changeset.change(totp_enabled: true)
+      |> Repo.update!()
 
     {:ok, %{user: user, totp_enabled: true, recovery_codes: recovery_codes}}
   end
@@ -818,7 +894,7 @@ defmodule You.Accounts do
   Retention is `jwt_expiry_hours + 1 hour` grace period.
   """
   def cleanup_revoked_jtis do
-    retention_hours = You.Settings.get(:jwt_expiry_hours) + 1
+    retention_hours = You.Admin.max_jwt_expiry_hours() + 1
     threshold = DateTime.add(DateTime.utc_now(), -retention_hours * 3600, :second)
 
     Repo.delete_all(from r in RevokedJti, where: r.inserted_at < ^threshold)
@@ -832,7 +908,7 @@ defmodule You.Accounts do
   """
   def record_consent(%User{} = user, %You.Admin.App{} = app, scopes) when is_list(scopes) do
     now = DateTime.utc_now()
-    expires_at = DateTime.add(now, You.Settings.get(:jwt_expiry_hours) * 3600, :second)
+    expires_at = DateTime.add(now, You.Admin.jwt_expiry_seconds(app), :second)
 
     result =
       %Consent{}

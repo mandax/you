@@ -28,6 +28,10 @@ defmodule YouWeb.API.V1.JSON do
       callback_url: app.callback_url,
       launch_url: app.launch_url,
       first_party: app.first_party,
+      # nil means "follow the instance setting"
+      jwt_expiry_hours: app.jwt_expiry_hours,
+      code_expiry_minutes: app.code_expiry_minutes,
+      custom_claims: app.custom_claims || %{},
       inserted_at: app.inserted_at,
       updated_at: app.updated_at
     }

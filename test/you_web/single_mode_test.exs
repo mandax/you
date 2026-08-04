@@ -25,13 +25,10 @@ defmodule YouWeb.SingleModeTest do
   end
 
   defp single_mode(_context) do
-    Application.put_env(:you, :mode, :single)
+    You.Settings.set(:you_mode, "single")
     Application.put_env(:you, :single_app, slug: "solo", callback_url: @callback_url)
 
-    on_exit(fn ->
-      Application.put_env(:you, :mode, :multi)
-      Application.delete_env(:you, :single_app)
-    end)
+    on_exit(fn -> Application.delete_env(:you, :single_app) end)
 
     :ok
   end
@@ -144,6 +141,65 @@ defmodule YouWeb.SingleModeTest do
 
       refute html =~ "Your apps"
     end
+
+    test "offers the way back into the app, at its configured launch URL", %{conn: conn} do
+      html = conn |> get(~p"/users/settings") |> html_response(200)
+
+      assert html =~ "Open Solo"
+      assert html =~ ~s(href="https://solo.example.com")
+    end
+
+    test "falls back to the callback origin when no launch URL is configured", %{
+      conn: conn,
+      app: app
+    } do
+      {:ok, _} = Admin.update_app(app, %{"launch_url" => ""})
+
+      html = conn |> get(~p"/users/settings") |> html_response(200)
+
+      assert html =~ ~s(href="https://solo.example.com/")
+    end
+
+    test "every entry point goes straight to the account, with no wasted hop", %{conn: conn} do
+      assert YouWeb.UserAuth.account_path() == ~p"/users/settings"
+      assert YouWeb.UserAuth.account_label() == "Account"
+
+      html = conn |> get(~p"/users/settings") |> html_response(200)
+
+      refute html =~ ~s(href="/users/dashboard")
+    end
+
+    test "a fresh login lands on the account rather than bouncing through the hub", %{app: app} do
+      user = You.AccountsFixtures.user_fixture() |> You.AccountsFixtures.set_password()
+      _ = app
+
+      conn =
+        post(build_conn(), ~p"/users/log-in", %{
+          "user" => %{
+            "email" => user.email,
+            "password" => You.AccountsFixtures.valid_user_password()
+          }
+        })
+
+      assert redirected_to(conn) == ~p"/users/settings"
+    end
+  end
+
+  describe "account hub in multi mode" do
+    setup :register_and_log_in_user
+
+    test "keeps the app grid as the account area", %{conn: conn} do
+      assert YouWeb.UserAuth.account_path() == ~p"/users/dashboard"
+      assert YouWeb.UserAuth.account_label() == "Dashboard"
+
+      assert conn |> get(~p"/users/dashboard") |> html_response(200)
+    end
+
+    test "the settings page shows no single-app header", %{conn: conn} do
+      html = conn |> get(~p"/users/settings") |> html_response(200)
+
+      refute html =~ ~s(id="open-single-app")
+    end
   end
 
   describe "console" do
@@ -179,6 +235,41 @@ defmodule YouWeb.SingleModeTest do
       {:ok, _lv, html} = live(conn, ~p"/console?view=users")
 
       refute html =~ "all apps"
+    end
+
+    test "drops the per-app filter from the audit view", %{conn: conn} do
+      {:ok, _lv, html} = live(conn, ~p"/console?view=audit")
+
+      refute html =~ "all apps"
+    end
+
+    test "the access cell names the role without the app it is on", %{conn: conn, app: app} do
+      user = You.AccountsFixtures.user_fixture()
+      {:ok, _} = You.Roles.set_role(app, user, "admin")
+
+      {:ok, _lv, html} = live(conn, ~p"/console?view=users")
+
+      assert html =~ "admin"
+      refute html =~ "admin·Solo"
+      refute html =~ "+1 app"
+    end
+
+    test "the edit sheet labels the one role row rather than repeating the app", %{
+      conn: conn,
+      app: app
+    } do
+      user = You.AccountsFixtures.user_fixture()
+      {:ok, lv, _html} = live(conn, ~p"/console?view=users")
+
+      html =
+        lv
+        |> element("button[phx-click='edit_user'][phx-value-id='#{user.id}']")
+        |> render_click()
+
+      assert html =~ "Roles on You and on this application."
+      assert html =~ "Application"
+      refute html =~ "Roles on You and on each app."
+      assert html =~ ~s(id="edit-app-role-#{app.id}")
     end
 
     test "the nav follows the registered app when the configured slug drifted", %{conn: conn} do

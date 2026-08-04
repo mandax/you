@@ -19,7 +19,8 @@ defmodule You.Audit.Handler do
     admin: "admin",
     token: "token",
     account: "account",
-    consent: "consent"
+    consent: "consent",
+    user: "user"
   }
 
   def start_link(opts) do
@@ -34,16 +35,7 @@ defmodule You.Audit.Handler do
 
     :telemetry.attach_many(
       "you-audit-handler",
-      [
-        [:you, :audit, :login, :attempt],
-        [:you, :audit, :login, :totp],
-        [:you, :audit, :admin, :action],
-        [:you, :audit, :token, :exchange],
-        [:you, :audit, :token, :revoke],
-        [:you, :audit, :account, :update],
-        [:you, :audit, :consent, :grant],
-        [:you, :audit, :consent, :revoke]
-      ],
+      You.Webhooks.telemetry_events(),
       &handle_event/4,
       :no_config
     )
@@ -51,14 +43,19 @@ defmodule You.Audit.Handler do
     {:ok, %{log_dir: log_dir}}
   end
 
-  def handle_event([:you, :audit, category, action], _measurements, metadata, _config) do
+  def handle_event(
+        [:you, :audit, category, _action] = event_name,
+        _measurements,
+        metadata,
+        _config
+      ) do
     filename = Map.get(@category_map, category, "other")
     ts = DateTime.utc_now() |> DateTime.to_iso8601()
 
     event =
       metadata
       |> Map.put(:ts, ts)
-      |> Map.put(:event, "#{category}:#{action}")
+      |> Map.put(:event, You.Webhooks.event_type(event_name))
 
     line = Jason.encode!(event) <> "\n"
 

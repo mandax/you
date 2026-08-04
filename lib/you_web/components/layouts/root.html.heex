@@ -14,7 +14,7 @@
     <script defer phx-track-static type="text/javascript" src={~p"/assets/js/app.js"}>
     </script>
     <script
-      :if={analytics = Application.get_env(:you, :analytics)}
+      :if={analytics = You.Settings.analytics()}
       defer
       data-domain={analytics[:domain]}
       src={analytics[:src]}

@@ -551,14 +551,12 @@ defmodule YouWeb.ConsoleLiveTest do
           callback_url: "https://solo.example.com/cb"
         })
 
-      on_exit(fn -> Application.put_env(:you, :mode, :multi) end)
-
       {:ok, lv, html} = live(conn, "/console?view=settings")
       refute html =~ ~s(href="/console/apps/solo")
 
       render_submit(form(lv, "form[phx-submit=save_settings]"), %{"you_mode" => "single"})
 
-      assert Application.get_env(:you, :mode) == :single
+      assert You.Mode.single?()
       assert render(lv) =~ ~s(href="/console/apps/solo")
     end
 

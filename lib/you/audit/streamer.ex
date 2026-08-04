@@ -15,20 +15,6 @@ defmodule You.Audit.Streamer do
   use GenServer
   require Logger
 
-  @events [
-    [:you, :audit, :login, :attempt],
-    [:you, :audit, :login, :totp],
-    [:you, :audit, :admin, :action],
-    [:you, :audit, :token, :exchange],
-    [:you, :audit, :token, :revoke],
-    [:you, :audit, :token, :refresh],
-    [:you, :audit, :account, :update],
-    [:you, :audit, :consent, :grant],
-    [:you, :audit, :consent, :revoke],
-    [:you, :audit, :user, :registered],
-    [:you, :audit, :user, :anonymized]
-  ]
-
   @doc """
   Starts the streamer.
   """
@@ -40,7 +26,7 @@ defmodule You.Audit.Streamer do
   def init(_opts) do
     :telemetry.attach_many(
       "you-audit-streamer",
-      @events,
+      You.Webhooks.telemetry_events(),
       &handle_event/4,
       :no_config
     )

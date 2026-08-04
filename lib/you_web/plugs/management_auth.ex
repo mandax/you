@@ -2,13 +2,10 @@ defmodule YouWeb.Plugs.ManagementAuth do
   @moduledoc """
   Authenticates management API requests via a configured bearer token.
 
-  Configuration:
-
-      config :you, :api_token, "your-secret-token"
-
-  In production the token comes from the `API_TOKEN` environment variable
-  (see `config/runtime.exs`). When it is unset or empty the management API
-  is disabled and every request is halted with 403.
+  The token is the `api_token` instance setting, read at request time:
+  `API_TOKEN` seeds it on first boot and the console owns it afterwards, so a
+  rotation takes effect on the next request without a restart. Unset or empty
+  disables the management API and every request is halted with 403.
 
   The incoming `Authorization: Bearer <token>` header is compared in
   constant time to avoid timing side-channels.
@@ -23,12 +20,9 @@ defmodule YouWeb.Plugs.ManagementAuth do
 
   @impl true
   def call(conn, _opts) do
-    case Application.get_env(:you, :api_token) do
-      token when is_binary(token) and token != "" ->
-        check_token(conn, token)
-
-      _ ->
-        reject(conn, 403, "management_api_disabled")
+    case You.Settings.api_token() do
+      token when is_binary(token) -> check_token(conn, token)
+      nil -> reject(conn, 403, "management_api_disabled")
     end
   end
 

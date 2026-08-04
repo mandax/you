@@ -1,12 +1,22 @@
 defmodule You.Accounts.UserNotifier do
+  @moduledoc """
+  Sends You's transactional mail.
+
+  The copy lives in `You.EmailTemplates`, which an admin can override per
+  template; this module decides which template a given event uses and what
+  it substitutes into it.
+  """
   import Swoosh.Email
 
-  alias You.Mailer
   alias You.Accounts.User
+  alias You.EmailTemplates
+  alias You.Mailer
 
   @default_from_name "You"
 
-  defp deliver(recipient, subject, body, from_name \\ nil) do
+  defp deliver(recipient, template, assigns, from_name \\ nil) do
+    {subject, body} = EmailTemplates.render(template, assigns)
+
     email =
       new()
       |> to(recipient)
@@ -23,30 +33,21 @@ defmodule You.Accounts.UserNotifier do
   Deliver instructions to update a user email.
   """
   def deliver_update_email_instructions(user, url) do
-    deliver(user.email, "Update email instructions", """
-
-    ==============================
-
-    Hi #{user.email},
-
-    You can change your email by visiting the URL below:
-
-    #{url}
-
-    If you didn't request this change, please ignore this.
-
-    ==============================
-    """)
+    deliver(user.email, "update_email", %{email: user.email, url: url})
   end
 
   @doc """
   Deliver instructions to log in with a magic link.
   """
   def deliver_login_instructions(user, url, from_name \\ nil) do
-    case user do
-      %User{confirmed_at: nil} -> deliver_confirmation_instructions(user, url, from_name)
-      _ -> deliver_magic_link_instructions(user, url, from_name)
-    end
+    template = if match?(%User{confirmed_at: nil}, user), do: "confirmation", else: "magic_link"
+
+    deliver(
+      user.email,
+      template,
+      %{email: user.email, url: url, app_name: from_name || @default_from_name},
+      from_name
+    )
   end
 
   @doc """
@@ -55,87 +56,26 @@ defmodule You.Accounts.UserNotifier do
   def deliver_email_2fa_code(user, code, from_name \\ nil) do
     deliver(
       user.email,
-      "Your verification code",
-      """
-
-      ==============================
-
-      Hi #{user.email},
-
-      Your verification code is:
-
-      #{code}
-
-      It expires in 10 minutes. If you didn't try to sign in, ignore this email
-      and consider changing your password.
-
-      ==============================
-      """,
+      "email_2fa",
+      %{email: user.email, code: code, app_name: from_name || @default_from_name},
       from_name
     )
   end
 
-  defp deliver_magic_link_instructions(user, url, from_name) do
-    deliver(
-      user.email,
-      "Log in instructions",
-      """
+  @doc """
+  Deliver an admin's invitation to join an app.
 
-      ==============================
-
-      Hi #{user.email},
-
-      You can log into your account by visiting the URL below:
-
-      #{url}
-
-      If you didn't request this email, please ignore this.
-
-      ==============================
-      """,
-      from_name
-    )
-  end
-
-  defp deliver_confirmation_instructions(user, url, from_name) do
-    deliver(
-      user.email,
-      "Confirmation instructions",
-      """
-
-      ==============================
-
-      Hi #{user.email},
-
-      You can confirm your account by visiting the URL below:
-
-      #{url}
-
-      If you didn't create an account with us, please ignore this.
-
-      ==============================
-      """,
-      from_name
-    )
+  Addressed to an email rather than a user: the invitee may have no account
+  here yet, which is the case the invitation exists for.
+  """
+  def deliver_invitation(email, assigns) do
+    deliver(email, "invitation", Map.put(assigns, :email, email), assigns[:app_name])
   end
 
   @doc """
   Deliver instructions to reset a password.
   """
   def deliver_reset_password_instructions(user, url) do
-    deliver(user.email, "Reset password instructions", """
-
-    ==============================
-
-    Hi #{user.email},
-
-    You can reset your password by visiting the URL below:
-
-    #{url}
-
-    If you didn't request this change, please ignore this.
-
-    ==============================
-    """)
+    deliver(user.email, "reset_password", %{email: user.email, url: url})
   end
 end

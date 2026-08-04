@@ -4,9 +4,14 @@ defmodule You.Mode do
   apps) or `:single` (one app, seeded from the environment on first boot).
 
   Single mode is a runtime flag, not a build variant: same image, same schema,
-  same tables. Flipping `YOU_MODE` back to multi is a restart, never a
+  same tables. Flipping it back to multi is a restart at most, never a
   migration, and the single app is an ordinary row in `apps` that nothing
   downstream — JWT claims, role resolution, consent — treats specially.
+
+  The mode lives in the `you_mode` setting, which `YOU_MODE` seeds on first
+  boot and the console owns thereafter. The environment-only half is
+  `config :you, :single_app` — the slug, name and URLs used to provision that
+  first app — which is seed data, not live configuration.
   """
 
   import Ecto.Query, only: [from: 2]
@@ -15,7 +20,9 @@ defmodule You.Mode do
   alias You.Repo
 
   @doc "The configured deployment mode."
-  def mode, do: Application.get_env(:you, :mode, :multi)
+  def mode do
+    if You.Settings.get(:you_mode) == "single", do: :single, else: :multi
+  end
 
   @doc "Whether this instance serves a single app."
   def single?, do: mode() == :single
@@ -67,13 +74,24 @@ defmodule You.Mode do
   end
 
   @doc """
-  Invalidates the cached single app, forcing the next `app/0` to hit the
-  database. Called by every writer of the `apps` table's single row:
-  `You.Admin.create_app/1`, `update_app/2`, `rotate_app_secret/1`, and
-  `delete_app/1`. A stale cache here shows a console name or logo that no
-  longer exists, which matters more than the read it saves.
+  Invalidates the cached single app across the cluster, forcing the next
+  `app/0` on each node to hit the database. Called by every writer of the
+  `apps` table's single row: `You.Admin.create_app/1`, `update_app/2`,
+  `rotate_app_secret/1`, and `delete_app/1`. A stale cache here shows a
+  console name or logo that no longer exists, which matters more than the read
+  it saves.
   """
   def invalidate_app_cache do
+    drop_app_cache()
+    You.Cache.broadcast(:single_app)
+    :ok
+  end
+
+  @doc """
+  Drops this node's cached single app without telling anyone else.
+  `You.Cache` calls this on the receiving end of an invalidation broadcast.
+  """
+  def drop_app_cache do
     :persistent_term.erase({__MODULE__, :app})
     :ok
   end

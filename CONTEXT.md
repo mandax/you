@@ -5,7 +5,7 @@ Cross-app identity, authentication, authorization, and user settings platform. E
 ## Language
 
 **User**:
-A person with an account. Has a username, email, password hash, display name, and optional avatar. A user belongs to zero or more teams.
+A person with an account. Has an email, password hash, and optional second factors. A user's access is `(app_slug, user_id) → role_name` and nothing else — there is no grouping above the App (see **Tenant**). May be a [[Guest]]: an account with no credentials yet.
 _Avoid_: Account, member
 
 **Admin**:
@@ -18,6 +18,10 @@ _Avoid_: Auth token, login cookie, global session
 
 **App JWT**:
 A per-app credential issued to a specific service. Carries `sub` (user ID), `email`, `app` (which app it's for), `role`, `jti`, `iat`, `exp`. Obtained by exchanging an auth code. Revocable individually via the JTI blocklist.
+
+How long it lives is the app's decision (`jwt_expiry_hours` on the app row), falling back to the instance setting when the app has not pinned one.
+
+**Custom claim**: a static value an app declares in `custom_claims` and You merges into every JWT it issues for that app — a tenant id, a plan, feature flags — so the app reads them from the token instead of a second round-trip. Additive only: the claims above are refused as names and applied on top regardless, so an app can never rewrite the identity, the role a consumer authorizes on, or its own expiry. Scalars and flat lists only; anything with a shape belongs behind userinfo.
 _Avoid_: Session token, bearer token, access token
 
 **Role**:
@@ -47,11 +51,33 @@ A Bearer token used by apps to call You's internal endpoints (token validation, 
 _Avoid_: Token, secret, credential
 
 **Two-Factor Authentication (2FA)**:
-An optional second factor on login using TOTP (time-based one-time passwords). After password authentication, if the user has 2FA enabled, a TOTP code is required before the authorization code is issued. Recovery codes (8 single-use bcrypt-hashed codes) are generated at setup as a fallback.
+An optional second factor on login using TOTP (time-based one-time passwords) or a code emailed after the first factor. Recovery codes (8 single-use bcrypt-hashed codes) are generated at TOTP setup as a fallback.
+
+A second factor belongs to the *account*, not to the method that proved the first one. Every first factor meets it: password, magic link, and any identity provider all pass through `YouWeb.SecondFactor` before an authorization code is issued, and the headless grant refuses with `mfa_required` until the client resubmits with `totp_code` or `email_2fa_code`. Until #112 only the password path checked, which made a magic link a way around an enrolled authenticator.
+
+Passkeys are the exception: a passkey is already a possession factor with user verification, so it stands alone rather than being a first factor awaiting a second.
 _Avoid_: MFA, two-step verification
 
+**Guest**:
+An account with `is_guest` set, a placeholder address at `anonymous.you` that receives no mail, and no password — created by a first-party app so it can hold state for someone before they sign up. Its JWT carries `guest: true`; a real account carries no `guest` claim at all, and `guest` is a reserved claim name so an app cannot forge one.
+
+Upgrading sets a real email and password on **the same row**, so the user id a consumer app has already written into its own schema does not change. That is the whole feature: without it the app has two identities to merge.
+
+A guest has no login — the token issued at creation is the only way back to that identity. Guests never upgraded are deleted after 30 days. Off by default (`feature_guest_login`): it mints user rows on request.
+_Avoid_: Anonymous user, temp account, pre-auth session
+
+**Invitation**:
+An admin-issued offer for a named email to join an app, optionally with a role. The only way to onboard one person deliberately — registration is self-service, and SCIM is a push from an upstream directory. Emailed as a single-use link, stored as a SHA-256 hash, valid 7 days.
+
+Accepting proves control of the mailbox, so it is treated exactly like a [[Magic Link]]: it confirms the account (creating a passwordless one if there is none) and signs the user in through `YouWeb.SecondFactor`, so an enrolled second factor is still met. What the invitation adds on top is the role. Accepting is a POST, not the GET that opens the link — a mail client prefetching a URL must not spend a single-use invitation.
+_Avoid_: Invite code, signup link, referral
+
+**Email Template**:
+The copy of one of the five transactional emails You sends (magic link, confirmation, password reset, email change, 2FA code). Only *overrides* are stored: a template nobody has edited has no row and uses the copy compiled into `You.EmailTemplates`, so an instance that never opens the screen keeps picking up improvements to the default wording, and "reset to default" is a delete. Bodies interpolate `{{name}}` placeholders by string replacement, never evaluation; the ones a template cannot do without (`url` in a magic link, `code` in a 2FA email) are required by the changeset.
+_Avoid_: Email layout, mailer template, notification
+
 **Magic Link**:
-A passwordless login flow. The user enters their email, You sends a short-lived signed link (15 min), and clicking it exchanges the link token for a JWT. Single-use, consumed on first click.
+A passwordless login flow. The user enters their email, You sends a short-lived signed link (15 min), and clicking it exchanges the link token for a JWT. Single-use, consumed on first click. A *first* factor, not a login: an account with a second factor enrolled still meets it after the link is clicked.
 _Avoid_: Passwordless login, email auth, one-time link
 
 **Authorization Code**:

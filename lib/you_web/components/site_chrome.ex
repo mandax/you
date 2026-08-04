@@ -60,7 +60,9 @@ defmodule YouWeb.Components.SiteChrome do
             <span class="lucide-moon block size-4 dark:hidden" />
             <span class="lucide-sun hidden size-4 dark:block" />
           </button>
-          <.button :if={@current_scope} size="sm" navigate={~p"/users/dashboard"}>Dashboard</.button>
+          <.button :if={@current_scope} size="sm" navigate={YouWeb.UserAuth.account_path()}>
+            {YouWeb.UserAuth.account_label()}
+          </.button>
           <.button
             :if={!@current_scope}
             size="sm"

@@ -51,13 +51,18 @@ docker run -d \
 | `SINGLE_APP_SLUG` | With `YOU_MODE=single` | `app` | The app's client id |
 | `SINGLE_APP_NAME` | No | the slug | Display name on the login page |
 | `SINGLE_APP_CALLBACK_URL` | With `YOU_MODE=single` | (none) | Where the auth code is delivered |
-| `SINGLE_APP_LAUNCH_URL` | No | (none) | Where "open the app" points |
+| `SINGLE_APP_LAUNCH_URL` | No | callback origin | Where "Open <app>" points from `/users/settings` |
 | `PORT` | No | `4000` | HTTP port |
 | `POOL_SIZE` | No | `10` | Ecto connection pool size |
 | `PHX_SERVER` | No | `true` | Set to start the HTTP server |
 | `RELEASE_NODE` | No | `you@you.example.com` | Erlang node name (for Erlang distribution) |
 | `RELEASE_COOKIE` | No | random per boot | Erlang cookie. When unset a random per-boot value is used (fail closed); the `erlang_cookie` setting in the database overrides it at boot |
 | `DNS_CLUSTER_QUERY` | No | (none) | DNS cluster query for distributed Erlang |
+| `API_TOKEN` | No | (none) | Seeds the `api_token` setting on first boot. Unset or blank leaves the management API disabled (`403`). The console owns it afterwards |
+| `ANALYTICS_SRC` | No | (none) | Seeds `analytics_src`. Plausible-compatible script URL; both this and the domain must be set or nothing is emitted |
+| `ANALYTICS_DOMAIN` | No | (none) | Seeds `analytics_domain` |
+| `YOU_BUNDLE_PASSWORD_FILE` | No | (none) | Read by `mix you.bundle` / `You.Release.*_bundle`. Path to a file holding the bundle password — the right answer for CI, where a mounted secret beats a string in a job definition |
+| `YOU_BUNDLE_PASSWORD` | No | (none) | Same, as a value. Checked after the file. There is deliberately no `--password` flag |
 
 ### Volumes
 

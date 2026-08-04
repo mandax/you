@@ -53,6 +53,29 @@ defmodule YouWeb.AppLive.Show do
     |> reload(socket, "App updated.")
   end
 
+  def handle_event("update_custom_claims", %{"custom_claims" => json}, socket) do
+    case decode_claims(json) do
+      {:ok, claims} ->
+        socket.assigns.app
+        |> Admin.update_app(%{"custom_claims" => claims})
+        |> reload(socket, "Custom claims updated.")
+
+      :error ->
+        {:noreply, put_flash(socket, :error, "That is not valid JSON.")}
+    end
+  end
+
+  def handle_event("update_lifetimes", params, socket) do
+    attrs =
+      params
+      |> Map.take(["jwt_expiry_hours", "code_expiry_minutes"])
+      |> Map.new(fn {key, value} -> {key, blank_to_nil(value)} end)
+
+    socket.assigns.app
+    |> Admin.update_app(attrs)
+    |> reload(socket, "Token lifetimes updated.")
+  end
+
   # ── login branding ────────────────────────────────────────────
   def handle_event("preview_branding", params, socket) do
     {:noreply,
@@ -183,6 +206,43 @@ defmodule YouWeb.AppLive.Show do
     end
   end
 
+  def handle_event("invite_member", %{"email" => email} = params, socket) do
+    app = socket.assigns.app
+
+    attrs = %{
+      email: email,
+      app_id: app.id,
+      role: params["role"] || params["value"] || app.default_role || "user",
+      invited_by_id: socket.assigns.current_scope.user.id
+    }
+
+    case You.Invitations.invite(attrs, &url(~p"/invitations/#{&1}")) do
+      {:ok, invitation} ->
+        {:noreply,
+         socket
+         |> assign_app(app)
+         |> put_flash(:info, "Invitation sent to #{invitation.email}.")}
+
+      {:error, :invalid_role} ->
+        {:noreply, put_flash(socket, :error, "Role is not allowed for this app.")}
+
+      {:error, %Ecto.Changeset{} = changeset} ->
+        {:noreply, put_flash(socket, :error, "Could not invite: #{error_summary(changeset)}")}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "Could not send that invitation.")}
+    end
+  end
+
+  def handle_event("revoke_invitation", %{"id" => id}, socket) do
+    with {:ok, invitation_id} <- safe_parse_id(id) do
+      You.Invitations.revoke(invitation_id)
+    end
+
+    {:noreply,
+     socket |> assign_app(socket.assigns.app) |> put_flash(:info, "Invitation withdrawn.")}
+  end
+
   def handle_event("filter_members", %{"query" => query}, socket) do
     {:noreply, assign(socket, member_filter: query)}
   end
@@ -258,6 +318,7 @@ defmodule YouWeb.AppLive.Show do
         subtitle: app.subtitle
       },
       members: Roles.list_for_app(app),
+      invitations: Enum.filter(You.Invitations.list_pending(), &(&1.app_id == app.id)),
       role_counts: Roles.count_by_role(app),
       pending_default_role: app.default_role || "user"
     )
@@ -363,6 +424,7 @@ defmodule YouWeb.AppLive.Show do
               filter={@member_filter}
               roles={allowed_roles(@app)}
               selected={@selected}
+              invitations={@invitations}
             />
           <% "credentials" -> %>
             <.credentials_tab app={@app} new_secret={@new_secret} />
@@ -401,8 +463,99 @@ defmodule YouWeb.AppLive.Show do
         </div>
       </form>
     </.panel>
+
+    <.panel
+      title="Token lifetimes"
+      description="How long this app's credentials stay valid. Leave blank to follow the instance settings."
+    >
+      <form id="app-lifetimes-form" phx-submit="update_lifetimes" class="max-w-xl space-y-4">
+        <.input
+          type="number"
+          name="jwt_expiry_hours"
+          label="JWT expiry (hours)"
+          min="1"
+          max={You.Admin.App.max_jwt_expiry_hours()}
+          placeholder={"instance default: #{You.Settings.get(:jwt_expiry_hours)}"}
+          value={@app.jwt_expiry_hours}
+        />
+        <.input
+          type="number"
+          name="code_expiry_minutes"
+          label="Auth code expiry (minutes)"
+          min="1"
+          max={You.Admin.App.max_code_expiry_minutes()}
+          placeholder={"instance default: #{You.Settings.get(:code_expiry_minutes)}"}
+          value={@app.code_expiry_minutes}
+        />
+        <p class="text-xs text-muted-foreground">
+          A session on You itself is one cookie across every app, so its expiry stays an
+          instance setting.
+        </p>
+        <div class="flex justify-end">
+          <.button type="submit">Save</.button>
+        </div>
+      </form>
+    </.panel>
+
+    <.panel
+      title="Custom claims"
+      description="Static values merged into every JWT issued for this app, so it can read them from the token instead of fetching them."
+    >
+      <form id="app-claims-form" phx-submit="update_custom_claims" class="max-w-xl space-y-4">
+        <.input
+          type="textarea"
+          name="custom_claims"
+          label="Claims (JSON object)"
+          rows="6"
+          value={claims_json(@app)}
+          placeholder={~s({"tenant_id": "acme", "plan": "pro"})}
+        />
+        <p class="text-xs text-muted-foreground">
+          Values may be strings, numbers, booleans, or lists of those. Claims You issues — {Enum.join(
+            You.Admin.App.reserved_claims(),
+            ", "
+          )} — cannot be set here.
+          At most {You.Admin.App.max_custom_claims_bytes()} bytes: a JWT travels in a header.
+        </p>
+        <div class="flex justify-end">
+          <.button type="submit">Save</.button>
+        </div>
+      </form>
+    </.panel>
     """
   end
+
+  defp claims_json(%{custom_claims: claims}) when is_map(claims) and map_size(claims) > 0,
+    do: Jason.encode!(claims, pretty: true)
+
+  defp claims_json(_app), do: ""
+
+  # An empty box means "no extra claims", stored as an empty object rather
+  # than left as whatever the app had before.
+  defp decode_claims(json) do
+    case String.trim(json || "") do
+      "" -> {:ok, %{}}
+      trimmed -> decode_claims_json(trimmed)
+    end
+  end
+
+  defp decode_claims_json(json) do
+    case Jason.decode(json) do
+      {:ok, claims} when is_map(claims) -> {:ok, claims}
+      _ -> :error
+    end
+  end
+
+  # An empty field means "follow the instance", which on the column is NULL —
+  # not the zero an empty string would otherwise try to cast to.
+  defp blank_to_nil(value) when is_binary(value) do
+    case String.trim(value) do
+      "" -> nil
+      trimmed -> trimmed
+    end
+  end
+
+  defp blank_to_nil(value), do: value
 
   attr :app, :map, required: true
   attr :draft, :map, required: true
@@ -796,10 +949,56 @@ defmodule YouWeb.AppLive.Show do
   attr :roles, :list, required: true
   attr :selected, :any, required: true
   attr :filter, :string, required: true
+  attr :invitations, :list, required: true
 
   defp members_tab(assigns) do
     ~H"""
     <div class="space-y-3">
+      <%!-- Registration and a SCIM push from an upstream directory are the only
+            other ways in, and neither lets an operator onboard one named
+            person. --%>
+      <div class="rounded-md border border-border bg-muted/20 px-3 py-3">
+        <form
+          id="invite-member-form"
+          phx-submit="invite_member"
+          class="flex flex-wrap items-end gap-2 [&_>div]:mb-0"
+        >
+          <div class="min-w-56 flex-1">
+            <.input type="email" name="email" value="" label="Invite by email" required />
+          </div>
+          <.select
+            id="invite-role"
+            name="role"
+            value="user"
+            options={Enum.map(@roles, &%{value: &1, label: &1})}
+          />
+          <.button type="submit">Send invitation</.button>
+        </form>
+
+        <ul :if={@invitations != []} class="mt-3 space-y-1 border-t border-border pt-3">
+          <li
+            :for={invitation <- @invitations}
+            class="flex items-center justify-between gap-3 text-xs"
+          >
+            <span class="font-mono text-muted-foreground">
+              {invitation.email} · {invitation.role || "user"} · invited {Calendar.strftime(
+                invitation.inserted_at,
+                "%Y-%m-%d"
+              )}
+            </span>
+            <button
+              type="button"
+              phx-click="revoke_invitation"
+              phx-value-id={invitation.id}
+              data-confirm={"Withdraw the invitation to #{invitation.email}?"}
+              class="text-muted-foreground hover:text-destructive"
+            >
+              Withdraw
+            </button>
+          </li>
+        </ul>
+      </div>
+
       <form phx-change="filter_members" class="flex items-center gap-2 [&_>div]:mb-0">
         <div class="flex-1">
           <.input

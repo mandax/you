@@ -27,16 +27,13 @@ defmodule YouWeb.ConsentRuleTest do
 
     user = You.AccountsFixtures.user_fixture()
 
-    on_exit(fn ->
-      Application.put_env(:you, :mode, :multi)
-      Application.delete_env(:you, :single_app)
-    end)
+    on_exit(fn -> Application.delete_env(:you, :single_app) end)
 
     %{conn: log_in_user(conn, user), first: first_party, third: third_party, user: user}
   end
 
   defp single_mode do
-    Application.put_env(:you, :mode, :single)
+    You.Settings.set(:you_mode, "single")
 
     Application.put_env(:you, :single_app,
       slug: "ours",

@@ -25,36 +25,32 @@ defmodule You.SettingsTest do
     end
   end
 
-  describe "console edits sync into Application env for boot-read config" do
-    test "you_mode flips You.Mode's underlying app env" do
-      on_exit(fn -> Application.put_env(:you, :mode, :multi) end)
-
+  describe "settings are read where they are used, not mirrored into app env" do
+    test "you_mode is what You.Mode reports" do
       Settings.set(:you_mode, "single")
-      assert Application.get_env(:you, :mode) == :single
+      assert You.Mode.mode() == :single
+      assert You.Mode.single?()
 
       Settings.set(:you_mode, "multi")
-      assert Application.get_env(:you, :mode) == :multi
+      assert You.Mode.mode() == :multi
+      refute You.Mode.single?()
     end
 
-    test "api_token updates the management API's app env" do
-      on_exit(fn -> Application.put_env(:you, :api_token, "test-api-token") end)
-
+    test "api_token is what the management API compares against" do
       Settings.set(:api_token, "new-token")
-      assert Application.get_env(:you, :api_token) == "new-token"
+      assert Settings.api_token() == "new-token"
 
       Settings.set(:api_token, "")
-      assert Application.get_env(:you, :api_token) == nil
+      assert Settings.api_token() == nil
     end
 
     test "analytics requires both fields" do
-      on_exit(fn -> Application.put_env(:you, :analytics, nil) end)
-
       Settings.set(:analytics_src, "https://a.example.com/script.js")
-      assert Application.get_env(:you, :analytics) == nil
+      assert Settings.analytics() == nil
 
       Settings.set(:analytics_domain, "example.com")
 
-      assert Application.get_env(:you, :analytics) == [
+      assert Settings.analytics() == [
                src: "https://a.example.com/script.js",
                domain: "example.com"
              ]

@@ -50,6 +50,7 @@ defmodule You.Settings do
     feature_social_login: true,
     feature_webhooks: true,
     feature_landing_page: true,
+    feature_guest_login: false,
     you_mode: "multi",
     smtp_host: "",
     smtp_port: 587,
@@ -90,7 +91,8 @@ defmodule You.Settings do
     :feature_magic_link,
     :feature_social_login,
     :feature_webhooks,
-    :feature_landing_page
+    :feature_landing_page,
+    :feature_guest_login
   ]
 
   @doc "The optional features an admin can switch off."
@@ -176,11 +178,8 @@ defmodule You.Settings do
     do_set(key, value)
   end
 
-  @synced_keys ~w(you_mode api_token analytics_src analytics_domain)a
-
   defp do_set(key, value_str) do
     key_str = Atom.to_string(key)
-    changed? = load(key) != cast_value(value_str, @defaults[key])
 
     case Repo.get_by(Setting, key: key_str) do
       nil ->
@@ -190,39 +189,54 @@ defmodule You.Settings do
         existing |> Ecto.Changeset.change(value: value_str) |> Repo.update!()
     end
 
-    if cache?(), do: :persistent_term.put({__MODULE__, key}, load(key))
-    if changed? and key in @synced_keys, do: sync_application_env(key)
+    invalidate(key)
 
     :ok
   end
 
-  # `you_mode`, `api_token` and the analytics pair are read at request time
-  # from `Application` env by `You.Mode`, `YouWeb.Plugs.ManagementAuth` and
-  # the root layout respectively. A console edit is mirrored into that same
-  # env immediately, so it takes effect on the next call without restructuring
-  # those call sites. SMTP and the mail-from address are different: `You.Mailer`
-  # reads them straight from `You.Settings` at send time (see its
-  # `@moduledoc`), so no sync is needed for those keys.
-  defp sync_application_env(:you_mode) do
-    Application.put_env(:you, :mode, if(get(:you_mode) == "single", do: :single, else: :multi))
+  @doc """
+  Refreshes this node's cached value for `key`, then tells the rest of the
+  cluster to do the same.
+
+  The local refresh is synchronous because the request that made the edit has
+  to read its own write; every other node hears about it through `You.Cache`.
+  """
+  def invalidate(key) when is_atom(key) do
+    refresh(key)
+    You.Cache.broadcast({:setting, key})
+    :ok
   end
 
-  defp sync_application_env(:api_token) do
-    Application.put_env(:you, :api_token, present(get(:api_token)))
+  @doc """
+  Refreshes this node's cached value for `key` from the database, without
+  telling anyone else. `You.Cache` calls this on the receiving end of an
+  invalidation broadcast.
+  """
+  def refresh(key) when is_atom(key) do
+    if cache?(), do: :persistent_term.put({__MODULE__, key}, load(key))
+    :ok
   end
 
-  defp sync_application_env(key) when key in [:analytics_src, :analytics_domain],
-    do: sync_analytics_env()
+  @doc """
+  The analytics script to embed, as `[src: …, domain: …]`, or nil.
 
-  defp sync_analytics_env do
+  Both halves are required: a script tag with no domain reports to the wrong
+  site, so a half-configured pair counts as off.
+  """
+  def analytics do
     case {present(get(:analytics_src)), present(get(:analytics_domain))} do
-      {src, domain} when is_binary(src) and is_binary(domain) ->
-        Application.put_env(:you, :analytics, src: src, domain: domain)
-
-      _ ->
-        Application.put_env(:you, :analytics, nil)
+      {src, domain} when is_binary(src) and is_binary(domain) -> [src: src, domain: domain]
+      _ -> nil
     end
   end
+
+  @doc """
+  The management API bearer token, or nil when the API is disabled.
+
+  Blank counts as unset, whitespace included: a token of spaces is a
+  misconfiguration, and honouring it would be a credential nobody can see.
+  """
+  def api_token, do: get(:api_token) |> to_string() |> String.trim() |> present()
 
   defp present(nil), do: nil
   defp present(""), do: nil

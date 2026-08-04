@@ -16,7 +16,6 @@ defmodule You.Settings.EnvSeedTest do
       System.delete_env("API_TOKEN")
       System.delete_env("MAIL_FROM")
       System.delete_env("YOU_MODE")
-      Application.put_env(:you, :api_token, "test-api-token")
     end)
   end
 

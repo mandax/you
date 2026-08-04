@@ -9,7 +9,11 @@
 
 services:
   you:
-    image: ghcr.io/mandax/you:latest
+    # Pin a version in .env (YOU_VERSION=0.4.0) and you control when you cross
+    # a release. On `latest`, `docker compose pull` moves you across every
+    # version at once — including any that changes authentication behaviour or
+    # asks for operator action. Read CHANGELOG.md before you pull either way.
+    image: ghcr.io/mandax/you:${YOU_VERSION:-latest}
     # Testing an unreleased change? Uncomment to build this checkout instead of
     # pulling the published image.
     # build: .

@@ -47,9 +47,6 @@ config :you, check_pwned_passwords: false
 # the rate-limit tests set their own limits.
 config :you, YouWeb.RateLimit, %{}
 
-# Management REST API bearer token
-config :you, :api_token, "test-api-token"
-
 # The sandbox rolls each test's writes back without the cache hearing about
 # it, so settings are read straight from the database under test.
 config :you, :settings_cache, false

@@ -24,10 +24,7 @@ config :you,
   ecto_repos: [You.Repo],
   generators: [timestamp_type: :utc_datetime],
   audit_webhook_url: nil,
-  oidc_providers: %{},
-  # Analytics is off unless a deployment opts in. A fork should never phone
-  # home to someone else's instance.
-  analytics: nil
+  oidc_providers: %{}
 
 # Configure the endpoint
 config :you, YouWeb.Endpoint,

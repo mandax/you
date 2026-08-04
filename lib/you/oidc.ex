@@ -33,7 +33,7 @@ defmodule You.OIDC do
         app_slug \\ nil
       ) do
     app_slug = app_slug || client_id
-    jwt_expiry = You.Settings.get(:jwt_expiry_hours) * 3600
+    jwt_expiry = You.Admin.jwt_expiry_seconds(app_slug)
     {:ok, access_token} = JWT.sign(Claims.build_scoped_claims(user, scopes, app_slug), jwt_expiry)
     {:ok, id_token} = id_token(user, scopes, app_slug)
     refresh_token = refresh_token || Accounts.create_refresh_token(user, scopes)
@@ -49,14 +49,21 @@ defmodule You.OIDC do
 
   @doc """
   Signs an OIDC id_token for the user: `iss` is the provider URL, `sub` the
-  user id, `aud` the client, plus the scoped identity claims.
+  user id, `aud` the app, plus the scoped identity claims.
+
+  The app is passed down to the claim builder, not only used as `aud`. Without
+  it the `roles` scope fell back to the account's global admin flag, so an
+  id_token said `role: "admin"` for a You admin who is an ordinary user of the
+  app that asked — roles here are `(app_slug, user_id)`, never global. It also
+  left the app's own `custom_claims` out of the id_token while the access
+  token carried them.
   """
-  def id_token(%User{} = user, scopes, client_id) do
+  def id_token(%User{} = user, scopes, app_slug) do
     claims =
       user
-      |> Claims.build_scoped_claims(scopes)
+      |> Claims.build_scoped_claims(scopes, app_slug)
       |> Map.put(:iss, YouWeb.Endpoint.url())
-      |> maybe_put_aud(client_id)
+      |> maybe_put_aud(app_slug)
 
     JWT.sign(claims, @id_token_exp)
   end

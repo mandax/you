@@ -152,6 +152,9 @@ defmodule YouWeb.Router do
     scope "/" do
       pipe_through :rate_limit_headless_register
       post "/register", HeadlessAuthController, :register
+      # Both mint or claim an account, so they share the registration bucket.
+      post "/guest", HeadlessAuthController, :guest
+      post "/upgrade", HeadlessAuthController, :upgrade
     end
   end
 
@@ -181,6 +184,12 @@ defmodule YouWeb.Router do
     delete "/apps/:id/roles/:user_id", AppsController, :remove_role
 
     get "/audit", AuditController, :index
+
+    # POST throughout, export included: a bundle password in a query string
+    # would land in access logs and browser history.
+    post "/config/bundle", ConfigController, :export
+    post "/config/bundle/preview", ConfigController, :preview
+    post "/config/bundle/import", ConfigController, :import
   end
 
   ## Authentication routes
@@ -243,6 +252,10 @@ defmodule YouWeb.Router do
     get "/users/log-in/email-2fa", UserSessionController, :email_2fa
     post "/users/log-in/authorize", UserSessionController, :authorize_action
     get "/users/log-in/:token", UserSessionController, :confirm
+    # Accepting is the POST: a mail client prefetching the link must not spend
+    # a single-use invitation before the invitee has seen what it grants.
+    get "/invitations/:token", InvitationController, :show
+    post "/invitations/:token", InvitationController, :accept
     get "/users/reset-password/:token", UserResetPasswordController, :edit
     put "/users/reset-password/:token", UserResetPasswordController, :update
     delete "/users/log-out", UserSessionController, :delete

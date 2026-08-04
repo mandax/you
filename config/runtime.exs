@@ -33,19 +33,16 @@ end
 # Sender address for transactional emails (magic links, 2FA codes, resets).
 config :you, :mail_from, env.("MAIL_FROM") || "no-reply@#{phx_host || "example.com"}"
 
-# Deployment mode. `single` seeds one app on first boot and hides the
-# multi-app surface. A runtime flag over the same schema: flipping it is a
-# restart, not a migration.
+# Attributes the single app is provisioned with on first boot. Seed data, not
+# live configuration: the mode itself is the `you_mode` setting (seeded from
+# YOU_MODE by You.Settings.EnvSeed), and the console owns the app row from the
+# first boot onwards.
 if env.("YOU_MODE") == "single" do
-  config :you, :mode, :single
-
   config :you, :single_app,
     slug: env.("SINGLE_APP_SLUG") || "app",
     name: env.("SINGLE_APP_NAME"),
     callback_url: env.("SINGLE_APP_CALLBACK_URL"),
     launch_url: env.("SINGLE_APP_LAUNCH_URL")
-else
-  config :you, :mode, :multi
 end
 
 if config_env() == :prod do
@@ -241,24 +238,6 @@ if config_env() == :prod do
     |> Map.put(jwt_kid, JOSE.JWK.generate_key({:okp, :Ed25519, decode_seed.(jwt_seed)}))
 
   config :you, You.JWT, current_kid: jwt_kid, keys: jwt_keys
-
-  # Management REST API bearer token. Unset/empty disables the API (403).
-  config :you, :api_token, env.("API_TOKEN")
-
-  # Plausible-compatible analytics. Both must be set, or nothing is emitted.
-  # Blank counts as unset: compose substitutes an unset ${VAR} as an empty
-  # string, so the variables are always present in the container.
-  analytics_env =
-    ["ANALYTICS_SRC", "ANALYTICS_DOMAIN"]
-    |> Enum.map(&(System.get_env(&1, "") |> String.trim()))
-
-  case analytics_env do
-    [src, domain] when src != "" and domain != "" ->
-      config :you, :analytics, src: src, domain: domain
-
-    _ ->
-      :ok
-  end
 
   # Passkeys bind to an exact origin, so the port is omitted only when it is
   # the scheme's default.
