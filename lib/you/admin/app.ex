@@ -52,6 +52,23 @@ defmodule You.Admin.App do
   def resolved_methods(nil, available), do: available
 
   @doc """
+  Where "open the app" sends a user.
+
+  Prefers the configured `launch_url`; otherwise falls back to the origin of
+  the callback URL, since an app that can receive a callback can serve its own
+  front door. `"#"` only when there is neither.
+  """
+  def launch_target(%{launch_url: url}) when is_binary(url) and url != "", do: url
+  def launch_target(%{callback_url: cb}) when is_binary(cb), do: origin(cb)
+  def launch_target(_app), do: "#"
+
+  defp origin(url) do
+    uri = URI.parse(url)
+    port = if uri.port && uri.port not in [80, 443], do: ":#{uri.port}", else: ""
+    "#{uri.scheme}://#{uri.host}#{port}/"
+  end
+
+  @doc """
   The identity providers this app offers, given what the instance has enabled.
 
   Same convention as `resolved_methods/2`: `nil` follows the instance.

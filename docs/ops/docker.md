@@ -51,7 +51,7 @@ docker run -d \
 | `SINGLE_APP_SLUG` | With `YOU_MODE=single` | `app` | The app's client id |
 | `SINGLE_APP_NAME` | No | the slug | Display name on the login page |
 | `SINGLE_APP_CALLBACK_URL` | With `YOU_MODE=single` | (none) | Where the auth code is delivered |
-| `SINGLE_APP_LAUNCH_URL` | No | (none) | Where "open the app" points |
+| `SINGLE_APP_LAUNCH_URL` | No | callback origin | Where "Open <app>" points from `/users/settings` |
 | `PORT` | No | `4000` | HTTP port |
 | `POOL_SIZE` | No | `10` | Ecto connection pool size |
 | `PHX_SERVER` | No | `true` | Set to start the HTTP server |

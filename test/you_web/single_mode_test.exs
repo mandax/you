@@ -141,6 +141,65 @@ defmodule YouWeb.SingleModeTest do
 
       refute html =~ "Your apps"
     end
+
+    test "offers the way back into the app, at its configured launch URL", %{conn: conn} do
+      html = conn |> get(~p"/users/settings") |> html_response(200)
+
+      assert html =~ "Open Solo"
+      assert html =~ ~s(href="https://solo.example.com")
+    end
+
+    test "falls back to the callback origin when no launch URL is configured", %{
+      conn: conn,
+      app: app
+    } do
+      {:ok, _} = Admin.update_app(app, %{"launch_url" => ""})
+
+      html = conn |> get(~p"/users/settings") |> html_response(200)
+
+      assert html =~ ~s(href="https://solo.example.com/")
+    end
+
+    test "every entry point goes straight to the account, with no wasted hop", %{conn: conn} do
+      assert YouWeb.UserAuth.account_path() == ~p"/users/settings"
+      assert YouWeb.UserAuth.account_label() == "Account"
+
+      html = conn |> get(~p"/users/settings") |> html_response(200)
+
+      refute html =~ ~s(href="/users/dashboard")
+    end
+
+    test "a fresh login lands on the account rather than bouncing through the hub", %{app: app} do
+      user = You.AccountsFixtures.user_fixture() |> You.AccountsFixtures.set_password()
+      _ = app
+
+      conn =
+        post(build_conn(), ~p"/users/log-in", %{
+          "user" => %{
+            "email" => user.email,
+            "password" => You.AccountsFixtures.valid_user_password()
+          }
+        })
+
+      assert redirected_to(conn) == ~p"/users/settings"
+    end
+  end
+
+  describe "account hub in multi mode" do
+    setup :register_and_log_in_user
+
+    test "keeps the app grid as the account area", %{conn: conn} do
+      assert YouWeb.UserAuth.account_path() == ~p"/users/dashboard"
+      assert YouWeb.UserAuth.account_label() == "Dashboard"
+
+      assert conn |> get(~p"/users/dashboard") |> html_response(200)
+    end
+
+    test "the settings page shows no single-app header", %{conn: conn} do
+      html = conn |> get(~p"/users/settings") |> html_response(200)
+
+      refute html =~ ~s(id="open-single-app")
+    end
   end
 
   describe "console" do

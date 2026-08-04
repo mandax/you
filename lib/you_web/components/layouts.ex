@@ -112,7 +112,9 @@ defmodule YouWeb.Layouts do
             <div class="flex items-center gap-3 ml-2">
               <.theme_toggle id="public-theme" />
               <%= if @current_scope do %>
-                <.button size="sm" navigate={~p"/users/dashboard"}>Dashboard</.button>
+                <.button size="sm" navigate={YouWeb.UserAuth.account_path()}>
+                  {YouWeb.UserAuth.account_label()}
+                </.button>
               <% else %>
                 <.link
                   navigate={~p"/users/log-in"}
@@ -297,7 +299,11 @@ defmodule YouWeb.Layouts do
       >
         {@current_scope.user.email}
       </div>
-      <.menu_item :if={@current_scope} navigate={~p"/users/dashboard"}>Dashboard</.menu_item>
+      <%!-- In single mode both of these land on the settings page, so only
+            one of them is worth showing. --%>
+      <.menu_item :if={@current_scope && !You.Mode.single?()} navigate={~p"/users/dashboard"}>
+        Dashboard
+      </.menu_item>
       <.menu_item :if={@current_scope} navigate={~p"/users/settings"}>Settings</.menu_item>
       <.menu_item
         :if={@current_scope && @current_scope.user.is_admin}

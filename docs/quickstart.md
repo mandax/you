@@ -27,7 +27,7 @@ app's details seed the console and can be changed there afterwards.
 | `PHX_HOST` | The hostname users reach You on, e.g. `id.example.com`. Magic links, OIDC discovery and passkeys are all built from it. |
 | `SINGLE_APP_NAME` | What the login page calls your app. |
 | `SINGLE_APP_CALLBACK_URL` | Where You redirects after a successful login, with `?code=…`. Optional — leave it blank until your app has a callback route, then set it in the console. |
-| `SINGLE_APP_LAUNCH_URL` | Where "open the app" points from the account area. |
+| `SINGLE_APP_LAUNCH_URL` | Where "Open <app>" points from the account page at `/users/settings`. Optional — defaults to the origin of the callback URL. |
 | `SMTP_*` | See [step 4](#4-configure-email). |
 
 You do not set `SECRET_KEY_BASE` or `JWT_SIGNING_KEY`. Both are generated on

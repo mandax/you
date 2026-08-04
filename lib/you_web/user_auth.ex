@@ -181,7 +181,29 @@ defmodule YouWeb.UserAuth do
     end
   end
 
-  defp signed_in_path(_conn), do: ~p"/users/dashboard"
+  defp signed_in_path(_conn), do: account_path()
+
+  @doc """
+  Where a signed-in user's account lives.
+
+  In multi mode that is the hub at `/users/dashboard`, a grid of the apps the
+  user has authorized. Single mode has one app and nothing to choose between,
+  so the account *is* the settings page and every door leads straight there —
+  a topbar button, the user dropdown, the public header, and the destination
+  of every login. Pointing them at the hub instead would make each one a
+  redirect the user pays for and never sees.
+  """
+  def account_path do
+    if You.Mode.single?(), do: ~p"/users/settings", else: ~p"/users/dashboard"
+  end
+
+  @doc """
+  What to call `account_path/0` in navigation. "Dashboard" implies a place to
+  choose from; single mode has nothing to choose.
+  """
+  def account_label do
+    if You.Mode.single?(), do: "Account", else: "Dashboard"
+  end
 
   @doc """
   Plug for routes that require the user to be authenticated.

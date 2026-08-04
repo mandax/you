@@ -227,6 +227,7 @@ defmodule YouWeb.UserSettingsController do
     |> assign(:current_token, get_session(conn, :user_token))
     |> assign(:federated_identities, Accounts.list_federated_identities_for_user(user))
     |> assign(:recovery_codes_remaining, recovery_codes_remaining)
+    |> assign(:single_app, You.Mode.app())
   end
 
   defp get_user_consents(user_id) do

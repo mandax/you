@@ -4,6 +4,22 @@
   </:side_panel>
 
   <div class="space-y-10">
+    <%!-- Single mode has no app grid to launch from, so the way back into the
+          app lives here — this page is the account area. --%>
+    <section
+      :if={@single_app}
+      id="single-app"
+      class="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-border bg-muted/30 px-4 py-3"
+    >
+      <div class="min-w-0">
+        <div class="text-sm font-medium truncate">{@single_app.name}</div>
+        <div class="text-xs text-muted-foreground">You are signed in to this application.</div>
+      </div>
+      <.button size="sm" href={You.Admin.App.launch_target(@single_app)} id="open-single-app">
+        Open {@single_app.name}
+      </.button>
+    </section>
+
     <section id="general">
       <h2 class="text-lg font-medium tracking-tight mb-6">Email</h2>
       <.form :let={f} for={@email_changeset} action={~p"/users/settings"} id="update_email">
