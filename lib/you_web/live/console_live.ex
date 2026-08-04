@@ -1808,10 +1808,19 @@ defmodule YouWeb.ConsoleLive do
     """
   end
 
-  defp template_value(overrides, definition, field) do
+  # The override when there is one, the compiled-in default otherwise — the
+  # form always shows the copy that would actually go out.
+  defp template_value(overrides, definition, :subject) do
     case overrides[definition.key] do
-      nil -> Map.fetch!(definition, field)
-      override -> Map.fetch!(override, field)
+      nil -> definition.subject
+      override -> override.subject
+    end
+  end
+
+  defp template_value(overrides, definition, :body) do
+    case overrides[definition.key] do
+      nil -> definition.body
+      override -> override.body
     end
   end
 

@@ -28,11 +28,12 @@ defmodule You.EmailTemplates do
 
   import Ecto.Query, warn: false
 
+  alias You.EmailTemplates.Definition
   alias You.EmailTemplates.EmailTemplate
   alias You.Repo
 
   @templates [
-    %{
+    %Definition{
       key: "magic_link",
       label: "Magic link",
       description: "Sent when a returning user asks to sign in by email.",
@@ -54,7 +55,7 @@ defmodule You.EmailTemplates do
       ==============================
       """
     },
-    %{
+    %Definition{
       key: "confirmation",
       label: "Confirmation",
       description: "Sent instead of the magic link when the account is not confirmed yet.",
@@ -76,7 +77,7 @@ defmodule You.EmailTemplates do
       ==============================
       """
     },
-    %{
+    %Definition{
       key: "reset_password",
       label: "Password reset",
       description: "Sent when a user asks to reset their password.",
@@ -98,7 +99,7 @@ defmodule You.EmailTemplates do
       ==============================
       """
     },
-    %{
+    %Definition{
       key: "update_email",
       label: "Email change",
       description: "Sent to the new address when a user changes the email on their account.",
@@ -120,7 +121,7 @@ defmodule You.EmailTemplates do
       ==============================
       """
     },
-    %{
+    %Definition{
       key: "invitation",
       label: "Invitation",
       description: "Sent when an admin invites someone to an app.",
@@ -145,7 +146,7 @@ defmodule You.EmailTemplates do
       ==============================
       """
     },
-    %{
+    %Definition{
       key: "email_2fa",
       label: "Two-factor code",
       description: "The one-time code sent as a second factor after a password login.",
