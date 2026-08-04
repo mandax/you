@@ -177,6 +177,46 @@ defmodule YouWeb.OIDCControllerTest do
       assert id_claims["name"] == user.email
     end
 
+    # The id_token used to be built without the app, so its `role` was the
+    # account's global admin flag rather than the role that app grants —
+    # backwards for a You admin who is an ordinary user of the app asking.
+    test "id_token carries the per-app role, not the global admin flag", %{
+      conn: conn,
+      user: user,
+      app: app,
+      secret: secret
+    } do
+      You.Admin.promote_admin!(user)
+      {:ok, code} = Accounts.generate_auth_code(user, ["roles"], nil, app.slug)
+
+      conn =
+        post(conn, ~p"/oauth/token", code: code, client_id: app.slug, client_secret: secret)
+
+      assert %{"id_token" => id_token, "access_token" => access_token} = json_response(conn, 200)
+      assert {:ok, id_claims} = JWT.verify(id_token)
+      assert {:ok, access_claims} = JWT.verify(access_token)
+
+      assert id_claims["role"] == "user"
+      assert id_claims["role"] == access_claims["role"]
+    end
+
+    test "id_token carries the app's custom claims, as the access token does", %{
+      conn: conn,
+      user: user,
+      app: app,
+      secret: secret
+    } do
+      {:ok, _app} = You.Admin.update_app(app, %{"custom_claims" => %{"tenant_id" => "acme"}})
+      {:ok, code} = Accounts.generate_auth_code(user, ["email"], nil, app.slug)
+
+      conn =
+        post(conn, ~p"/oauth/token", code: code, client_id: app.slug, client_secret: secret)
+
+      assert %{"id_token" => id_token} = json_response(conn, 200)
+      assert {:ok, id_claims} = JWT.verify(id_token)
+      assert id_claims["tenant_id"] == "acme"
+    end
+
     test "returns invalid_client for a wrong client_secret", %{
       conn: conn,
       app: app,

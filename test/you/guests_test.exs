@@ -157,6 +157,36 @@ defmodule You.GuestsTest do
     end
   end
 
+  # The reason not to invalidate sessions on upgrade: signing someone out of
+  # the flow they were mid-way through is the data loss this feature exists to
+  # prevent. Asserted positively, not left to the absence of a revoke call.
+  describe "upgrading does not sign the person out" do
+    test "the session token issued to the guest still resolves afterwards" do
+      {:ok, guest} = Guests.create()
+      token = Accounts.generate_user_session_token(guest)
+
+      {:ok, upgraded} =
+        Guests.upgrade(guest, %{email: "person@example.com", password: valid_user_password()})
+
+      assert {%{id: id}, _inserted_at} = Accounts.get_user_by_session_token(token)
+      assert id == upgraded.id
+    end
+
+    test "and so does the refresh token the app is holding" do
+      {:ok, guest} = Guests.create()
+      refresh = Accounts.create_refresh_token(guest, ["email"], nil)
+
+      {:ok, upgraded} =
+        Guests.upgrade(guest, %{email: "person@example.com", password: valid_user_password()})
+
+      assert {:ok, user, _scopes, _new_token, _app_slug} =
+               Accounts.rotate_refresh_token(refresh)
+
+      assert user.id == upgraded.id
+      refute user.is_guest
+    end
+  end
+
   describe "a guest is not a mailbox" do
     test "its placeholder address resolves to nobody" do
       {:ok, guest} = Guests.create()
