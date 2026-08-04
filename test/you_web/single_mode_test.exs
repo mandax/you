@@ -178,6 +178,41 @@ defmodule YouWeb.SingleModeTest do
       refute html =~ "all apps"
     end
 
+    test "drops the per-app filter from the audit view", %{conn: conn} do
+      {:ok, _lv, html} = live(conn, ~p"/console?view=audit")
+
+      refute html =~ "all apps"
+    end
+
+    test "the access cell names the role without the app it is on", %{conn: conn, app: app} do
+      user = You.AccountsFixtures.user_fixture()
+      {:ok, _} = You.Roles.set_role(app, user, "admin")
+
+      {:ok, _lv, html} = live(conn, ~p"/console?view=users")
+
+      assert html =~ "admin"
+      refute html =~ "admin·Solo"
+      refute html =~ "+1 app"
+    end
+
+    test "the edit sheet labels the one role row rather than repeating the app", %{
+      conn: conn,
+      app: app
+    } do
+      user = You.AccountsFixtures.user_fixture()
+      {:ok, lv, _html} = live(conn, ~p"/console?view=users")
+
+      html =
+        lv
+        |> element("button[phx-click='edit_user'][phx-value-id='#{user.id}']")
+        |> render_click()
+
+      assert html =~ "Roles on You and on this application."
+      assert html =~ "Application"
+      refute html =~ "Roles on You and on each app."
+      assert html =~ ~s(id="edit-app-role-#{app.id}")
+    end
+
     test "the nav follows the registered app when the configured slug drifted", %{conn: conn} do
       Application.put_env(:you, :single_app, slug: "does-not-exist", callback_url: @callback_url)
 

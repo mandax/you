@@ -841,6 +841,7 @@ defmodule YouWeb.ConsoleLive do
             apps={@apps}
             audit_filter={@audit_filter}
             audit_app_filter={@audit_app_filter}
+            single_mode={@single_mode}
           />
         <% "webhooks" -> %>
           <.webhooks_view
@@ -1026,7 +1027,7 @@ defmodule YouWeb.ConsoleLive do
             {if row.user.is_admin, do: "admin", else: "user"}
           </td>
           <td phx-click="edit_user" phx-value-id={row.user.id} class="cursor-pointer px-3 py-2">
-            <.access_summary access={access_summary(@assignments, @apps, row.user.id)} />
+            <.access_summary access={access_summary(@assignments, @apps, row.user.id, @single_mode)} />
           </td>
           <td class="px-3 py-2 text-right">
             <div class="flex items-center justify-end gap-1">
@@ -1066,7 +1067,9 @@ defmodule YouWeb.ConsoleLive do
       <.sheet id="edit-user" open={@editing_user != nil} on_close="cancel_edit_user">
         <:title>{@editing_user && @editing_user.email}</:title>
         <:description>
-          Roles on You and on each app. Changes apply immediately.
+          {if @single_mode,
+            do: "Roles on You and on this application.",
+            else: "Roles on You and on each app."} Changes apply immediately.
         </:description>
         <div :if={@editing_user} class="space-y-5">
           <section class="space-y-2">
@@ -1086,15 +1089,19 @@ defmodule YouWeb.ConsoleLive do
             </div>
           </section>
 
+          <%!-- Single mode has one app, so naming it on every row repeats what
+                the heading already said; the row is labelled by what it sets. --%>
           <section class="space-y-2">
             <h3 class="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-              Apps
+              {if @single_mode, do: "Application", else: "Apps"}
             </h3>
             <div
               :for={app <- @apps}
               class="flex items-center justify-between gap-4 border-b border-border/50 py-1.5 last:border-0"
             >
-              <span class="min-w-0 truncate text-sm">{app.name}</span>
+              <span class="min-w-0 truncate text-sm">
+                {if @single_mode, do: "Role", else: app.name}
+              </span>
               <.select
                 id={"edit-app-role-#{app.id}"}
                 align="end"
@@ -1147,6 +1154,9 @@ defmodule YouWeb.ConsoleLive do
   # without bound and nearly every cell reads "user". What an admin scans for
   # is the exception, so elevated roles are shown by name and the rest collapses
   # into a count.
+  #
+  # In single mode there is one app, so the app name is the same word on every
+  # row and the count can only ever be zero: the cell is just the role.
   attr :access, :map, required: true
 
   defp access_summary(assigns) do
@@ -1159,9 +1169,9 @@ defmodule YouWeb.ConsoleLive do
         <span
           :for={{role, app} <- @access.elevated}
           class="truncate rounded bg-primary/10 px-1.5 py-0.5 font-mono text-[11px] text-primary"
-          title={"#{role} on #{app}"}
+          title={if app, do: "#{role} on #{app}", else: role}
         >
-          {role}·{app}
+          {if app, do: "#{role}·#{app}", else: role}
         </span>
       </div>
       <span :if={@access.rest > 0} class="shrink-0 font-mono text-[11px] text-muted-foreground">
@@ -1173,7 +1183,7 @@ defmodule YouWeb.ConsoleLive do
 
   @elevated_shown 2
 
-  defp access_summary(assignments, apps, user_id) do
+  defp access_summary(assignments, apps, user_id, single_mode) do
     roles = Map.get(assignments, user_id, %{})
     names = Map.new(apps, &{&1.id, &1.name})
 
@@ -1181,7 +1191,7 @@ defmodule YouWeb.ConsoleLive do
       for {app_id, role} <- roles,
           role != "user",
           Map.has_key?(names, app_id),
-          do: {role, names[app_id]}
+          do: {role, if(single_mode, do: nil, else: names[app_id])}
 
     shown = Enum.take(Enum.sort(elevated), @elevated_shown)
 
@@ -1602,6 +1612,7 @@ defmodule YouWeb.ConsoleLive do
   attr :apps, :list, required: true
   attr :audit_filter, :string, required: true
   attr :audit_app_filter, :string, required: true
+  attr :single_mode, :boolean, default: false
 
   defp audit_view(assigns) do
     assigns =
@@ -1623,6 +1634,7 @@ defmodule YouWeb.ConsoleLive do
         </p>
         <div class="flex shrink-0 items-center gap-2">
           <.select
+            :if={!@single_mode}
             id="filter-audit-app"
             value={@audit_app_filter}
             placeholder="all apps"
