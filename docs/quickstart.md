@@ -12,6 +12,11 @@ Nothing here is a one-way door. Single-app mode is a runtime flag over the same
 schema: dropping `YOU_MODE` and restarting gives you the full multi-app console
 with your users, roles and consents intact.
 
+> **Upgrading an existing install rather than starting one?** Read
+> [CHANGELOG.md](../CHANGELOG.md) first. Some releases change authentication
+> behaviour or need operator action, and `docker compose pull` crosses every
+> version between yours and the newest in one step.
+
 ## 1. Configure
 
 ```sh

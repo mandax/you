@@ -58,6 +58,11 @@ docker run -d \
 | `RELEASE_NODE` | No | `you@you.example.com` | Erlang node name (for Erlang distribution) |
 | `RELEASE_COOKIE` | No | random per boot | Erlang cookie. When unset a random per-boot value is used (fail closed); the `erlang_cookie` setting in the database overrides it at boot |
 | `DNS_CLUSTER_QUERY` | No | (none) | DNS cluster query for distributed Erlang |
+| `API_TOKEN` | No | (none) | Seeds the `api_token` setting on first boot. Unset or blank leaves the management API disabled (`403`). The console owns it afterwards |
+| `ANALYTICS_SRC` | No | (none) | Seeds `analytics_src`. Plausible-compatible script URL; both this and the domain must be set or nothing is emitted |
+| `ANALYTICS_DOMAIN` | No | (none) | Seeds `analytics_domain` |
+| `YOU_BUNDLE_PASSWORD_FILE` | No | (none) | Read by `mix you.bundle` / `You.Release.*_bundle`. Path to a file holding the bundle password — the right answer for CI, where a mounted secret beats a string in a job definition |
+| `YOU_BUNDLE_PASSWORD` | No | (none) | Same, as a value. Checked after the file. There is deliberately no `--password` flag |
 
 ### Volumes
 

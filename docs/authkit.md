@@ -45,10 +45,16 @@ GET /users/log-in
 The user lands on You's login page (branded with your app's name, which You
 resolves from the callback URL). They authenticate with any supported method:
 
-- **Password** (with optional TOTP second factor),
+- **Password**,
 - **Magic link** (sent to their email),
 - **Passkey** (WebAuthn),
-- **Social login**: "Sign in with Google / GitHub / …" (see section 4).
+- **Social login**: "Sign in with Google / GitHub / …" (see section 6).
+
+If the account has a second factor enrolled — TOTP or an emailed code — it is
+met before any authorization code is issued, whichever of these the user
+picked. A second factor belongs to the account, not to the method that proved
+the first one. Passkeys are the exception: a passkey is already a possession
+factor with user verification, so it stands alone.
 
 After authenticating, the user sees a consent screen listing the scopes your app
 requested. They approve it, and You redirects back to your `callback_url`:
@@ -268,7 +274,47 @@ after 30 days.
 
 ---
 
-## 3. Making an app first-party
+## 3. Invitations (admin-driven onboarding)
+
+Registration is self-service and SCIM is a push from an upstream directory.
+Neither lets an operator onboard one named person, which is what invitations
+are for.
+
+An admin invites from an app's **Members** tab in the console: an email
+address and a role from the app's `allowed_roles`. You emails a single-use
+link, valid 7 days, and the pending invitation is listed there until it is
+accepted or withdrawn.
+
+**What acceptance does.** Opening the link proves control of the mailbox —
+the same proof the magic-link login rests on — so accepting confirms the
+account, creating a passwordless one if that email has none, and signs the
+user in. What the invitation adds on top is the role.
+
+**Your app does not need to do anything special**, with one caveat worth
+knowing: an invitation is a *first factor*, not a login. An invitee whose
+account already has TOTP or email 2FA enrolled meets it before any
+authorization code is issued, exactly as they would arriving by password or
+magic link. If the invitation
+began from your app's login flow, the code comes back to your callback as
+usual; otherwise the invitee lands in You's own account area.
+
+Accepting is a `POST`. The `GET /invitations/:token` only renders what is
+being accepted, so a mail client prefetching the link cannot spend a
+single-use invitation before the person has seen it.
+
+**Audit.** Issuing, withdrawing and accepting each emit
+`[:you, :audit, :admin, :action]` (`invite_user`, `revoke_invitation`,
+`accept_invitation`) carrying the inviter, the app, the target email and the
+role — so a webhook subscriber or the audit log can reconstruct who granted
+what to whom. The `set_role` event that acceptance also fires does not say an
+invitation was behind it, which is why the three are recorded separately.
+
+Invitations are not affected by `feature_guest_login` and have no feature
+switch of their own; the console gates them behind admin access.
+
+---
+
+## 4. Making an app first-party
 
 An app must be flagged first-party before it can use the headless flow. In the
 admin console at `/console?view=apps`:
@@ -284,7 +330,7 @@ app (first-party unchecked) calling `POST /api/auth/login` gets a `403`.
 
 ---
 
-## 4. The account hub
+## 5. The account hub
 
 Signed-in users land at `/users/dashboard`. This page shows a grid of app cards,
 one for every app the user has previously granted consent to (via the redirect
@@ -301,7 +347,7 @@ flow). Each card:
 
 ---
 
-## 5. Social login
+## 6. Social login
 
 "Sign in with Google" (or any configured upstream OIDC provider) works in both
 flows:

@@ -277,9 +277,11 @@ not a durable log. For retention, configure the audit webhook.
 
 ## Configuration bundles
 
-A bundle is this instance's settings, apps, identity providers and webhook
-endpoints, sealed under a password you choose. Configuration, not data: no
-users, tokens, sessions or consents. Instance identity — `erlang_cookie`,
+A bundle is this instance's settings, apps, identity providers, webhook
+endpoints and email templates, sealed under a password you choose.
+Configuration, not data: no users, tokens, sessions or consents. Note that
+email templates carry operator-authored copy — check what yours say before
+handing an export to anyone outside your organisation. Instance identity — `erlang_cookie`,
 `api_token`, `scim_bearer_token` — is refused in both directions, so a
 restore never clones another instance's credentials.
 
