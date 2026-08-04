@@ -33,4 +33,45 @@ defmodule You.Audit.HandlerTest do
     assert event["result"] == "success"
     assert event["event"] == "login:attempt"
   end
+
+  test "persists user lifecycle events the streamer also listens for", %{tmp_dir: tmp_dir} do
+    user_id = System.unique_integer([:positive])
+
+    :telemetry.execute([:you, :audit, :user, :registered], %{}, %{user_id: user_id})
+
+    :timer.sleep(50)
+
+    events =
+      Path.join(tmp_dir, "user.jsonl")
+      |> File.read!()
+      |> String.trim()
+      |> String.split("\n")
+      |> Enum.map(&Jason.decode!/1)
+
+    event = Enum.find(events, &(&1["user_id"] == user_id))
+    assert event
+    assert event["event"] == "user.registered"
+  end
+
+  test "writes every event the webhook surface advertises", %{tmp_dir: tmp_dir} do
+    for event_name <- You.Webhooks.telemetry_events() do
+      :telemetry.execute(event_name, %{}, %{probe: You.Webhooks.event_type(event_name)})
+    end
+
+    :timer.sleep(50)
+
+    written =
+      tmp_dir
+      |> File.ls!()
+      |> Enum.flat_map(fn file ->
+        tmp_dir |> Path.join(file) |> File.read!() |> String.trim() |> String.split("\n")
+      end)
+      |> Enum.map(&Jason.decode!/1)
+      |> Enum.map(& &1["probe"])
+      |> MapSet.new()
+
+    for event_name <- You.Webhooks.telemetry_events() do
+      assert You.Webhooks.event_type(event_name) in written
+    end
+  end
 end

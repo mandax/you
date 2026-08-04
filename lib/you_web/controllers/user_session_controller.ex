@@ -321,31 +321,15 @@ defmodule YouWeb.UserSessionController do
       user = Accounts.get_user!(user_id)
 
       if Accounts.verify_totp(user, code) do
-        callback_url = safe_callback_url(conn)
+        audit_totp(user, :success)
 
-        if callback_url do
-          record_consent_for_app(conn, user)
-          scopes = get_session(conn, :scopes) || ["email"]
-          state = get_session(conn, :state)
-
-          {:ok, auth_code} =
-            Accounts.generate_auth_code(
-              user,
-              scopes,
-              get_session(conn, :code_challenge),
-              YouWeb.OAuthFlow.app_slug_for_callback(conn)
-            )
-
-          conn
-          |> UserAuth.create_user_session(user, %{})
-          |> put_session(:totp_user_id, nil)
-          |> redirect_with_code(callback_url, auth_code, state)
-        else
-          conn
-          |> put_flash(:info, "Welcome back!")
-          |> UserAuth.log_in_user(user, %{})
-        end
+        conn
+        |> put_session(:totp_user_id, nil)
+        |> put_flash(:info, "Welcome back!")
+        |> YouWeb.OAuthFlow.complete_login(user)
       else
+        audit_totp(user, :failure)
+
         render(
           conn,
           :totp,
@@ -398,30 +382,10 @@ defmodule YouWeb.UserSessionController do
             result: :success
           })
 
-          callback_url = safe_callback_url(conn)
-
-          if callback_url do
-            record_consent_for_app(conn, user)
-            scopes = get_session(conn, :scopes) || ["email"]
-            state = get_session(conn, :state)
-
-            {:ok, auth_code} =
-              Accounts.generate_auth_code(
-                user,
-                scopes,
-                get_session(conn, :code_challenge),
-                YouWeb.OAuthFlow.app_slug_for_callback(conn)
-              )
-
-            conn
-            |> UserAuth.create_user_session(user, %{})
-            |> put_session(:totp_user_id, nil)
-            |> redirect_with_code(callback_url, auth_code, state)
-          else
-            conn
-            |> put_flash(:info, "Welcome back!")
-            |> UserAuth.log_in_user(user, %{})
-          end
+          conn
+          |> put_session(:totp_user_id, nil)
+          |> put_flash(:info, "Welcome back!")
+          |> YouWeb.OAuthFlow.complete_login(user)
 
         {:error, :invalid_code} ->
           :telemetry.execute([:you, :audit, :login, :attempt], %{}, %{
@@ -520,6 +484,17 @@ defmodule YouWeb.UserSessionController do
         |> put_flash(:info, "A new code has been sent to your email.")
         |> redirect(to: ~p"/users/log-in/email-2fa")
     end
+  end
+
+  # The second factor gets its own audit event so a login and the TOTP step
+  # that gated it stay distinguishable in the log.
+  defp audit_totp(user, result) do
+    :telemetry.execute([:you, :audit, :login, :totp], %{}, %{
+      user_id: user.id,
+      email: user.email,
+      method: "totp",
+      result: result
+    })
   end
 
   # OAuth-completion helpers shared with the federated/social login path.
