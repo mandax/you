@@ -258,7 +258,7 @@ defmodule You.IAM.Server do
 
         %App{client_secret_hash: hash, slug: slug} ->
           if :crypto.hash_equals(hash, :crypto.hash(:sha256, client_secret)) do
-            jwt_expiry = You.Settings.get(:jwt_expiry_hours) * 3600
+            jwt_expiry = You.Admin.jwt_expiry_seconds(slug)
 
             {:ok, jwt} =
               JWT.sign(%{sub: slug, app: "you", type: "service"}, jwt_expiry)
@@ -435,7 +435,7 @@ defmodule You.IAM.Server do
 
   # Signs a scoped JWT and returns the token bundle handed back to consumers.
   defp token_bundle(user, scopes, refresh_token, app_slug) do
-    jwt_expiry = You.Settings.get(:jwt_expiry_hours) * 3600
+    jwt_expiry = You.Admin.jwt_expiry_seconds(app_slug)
     {:ok, jwt} = JWT.sign(Claims.build_scoped_claims(user, scopes, app_slug), jwt_expiry)
     %{user_id: user.id, email: user.email, jwt: jwt, refresh_token: refresh_token}
   end

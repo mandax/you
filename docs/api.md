@@ -135,6 +135,8 @@ curl -H "Authorization: Bearer $API_TOKEN" https://you.example.com/api/v1/apps
       "callback_url": "https://app.example.com/cb",
       "launch_url": null,
       "first_party": false,
+      "jwt_expiry_hours": null,
+      "code_expiry_minutes": null,
       "inserted_at": "2026-07-25T10:00:00",
       "updated_at": "2026-07-25T10:00:00"
     }
@@ -167,7 +169,8 @@ curl -X POST -H "Authorization: Bearer $API_TOKEN" \
 ```
 
 This is the only time the secret is shown, so store it now. Required fields:
-`slug`, `name`, `callback_url`. Optional: `launch_url`, `first_party`.
+`slug`, `name`, `callback_url`. Optional: `launch_url`, `first_party`,
+`jwt_expiry_hours`, `code_expiry_minutes`.
 
 ### Update an app
 
@@ -178,8 +181,20 @@ curl -X PATCH -H "Authorization: Bearer $API_TOKEN" \
   https://you.example.com/api/v1/apps/1
 ```
 
-Updatable fields: `name`, `callback_url`, `launch_url`, `first_party`.
-`200` with the updated app under `data`.
+Updatable fields: `name`, `callback_url`, `launch_url`, `first_party`,
+`jwt_expiry_hours`, `code_expiry_minutes`. `200` with the updated app under
+`data`.
+
+`jwt_expiry_hours` and `code_expiry_minutes` are per-app overrides: `null`
+means the app follows the instance setting, which is the default and what
+every app does until it is given its own. A token lifetime is an app's
+decision — an internal admin tool and a public mobile client should not share
+one expiry. Bounded at 720 hours and 60 minutes respectively; a lifetime is a
+security control, and a fat-fingered `8760` is a token that outlives the
+employment it was issued during.
+
+Session expiry stays instance-wide. That is the You portal cookie, one per
+browser across every app, so it has no app to belong to.
 
 ### Delete an app
 

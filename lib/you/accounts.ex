@@ -468,19 +468,32 @@ defmodule You.Accounts do
   `{:error, :not_found}`.
   """
   def consume_auth_code(code, code_verifier \\ nil, opts \\ []) when is_binary(code) do
-    expiry = You.Settings.get(:code_expiry_minutes)
     authenticated? = Keyword.get(opts, :client_authenticated, false)
 
-    with {:ok, query} <- UserToken.verify_auth_code_query(code, expiry),
+    # The query is bounded by the longest expiry any app can pin, which is only
+    # an upper bound — the code is then checked against its own app's expiry,
+    # which is not knowable until its metadata has been read. Deletion happens
+    # either way: a code that turns out to be expired is spent, not left for a
+    # second attempt.
+    with {:ok, query} <-
+           UserToken.verify_auth_code_query(code, You.Admin.max_code_expiry_minutes()),
          {user, token} <- Repo.one(query),
          meta = parse_meta(token.meta),
          _ = Repo.delete!(token),
+         :ok <- code_fresh?(token, meta["app"]),
          :ok <- code_proof(meta["code_challenge"], code_verifier, authenticated?) do
       {:ok, user, meta["scopes"] || ["email"], meta["app"]}
     else
       {:error, reason} -> {:error, reason}
       _ -> {:error, :not_found}
     end
+  end
+
+  defp code_fresh?(token, app_slug) do
+    cutoff =
+      DateTime.add(DateTime.utc_now(), -You.Admin.code_expiry_minutes(app_slug) * 60, :second)
+
+    if DateTime.compare(token.inserted_at, cutoff) == :gt, do: :ok, else: {:error, :not_found}
   end
 
   defp parse_meta(nil), do: %{}
@@ -819,7 +832,7 @@ defmodule You.Accounts do
   Retention is `jwt_expiry_hours + 1 hour` grace period.
   """
   def cleanup_revoked_jtis do
-    retention_hours = You.Settings.get(:jwt_expiry_hours) + 1
+    retention_hours = You.Admin.max_jwt_expiry_hours() + 1
     threshold = DateTime.add(DateTime.utc_now(), -retention_hours * 3600, :second)
 
     Repo.delete_all(from r in RevokedJti, where: r.inserted_at < ^threshold)
@@ -833,7 +846,7 @@ defmodule You.Accounts do
   """
   def record_consent(%User{} = user, %You.Admin.App{} = app, scopes) when is_list(scopes) do
     now = DateTime.utc_now()
-    expires_at = DateTime.add(now, You.Settings.get(:jwt_expiry_hours) * 3600, :second)
+    expires_at = DateTime.add(now, You.Admin.jwt_expiry_seconds(app), :second)
 
     result =
       %Consent{}

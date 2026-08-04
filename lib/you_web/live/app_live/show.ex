@@ -53,6 +53,17 @@ defmodule YouWeb.AppLive.Show do
     |> reload(socket, "App updated.")
   end
 
+  def handle_event("update_lifetimes", params, socket) do
+    attrs =
+      params
+      |> Map.take(["jwt_expiry_hours", "code_expiry_minutes"])
+      |> Map.new(fn {key, value} -> {key, blank_to_nil(value)} end)
+
+    socket.assigns.app
+    |> Admin.update_app(attrs)
+    |> reload(socket, "Token lifetimes updated.")
+  end
+
   # ── login branding ────────────────────────────────────────────
   def handle_event("preview_branding", params, socket) do
     {:noreply,
@@ -401,8 +412,52 @@ defmodule YouWeb.AppLive.Show do
         </div>
       </form>
     </.panel>
+
+    <.panel
+      title="Token lifetimes"
+      description="How long this app's credentials stay valid. Leave blank to follow the instance settings."
+    >
+      <form id="app-lifetimes-form" phx-submit="update_lifetimes" class="max-w-xl space-y-4">
+        <.input
+          type="number"
+          name="jwt_expiry_hours"
+          label="JWT expiry (hours)"
+          min="1"
+          max={You.Admin.App.max_jwt_expiry_hours()}
+          placeholder={"instance default: #{You.Settings.get(:jwt_expiry_hours)}"}
+          value={@app.jwt_expiry_hours}
+        />
+        <.input
+          type="number"
+          name="code_expiry_minutes"
+          label="Auth code expiry (minutes)"
+          min="1"
+          max={You.Admin.App.max_code_expiry_minutes()}
+          placeholder={"instance default: #{You.Settings.get(:code_expiry_minutes)}"}
+          value={@app.code_expiry_minutes}
+        />
+        <p class="text-xs text-muted-foreground">
+          A session on You itself is one cookie across every app, so its expiry stays an
+          instance setting.
+        </p>
+        <div class="flex justify-end">
+          <.button type="submit">Save</.button>
+        </div>
+      </form>
+    </.panel>
     """
   end
+
+  # An empty field means "follow the instance", which on the column is NULL —
+  # not the zero an empty string would otherwise try to cast to.
+  defp blank_to_nil(value) when is_binary(value) do
+    case String.trim(value) do
+      "" -> nil
+      trimmed -> trimmed
+    end
+  end
+
+  defp blank_to_nil(value), do: value
 
   attr :app, :map, required: true
   attr :draft, :map, required: true

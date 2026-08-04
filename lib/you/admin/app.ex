@@ -9,6 +9,10 @@ defmodule You.Admin.App do
     field :name, :string
     field :callback_url, :string
     field :launch_url, :string
+    # nil means "follow the instance setting", so an app keeps tracking the
+    # instance default until someone deliberately gives it its own.
+    field :jwt_expiry_hours, :integer
+    field :code_expiry_minutes, :integer
     field :logo_url, :string
     field :brand_color, :string
     field :headline, :string
@@ -33,6 +37,39 @@ defmodule You.Admin.App do
 
   @auth_methods ~w(password magic_link passkey social)
   @theme_modes ~w(system light dark)
+
+  @max_jwt_expiry_hours 720
+  @max_code_expiry_minutes 60
+
+  @doc "The longest lifetime an app may pin for its JWTs, in hours."
+  def max_jwt_expiry_hours, do: @max_jwt_expiry_hours
+
+  @doc "The longest lifetime an app may pin for its authorization codes."
+  def max_code_expiry_minutes, do: @max_code_expiry_minutes
+
+  @doc """
+  How long this app's JWTs live, in hours.
+
+  A token lifetime is an app's decision, not an instance's: an internal admin
+  tool and a public mobile client should not share one expiry. `nil` on the
+  column follows the instance setting, so an app that never sets one keeps
+  tracking the default.
+  """
+  def resolved_jwt_expiry_hours(%__MODULE__{jwt_expiry_hours: hours}) when is_integer(hours),
+    do: hours
+
+  def resolved_jwt_expiry_hours(_app), do: You.Settings.get(:jwt_expiry_hours)
+
+  @doc """
+  How long this app's authorization codes live, in minutes.
+
+  Same convention as `resolved_jwt_expiry_hours/1`.
+  """
+  def resolved_code_expiry_minutes(%__MODULE__{code_expiry_minutes: minutes})
+      when is_integer(minutes),
+      do: minutes
+
+  def resolved_code_expiry_minutes(_app), do: You.Settings.get(:code_expiry_minutes)
 
   @doc "How an app's login page picks a theme. `system` follows the visitor."
   def theme_modes, do: @theme_modes
@@ -138,7 +175,9 @@ defmodule You.Admin.App do
       :enabled_methods,
       :allowed_roles,
       :default_role,
-      :first_party
+      :first_party,
+      :jwt_expiry_hours,
+      :code_expiry_minutes
     ])
     |> validate_required([:slug, :name, :callback_url])
     # An app with no allowed roles can never have a role assigned, so every
@@ -163,6 +202,18 @@ defmodule You.Admin.App do
       message: "must offer at least one sign-in method"
     )
     |> validate_subset(:enabled_methods, @auth_methods)
+    # Upper bounds, not just positivity: a lifetime is a security control, and
+    # the failure mode of a fat-fingered 8760 is a token that outlives the
+    # employment it was issued during. A year of JWT is not a configuration
+    # choice anyone makes on purpose.
+    |> validate_number(:jwt_expiry_hours,
+      greater_than: 0,
+      less_than_or_equal_to: @max_jwt_expiry_hours
+    )
+    |> validate_number(:code_expiry_minutes,
+      greater_than: 0,
+      less_than_or_equal_to: @max_code_expiry_minutes
+    )
     |> unique_constraint(:slug)
     |> unique_constraint(:callback_url,
       message: "is already registered to another app"

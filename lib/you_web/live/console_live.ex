@@ -2002,6 +2002,10 @@ defmodule YouWeb.ConsoleLive do
 
       <form phx-submit="save_settings" class="space-y-4">
         <.settings_group title="Session & tokens">
+          <p class="text-xs text-muted-foreground">
+            Defaults for every app. An app can pin its own JWT and auth-code lifetimes on its
+            page; session expiry is the You cookie itself, so it stays instance-wide.
+          </p>
           <.setting_field
             name="session_expiry_hours"
             label="Session expiry (hours)"

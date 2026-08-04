@@ -33,7 +33,7 @@ defmodule You.OIDC do
         app_slug \\ nil
       ) do
     app_slug = app_slug || client_id
-    jwt_expiry = You.Settings.get(:jwt_expiry_hours) * 3600
+    jwt_expiry = You.Admin.jwt_expiry_seconds(app_slug)
     {:ok, access_token} = JWT.sign(Claims.build_scoped_claims(user, scopes, app_slug), jwt_expiry)
     {:ok, id_token} = id_token(user, scopes, app_slug)
     refresh_token = refresh_token || Accounts.create_refresh_token(user, scopes)
