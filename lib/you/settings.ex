@@ -193,12 +193,24 @@ defmodule You.Settings do
   end
 
   @doc """
-  Drops the cached value for `key` on this node, so the next `get/1` reloads
-  it from the database.
+  Refreshes this node's cached value for `key`, then tells the rest of the
+  cluster to do the same.
 
-  Called by `set/2` on the node that made the edit.
+  The local refresh is synchronous because the request that made the edit has
+  to read its own write; every other node hears about it through `You.Cache`.
   """
   def invalidate(key) when is_atom(key) do
+    refresh(key)
+    You.Cache.broadcast({:setting, key})
+    :ok
+  end
+
+  @doc """
+  Refreshes this node's cached value for `key` from the database, without
+  telling anyone else. `You.Cache` calls this on the receiving end of an
+  invalidation broadcast.
+  """
+  def refresh(key) when is_atom(key) do
     if cache?(), do: :persistent_term.put({__MODULE__, key}, load(key))
     :ok
   end

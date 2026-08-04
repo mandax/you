@@ -74,13 +74,24 @@ defmodule You.Mode do
   end
 
   @doc """
-  Invalidates the cached single app, forcing the next `app/0` to hit the
-  database. Called by every writer of the `apps` table's single row:
-  `You.Admin.create_app/1`, `update_app/2`, `rotate_app_secret/1`, and
-  `delete_app/1`. A stale cache here shows a console name or logo that no
-  longer exists, which matters more than the read it saves.
+  Invalidates the cached single app across the cluster, forcing the next
+  `app/0` on each node to hit the database. Called by every writer of the
+  `apps` table's single row: `You.Admin.create_app/1`, `update_app/2`,
+  `rotate_app_secret/1`, and `delete_app/1`. A stale cache here shows a
+  console name or logo that no longer exists, which matters more than the read
+  it saves.
   """
   def invalidate_app_cache do
+    drop_app_cache()
+    You.Cache.broadcast(:single_app)
+    :ok
+  end
+
+  @doc """
+  Drops this node's cached single app without telling anyone else.
+  `You.Cache` calls this on the receiving end of an invalidation broadcast.
+  """
+  def drop_app_cache do
     :persistent_term.erase({__MODULE__, :app})
     :ok
   end

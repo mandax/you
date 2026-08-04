@@ -10,6 +10,10 @@ defmodule You.Application do
     children = [
       YouWeb.Telemetry,
       You.Repo,
+      # Before anything that writes a cached setting: an invalidation
+      # broadcast with no PubSub behind it reaches no other node.
+      {Phoenix.PubSub, name: You.PubSub},
+      You.Cache,
       # Seeds console-editable settings from the environment, then provisions
       # the single app. Both are no-ops after their first successful boot, and
       # both need You.Repo. They come before the endpoint because `you_mode`
@@ -19,7 +23,6 @@ defmodule You.Application do
       You.Mode.Provisioner,
       You.IdentityProviders.Seeder,
       {DNSCluster, query: Application.get_env(:you, :dns_cluster_query) || :ignore},
-      {Phoenix.PubSub, name: You.PubSub},
       You.Accounts.CookieSync,
       You.IAM.Server,
       You.Accounts.JtiCleanup,
