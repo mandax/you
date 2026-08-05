@@ -84,11 +84,6 @@ defmodule YouWeb.Components.ConsoleChrome do
 
   `active` marks the highlighted nav entry, which is a nav id on the console
   itself and stays `"apps"` while a per-app page is open.
-
-  Section entries patch — every section is `YouWeb.ConsoleLive`, so switching
-  between them needs no remount. An entry carrying `:href` (the single-app
-  link, which points at `YouWeb.AppLive.Show`) still navigates: patch only
-  works within one LiveView module.
   """
   attr :nav, :list, required: true
   attr :active, :string, required: true
@@ -105,25 +100,7 @@ defmodule YouWeb.Components.ConsoleChrome do
         </div>
 
         <nav class="flex-1 space-y-px px-2 pt-3">
-          <.link
-            :for={n <- @nav}
-            navigate={n[:href]}
-            patch={if(n[:href], do: nil, else: nav_href(n.id))}
-            aria-current={@active == n.id && "page"}
-            class={[
-              "group flex h-8 w-full items-center gap-2.5 rounded-md px-3 text-sm transition-colors",
-              if(@active == n.id,
-                do: "bg-sidebar-accent font-medium text-sidebar-accent-foreground",
-                else: "text-sidebar-foreground hover:bg-sidebar-muted hover:text-foreground"
-              )
-            ]}
-          >
-            <span class={[
-              n.icon,
-              "size-4 block shrink-0 transition-opacity",
-              if(@active == n.id, do: "opacity-100", else: "opacity-60 group-hover:opacity-100")
-            ]} /> {n.label}
-          </.link>
+          <.nav_link :for={n <- @nav} entry={n} active={@active} />
         </nav>
 
         <div class="space-y-px border-t border-sidebar-border px-2 py-2">
@@ -165,10 +142,40 @@ defmodule YouWeb.Components.ConsoleChrome do
     """
   end
 
-  # `/console` itself is overview's canonical address (see the route table in
-  # `YouWeb.Router`), not `/console/overview` — every other section is a path
-  # segment under it.
-  defp nav_href("overview"), do: ~p"/console"
+  # One sidebar nav entry. A section entry (the ordinary case) patches to
+  # `/console/<id>` — every section is `YouWeb.ConsoleLive`, so switching
+  # between them needs no remount. An entry carrying `:href` (the single-app
+  # link, which points at `YouWeb.AppLive.Show`, a different module)
+  # navigates instead: patch only works within one LiveView module.
+  attr :entry, :map, required: true
+  attr :active, :string, required: true
+
+  defp nav_link(assigns) do
+    ~H"""
+    <.link
+      navigate={@entry[:href]}
+      patch={nav_patch(@entry)}
+      aria-current={@active == @entry.id && "page"}
+      class={[
+        "group flex h-8 w-full items-center gap-2.5 rounded-md px-3 text-sm transition-colors",
+        if(@active == @entry.id,
+          do: "bg-sidebar-accent font-medium text-sidebar-accent-foreground",
+          else: "text-sidebar-foreground hover:bg-sidebar-muted hover:text-foreground"
+        )
+      ]}
+    >
+      <span class={[
+        @entry.icon,
+        "size-4 block shrink-0 transition-opacity",
+        if(@active == @entry.id, do: "opacity-100", else: "opacity-60 group-hover:opacity-100")
+      ]} /> {@entry.label}
+    </.link>
+    """
+  end
+
+  defp nav_patch(%{href: _href}), do: nil
+  defp nav_patch(entry), do: nav_href(entry.id)
+
   defp nav_href(id), do: ~p"/console/#{id}"
 
   @doc """

@@ -5,8 +5,10 @@ defmodule YouWeb.NotFoundError do
   `Ecto.NoResultsError` (a lookup that missed a real row): nothing was
   queried, so nothing is missing, an address just was never valid.
 
-  Implements `Plug.Exception` with `plug_status: 404` so it renders through
-  the ordinary error page rather than a 500.
+  Carries `plug_status: 404`, which the `Plug.Exception` protocol's default
+  implementation (`@fallback_to_any`) reads from any exception struct that
+  has it — no explicit `defimpl` needed — so it renders through the ordinary
+  404 error page rather than a 500.
   """
   defexception message: "not found", plug_status: 404
 end

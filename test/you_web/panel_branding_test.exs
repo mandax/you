@@ -11,6 +11,8 @@ defmodule YouWeb.PanelBrandingTest do
   alias You.Admin
 
   setup %{conn: conn} do
+    You.Settings.set(:onboarding_completed, true)
+
     {:ok, app, _secret} =
       Admin.create_app(%{
         slug: "solo",

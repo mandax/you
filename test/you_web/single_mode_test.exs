@@ -206,6 +206,7 @@ defmodule YouWeb.SingleModeTest do
     setup [:single_mode]
 
     setup %{conn: conn} do
+      You.Settings.set(:onboarding_completed, true)
       user = You.AccountsFixtures.user_fixture()
       Admin.promote_admin!(user)
       %{conn: log_in_user(conn, user)}

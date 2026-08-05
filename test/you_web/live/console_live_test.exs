@@ -6,6 +6,11 @@ defmodule YouWeb.ConsoleLiveTest do
   alias You.{Admin, Accounts, Settings, IdentityProviders}
 
   setup %{conn: conn} do
+    # The default state everywhere except the "feature toggles" describe
+    # block below, which is what actually exercises onboarding incomplete
+    # and resets this itself — everywhere else, `/console` redirecting to
+    # `/console/features` on a fresh instance would just be noise.
+    You.Settings.set(:onboarding_completed, true)
     user = You.AccountsFixtures.user_fixture()
     Admin.promote_admin!(user)
     %{conn: log_in_user(conn, user), admin: user}
@@ -22,13 +27,18 @@ defmodule YouWeb.ConsoleLiveTest do
   end
 
   describe "feature toggles" do
+    setup do
+      You.Settings.set(:onboarding_completed, false)
+      :ok
+    end
+
     test "first admin login lands on the features screen", %{conn: conn} do
       refute You.Settings.get(:onboarding_completed)
 
-      {:ok, _lv, html} = live(conn, ~p"/console")
+      {:ok, conn} = live(conn, ~p"/console") |> follow_redirect(conn)
 
-      assert html =~ "Choose what this instance offers"
-      assert html =~ ~s(phx-submit="save_features")
+      assert html_response(conn, 200) =~ "Choose what this instance offers"
+      assert html_response(conn, 200) =~ ~s(phx-submit="save_features")
     end
 
     # Shown but locked, so an operator can see the feature exists rather than
@@ -1072,10 +1082,91 @@ defmodule YouWeb.ConsoleLiveTest do
       assert html =~ "Session &amp; tokens"
     end
 
-    test "/console/overview redirects to the bare /console", %{conn: conn} do
-      conn = get(conn, "/console/overview")
+    # Overview is a section like any other — reachable at its own path
+    # regardless of onboarding state. Only the bare `/console` (no explicit
+    # view) substitutes a different default while onboarding is incomplete.
+    test "overview is reachable at its own path during onboarding", %{conn: conn} do
+      You.Settings.set(:onboarding_completed, false)
 
-      assert redirected_to(conn) == "/console"
+      {:ok, _lv, html} = live(conn, ~p"/console/overview")
+
+      assert html =~ "Instance at a glance"
+    end
+
+    test "the bare /console redirects to features while onboarding is incomplete", %{
+      conn: conn
+    } do
+      You.Settings.set(:onboarding_completed, false)
+
+      conn = get(conn, "/console")
+
+      assert redirected_to(conn) == "/console/features"
+    end
+
+    test "the bare /console renders overview once onboarding is complete", %{conn: conn} do
+      {:ok, _lv, html} = live(conn, ~p"/console")
+
+      assert html =~ "Instance at a glance"
+    end
+  end
+
+  describe "state hygiene across a patch (review round 2)" do
+    # On `main`, every section switch was a `navigate` and so remounted —
+    # `nav` and every "shown once" assign came back from `mount/3` for free.
+    # Patch keeps the process alive, so anything that used to reset itself
+    # by virtue of remounting now needs to say so explicitly.
+
+    test "switching a feature off refreshes the sidebar in the same process", %{conn: conn} do
+      {:ok, lv, html} = live(conn, ~p"/console/features")
+      assert html =~ ~s(href="/console/webhooks")
+
+      html =
+        lv
+        |> form("#features-form", %{"features" => %{"feature_webhooks" => "false"}})
+        |> render_submit()
+
+      refute html =~ ~s(href="/console/webhooks")
+    end
+
+    test "a one-time secret dialog closes on a section change but survives a tab change", %{
+      conn: conn
+    } do
+      {:ok, lv, _html} = live(conn, ~p"/console/webhooks")
+
+      html =
+        render_submit(lv, "create_webhook", %{
+          "url" => "https://hook.example.com/notify",
+          "events" => %{"login:attempt" => "true"}
+        })
+
+      assert html =~ ~s(id="copy-webhook-secret")
+
+      # Same section, different tab param (webhooks has no tabs of its own,
+      # but the route still carries one) — must not clear it.
+      html = render_patch(lv, ~p"/console/webhooks/anything")
+      assert html =~ ~s(id="copy-webhook-secret")
+
+      # A real section change does.
+      html = lv |> element("nav a[href='/console/apps']") |> render_click()
+      refute html =~ ~s(id="copy-webhook-secret")
+    end
+
+    test "Settings' Federation tab shows a provider created after connecting", %{conn: conn} do
+      {:ok, lv, html} = live(conn, ~p"/console/settings/federation")
+      refute html =~ "fresh-provider"
+
+      {:ok, _provider} =
+        IdentityProviders.create_provider(%{
+          "slug" => "fresh-provider",
+          "display_name" => "Fresh",
+          "kind" => "generic",
+          "client_id" => "cid",
+          "client_secret" => "csecret"
+        })
+
+      html = render_patch(lv, ~p"/console/settings/federation")
+
+      assert html =~ "fresh-provider"
     end
   end
 

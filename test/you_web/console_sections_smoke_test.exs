@@ -32,20 +32,12 @@ defmodule YouWeb.ConsoleSectionsSmokeTest do
   end
 
   test "every section renders, then survives a tick and a mutation", %{conn: conn} do
-    # "overview" is addressed at the bare `/console`, not `/console/overview`
-    # (see `YouWeb.ConsoleLive.handle_params/3`), so it is mounted directly
-    # rather than through the `"/console/#{view}"` loop below.
-    {:ok, lv, html} = live(conn, ~p"/console")
-    assert html =~ "YOU"
-    send(lv.pid, :refresh)
-    assert render(lv) =~ "YOU"
-
-    for view <- ~w(users apps providers audit webhooks emails features settings backup) do
+    for view <- ~w(overview users apps providers audit webhooks emails features settings backup) do
       {:ok, lv, html} = live(conn, "/console/#{view}")
-      assert html =~ "YOU"
+      assert html =~ section_marker(view)
 
       send(lv.pid, :refresh)
-      assert render(lv) =~ "YOU"
+      assert render(lv) =~ section_marker(view)
     end
   end
 
@@ -57,12 +49,25 @@ defmodule YouWeb.ConsoleSectionsSmokeTest do
     {:ok, lv, _html} = live(conn, ~p"/console")
 
     for view <- ~w(users apps providers audit webhooks emails settings backup overview) do
-      html = lv |> element("nav a[href='#{section_href(view)}']") |> render_click()
+      html = lv |> element("nav a[href='/console/#{view}']") |> render_click()
 
-      assert html =~ "YOU"
+      assert html =~ section_marker(view)
     end
   end
 
-  defp section_href("overview"), do: "/console"
-  defp section_href(view), do: "/console/#{view}"
+  # One distinctive phrase per section — each pulled from that section's own
+  # `@section_copy` entry in `YouWeb.ConsoleLive` — so a section that renders
+  # with *another* section's stale state (data left over from before a patch,
+  # say) fails here instead of passing on the generic "YOU" wordmark every
+  # page shares.
+  defp section_marker("overview"), do: "Instance at a glance"
+  defp section_marker("users"), do: "Filter by app, role, or status"
+  defp section_marker("apps"), do: "delegate authentication to You"
+  defp section_marker("providers"), do: "Upstream identity providers"
+  defp section_marker("audit"), do: "Privileged actions, newest first"
+  defp section_marker("webhooks"), do: "Signed outbound events"
+  defp section_marker("emails"), do: "transactional mail You sends"
+  defp section_marker("features"), do: "What this instance offers"
+  defp section_marker("settings"), do: "Instance-wide tuning"
+  defp section_marker("backup"), do: "Export an encrypted snapshot"
 end
