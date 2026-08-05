@@ -208,9 +208,15 @@ defmodule You.Admin do
   @doc """
   Apps whose slug does not satisfy the format `App.changeset/2` now enforces.
 
-  Surfaces rows written before the validation existed, so `mix you.audit_slugs`
-  can report them before enforcement turns every unrelated update to one of
-  these apps into a failure.
+  A legacy row keeps its non-conforming slug until something touches the
+  slug itself — an unrelated field update still succeeds, since changesets
+  only validate a field that is actually changing. What breaks on such a
+  row: renaming it fails validation, importing a bundle that carries it from
+  a pre-validation instance fails, and the non-conforming value is already
+  live everywhere a slug is used — the `client_id` a consumer configures,
+  authorize URLs, and the role-resolution key. `mix you.audit_slugs` and
+  `You.Release.audit_slugs/0` report these before whoever runs this instance
+  hits one of those.
   """
   def apps_with_invalid_slug do
     Enum.filter(list_apps(), &App.invalid_slug?(&1.slug))

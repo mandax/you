@@ -1,4 +1,19 @@
 defmodule You.Admin.App do
+  @moduledoc """
+  An app: a service that integrates with You for authentication.
+
+  `slug` carries more weight than a label. It is the OAuth `client_id`
+  (`app_live/show.ex`), a segment of every authorize URL, and half of the
+  `(app_slug, user_id) → role_name` key role resolution is keyed by. That
+  triple use is why `changeset/2` constrains its format: a dot would make
+  `client_id` ambiguous against hostname-shaped values, and a slash would
+  break path construction. See `validate_slug/1`.
+
+  No reserved-name or DNS-label rule lives here — that constrains a separate
+  `hostname_label` column (#121), kept apart precisely so hostname concerns
+  do not reach into the client_id namespace.
+  """
+
   use Ecto.Schema
   import Ecto.Changeset
 
@@ -43,14 +58,13 @@ defmodule You.Admin.App do
   @max_jwt_expiry_hours 720
   @max_code_expiry_minutes 60
 
-  # The slug is the OAuth client_id (app_live/show.ex) and a segment of every
-  # authorize URL, so it is constrained to what is safe in both places: a dot
-  # would make client_id ambiguous against hostname-shaped values, and a
-  # slash would break path construction. No reserved-name or DNS-label rule
-  # here — that constrains a separate `hostname_label` column (#121), kept
-  # apart precisely so hostname concerns do not reach into the client_id
-  # namespace.
-  @slug_format ~r/^[a-z0-9_-]+$/
+  # `^`/`$` in Erlang's (PCRE) `re` match line boundaries, not string
+  # boundaries — `$` accepts a trailing newline, which would let
+  # "myapp\n" through as a slug containing exactly the whitespace this
+  # rule exists to reject. `\A`/`\z` anchor to the whole subject.
+  @slug_format ~r/\A[a-z0-9_-]+\z/
+  # No spec bounds client_id length. 64 is comfortably above any real one
+  # and well under the column's default 255-character bound.
   @max_slug_length 64
 
   # Claims You itself issues, plus the registered JWT claims. An app that could
@@ -196,21 +210,23 @@ defmodule You.Admin.App do
   @doc "The auth methods an app may enable. `nil` on the column means all of them."
   def auth_methods, do: @auth_methods
 
-  @doc "The regex a slug must match: lowercase alphanumerics, hyphens and underscores."
-  def slug_format, do: @slug_format
-
-  @doc "The longest a slug may be."
-  def max_slug_length, do: @max_slug_length
-
   @doc """
-  Whether `slug` violates the format or length rule `changeset/2` enforces.
+  Whether `slug` violates the rule `validate_slug/1` enforces.
 
-  Used by `mix you.audit_slugs` to find rows written before the validation
-  existed — `changeset/2` validates the whole struct, so a bad slug on a row
-  fails every future update to that app, not just ones touching the slug.
+  Used by `mix you.audit_slugs` and `You.Release.audit_slugs/0` to find rows
+  written before the validation existed. It runs the same validation the
+  changeset does, but unconditionally: `changeset/2` only checks a field
+  that is actually changing, while this always checks the value handed to
+  it, which is the point — an audit has to see a legacy row that nobody has
+  touched yet.
   """
-  def invalid_slug?(slug) when is_binary(slug),
-    do: not String.match?(slug, @slug_format) or String.length(slug) > @max_slug_length
+  def invalid_slug?(slug) when is_binary(slug) do
+    %__MODULE__{}
+    |> change(slug: slug)
+    |> validate_slug()
+    |> Map.fetch!(:errors)
+    |> Keyword.has_key?(:slug)
+  end
 
   def changeset(app, attrs) do
     app
@@ -240,12 +256,7 @@ defmodule You.Admin.App do
       :custom_claims
     ])
     |> validate_required([:slug, :name, :callback_url])
-    # The slug doubles as the OAuth client_id and a URL segment, so it is
-    # held to what is safe in both rather than free text.
-    |> validate_format(:slug, @slug_format,
-      message: "must contain only lowercase letters, digits, hyphens, or underscores"
-    )
-    |> validate_length(:slug, max: @max_slug_length)
+    |> validate_slug()
     # An app with no allowed roles can never have a role assigned, so every
     # assignment attempt would fail. Keep at least one.
     |> validate_length(:allowed_roles, min: 1)
@@ -332,6 +343,14 @@ defmodule You.Admin.App do
     do: Enum.all?(value, &(is_binary(&1) or is_number(&1) or is_boolean(&1)))
 
   defp valid_claim_value?(_value), do: false
+
+  defp validate_slug(changeset) do
+    changeset
+    |> validate_format(:slug, @slug_format,
+      message: "must contain only lowercase letters, digits, hyphens, or underscores"
+    )
+    |> validate_length(:slug, max: @max_slug_length)
+  end
 
   defp validate_http_url(field, url) do
     case URI.parse(url) do

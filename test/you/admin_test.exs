@@ -4,6 +4,7 @@ defmodule You.AdminTest do
   alias You.Admin
   alias You.Accounts
   alias You.AccountsFixtures
+  alias You.AdminFixtures
 
   describe "promote_admin/1" do
     test "sets is_admin to true" do
@@ -67,9 +68,12 @@ defmodule You.AdminTest do
 
     # A dot would make client_id ambiguous against hostname-shaped values,
     # and a slash would break path construction — the two cases the rule
-    # exists for, not just "reject everything weird".
-    test "rejects whitespace, dots, slashes and uppercase" do
-      for slug <- ["my app", "my.app", "my/app", "MyApp", "my\tapp"] do
+    # exists for, not just "reject everything weird". "myapp\n" covers the
+    # `$`-matches-before-a-trailing-newline PCRE gotcha: `^...$` alone would
+    # let it through as a slug containing exactly the whitespace this rule
+    # exists to reject.
+    test "rejects whitespace, dots, slashes, uppercase and a trailing newline" do
+      for slug <- ["my app", "my.app", "my/app", "MyApp", "my\tapp", "myapp\n"] do
         assert %{slug: ["must contain only lowercase letters, digits, hyphens, or underscores"]} =
                  errors_on(App.changeset(%App{}, Map.put(@valid_attrs, :slug, slug)))
       end
@@ -98,21 +102,6 @@ defmodule You.AdminTest do
   describe "apps_with_invalid_slug/0" do
     alias You.Admin.App
 
-    # Simulates a row written before this validation existed: `App.changeset/2`
-    # would now refuse this slug, but a bad row already on disk did not go
-    # through it to get there.
-    defp insert_legacy_app!(slug) do
-      %App{}
-      |> Ecto.Changeset.change(%{
-        slug: slug,
-        name: "Legacy",
-        callback_url: "https://legacy-#{System.unique_integer([:positive])}.example.com/cb",
-        allowed_roles: ["user", "admin"],
-        default_role: "user"
-      })
-      |> You.Repo.insert!()
-    end
-
     test "is empty when every slug satisfies the rule" do
       {:ok, _app, _secret} =
         Admin.create_app(%{
@@ -125,10 +114,33 @@ defmodule You.AdminTest do
     end
 
     test "reports rows whose slug predates the validation" do
-      bad = insert_legacy_app!("legacy.app")
+      bad = AdminFixtures.insert_legacy_app!("legacy.app")
 
       assert [%App{id: id}] = Admin.apps_with_invalid_slug()
       assert id == bad.id
+    end
+
+    # This is the case #119's original audit doc got wrong: a bad slug does
+    # not fail every future update to that app, only one that touches the
+    # slug itself, because `validate_format/4` and `validate_length/3` run
+    # through `validate_change/3`, which only checks a field already in
+    # `changeset.changes`.
+    test "an unrelated update to a legacy app still succeeds" do
+      bad = AdminFixtures.insert_legacy_app!("legacy.app")
+
+      assert {:ok, updated} = Admin.update_app(bad, %{name: "Renamed Legacy"})
+      assert updated.name == "Renamed Legacy"
+      assert updated.slug == "legacy.app"
+    end
+
+    test "renaming a legacy app to another invalid slug fails validation" do
+      bad = AdminFixtures.insert_legacy_app!("legacy.app")
+
+      assert {:error, changeset} = Admin.update_app(bad, %{slug: "still.invalid"})
+
+      assert "must contain only lowercase letters, digits, hyphens, or underscores" in errors_on(
+               changeset
+             ).slug
     end
   end
 

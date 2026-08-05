@@ -8,15 +8,26 @@ defmodule Mix.Tasks.You.AuditSlugs do
 
       mix you.audit_slugs
 
-  Run this before upgrading to a version that validates `slug`: a row written
-  earlier may already violate the rule, and once validation is enforced,
-  every future update to that app — not just ones touching the slug — fails
-  until it is fixed.
+  Run this right after upgrading to a version that validates `slug`, before
+  renaming anything. A row written earlier keeps its non-conforming slug
+  until something touches the slug itself, but from here on: renaming such
+  an app fails validation, and importing a bundle that carries one from a
+  pre-validation instance fails too. The non-conforming value is already
+  live everywhere a slug is used — the `client_id` a consumer configures,
+  authorize URLs, and the role-resolution key — so this is the moment to
+  find out which apps are affected, not a hard deadline.
 
   This task only reports; it does not rename anything. **Renaming a slug
-  changes the app's `client_id`**, since the slug is the client_id, and
-  breaks every consumer configured against the old value. Coordinate a slug
-  change with whoever operates each affected app before making it.
+  changes the app's `client_id`** — the only way to do it is
+  `PATCH /api/v1/apps/:id` — and breaks every consumer configured against
+  the old value. Coordinate with whoever runs each consumer app before
+  making that change.
+
+  Exits with status 1 when it finds anything, so a deploy script can gate on
+  it; exits 0 when every slug already satisfies the rule.
+
+  In a release, where Mix is not installed, this is
+  `bin/you eval 'You.Release.audit_slugs()'`.
   """
 
   use Mix.Task
@@ -28,19 +39,16 @@ defmodule Mix.Tasks.You.AuditSlugs do
   @impl Mix.Task
   def run(_args) do
     Mix.Task.run("app.start")
+    report(Admin.apps_with_invalid_slug())
+  end
 
-    case Admin.apps_with_invalid_slug() do
-      [] ->
-        Mix.shell().info([:green, "All app slugs satisfy the client_id format rule."])
-
-      apps ->
-        report(apps)
-    end
+  defp report([]) do
+    Mix.shell().info([:green, "All app slugs satisfy the client_id format rule."])
   end
 
   defp report(apps) do
     Mix.shell().error(
-      "#{length(apps)} app(s) have a slug that will fail validation once enforced:\n"
+      "#{length(apps)} app(s) have a slug that fails the client_id format rule:\n"
     )
 
     Enum.each(apps, fn app ->
@@ -51,7 +59,10 @@ defmodule Mix.Tasks.You.AuditSlugs do
       "\n",
       :yellow,
       "Renaming a slug changes that app's client_id and breaks every consumer ",
-      "configured against it. Coordinate with each app's operator before renaming."
+      "configured against it — PATCH /api/v1/apps/:id is the only way to change ",
+      "it. Coordinate with whoever runs each consumer app before renaming."
     ])
+
+    exit({:shutdown, 1})
   end
 end

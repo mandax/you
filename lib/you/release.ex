@@ -92,6 +92,40 @@ defmodule You.Release do
     System.halt(1)
   end
 
+  @doc """
+  Reports apps whose slug violates the format `You.Admin.App.changeset/2`
+  enforces. Run via:
+
+      bin/you eval 'You.Release.audit_slugs()'
+
+  See `Mix.Tasks.You.AuditSlugs` for when to run this and why. Halts with
+  status 1 when it finds anything, so a deploy script can gate on it.
+  """
+  def audit_slugs do
+    start_app()
+    report_slugs(You.Admin.apps_with_invalid_slug())
+  end
+
+  defp report_slugs([]) do
+    IO.puts("All app slugs satisfy the client_id format rule.")
+  end
+
+  defp report_slugs(apps) do
+    IO.puts(:stderr, "#{length(apps)} app(s) have a slug that fails the client_id format rule:\n")
+
+    Enum.each(apps, fn app ->
+      IO.puts("  - #{app.slug} (#{app.name}, id #{app.id})")
+    end)
+
+    IO.puts(
+      "\nRenaming a slug changes that app's client_id and breaks every consumer " <>
+        "configured against it — PATCH /api/v1/apps/:id is the only way to change it. " <>
+        "Coordinate with whoever runs each consumer app before renaming."
+    )
+
+    System.halt(1)
+  end
+
   defp start_app do
     load_app()
     {:ok, _} = Application.ensure_all_started(@app)

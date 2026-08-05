@@ -5,7 +5,8 @@ defmodule Mix.Tasks.You.AuditSlugsTest do
   """
   use You.DataCase, async: false
 
-  alias You.Admin.App
+  alias You.Admin
+  alias You.AdminFixtures
 
   setup do
     Mix.shell(Mix.Shell.Process)
@@ -13,29 +14,24 @@ defmodule Mix.Tasks.You.AuditSlugsTest do
     :ok
   end
 
-  defp insert_legacy_app!(slug) do
-    %App{}
-    |> Ecto.Changeset.change(%{
-      slug: slug,
-      name: "Legacy",
-      callback_url: "https://legacy-#{System.unique_integer([:positive])}.example.com/cb",
-      allowed_roles: ["user", "admin"],
-      default_role: "user"
-    })
-    |> You.Repo.insert!()
-  end
+  test "reports success when every existing slug satisfies the rule" do
+    {:ok, _app, _secret} =
+      Admin.create_app(%{
+        slug: "clean-app",
+        name: "Clean",
+        callback_url: "https://clean.example.com/cb"
+      })
 
-  test "reports success when every slug satisfies the rule" do
     Mix.Tasks.You.AuditSlugs.run([])
 
     assert_received {:mix_shell, :info, [message]}
     assert message =~ "All app slugs satisfy"
   end
 
-  test "reports offending apps and warns that renaming breaks consumers" do
-    app = insert_legacy_app!("legacy.app")
+  test "reports offending apps, warns that renaming breaks consumers, and exits non-zero" do
+    app = AdminFixtures.insert_legacy_app!("legacy.app")
 
-    Mix.Tasks.You.AuditSlugs.run([])
+    assert catch_exit(Mix.Tasks.You.AuditSlugs.run([])) == {:shutdown, 1}
 
     assert_received {:mix_shell, :error, [summary]}
     assert summary =~ "1 app(s)"
@@ -46,5 +42,6 @@ defmodule Mix.Tasks.You.AuditSlugsTest do
     assert_received {:mix_shell, :info, [warning]}
     assert warning =~ "client_id"
     assert warning =~ "breaks every consumer"
+    assert warning =~ "PATCH /api/v1/apps/:id"
   end
 end

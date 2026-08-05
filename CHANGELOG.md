@@ -9,6 +9,22 @@ the source, including into an air-gapped checkout.
 one you are moving to — not only the newest. `docker compose pull` crosses all
 of them at once.
 
+## Unreleased
+
+### Requires your attention
+
+- **App slugs are now validated.** `slug` doubles as the OAuth `client_id`,
+  a segment of every authorize URL, and half of the role-resolution key, but
+  was checked for uniqueness only — `foo.bar`, `My App!` and `_x` were all
+  legal. It is now held to lowercase letters, digits, hyphens and
+  underscores, at most 64 characters. A row written before this validation
+  existed keeps its non-conforming slug until something touches the slug
+  itself, but from here on: renaming that app fails validation, and **a
+  bundle exported from a pre-validation instance can fail to import** if it
+  carries a non-conforming slug. Run `mix you.audit_slugs`
+  (`bin/you eval 'You.Release.audit_slugs()'` in a release) right after
+  upgrading, before renaming anything, to find out which apps are affected.
+
 ## 0.4.0 — Per-app context, invitations, guests, and auth hardening
 
 ### Requires your attention
