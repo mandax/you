@@ -15,13 +15,14 @@ of them at once.
 
 - **App slugs are now validated.** `slug` doubles as the OAuth `client_id`,
   a segment of every authorize URL, and half of the role-resolution key, but
-  was checked for uniqueness only — `foo.bar`, `My App!` and `_x` were all
-  legal. It is now held to lowercase letters, digits, hyphens and
+  was checked for uniqueness only — `foo.bar`, `My App!` and `Slug With
+  Spaces` were all legal. It is now held to lowercase letters, digits, hyphens and
   underscores, at most 64 characters. A row written before this validation
   existed keeps its non-conforming slug until something touches the slug
   itself, but from here on: renaming that app fails validation, and **a
-  bundle exported from a pre-validation instance can fail to import** if it
-  carries a non-conforming slug. Run `mix you.audit_slugs`
+  configuration bundle exported from a pre-validation instance silently skips
+  such an app on import** — the import reports success with an app count one
+  short rather than raising, so check the count against what you exported. Run `mix you.audit_slugs`
   (`bin/you eval 'You.Release.audit_slugs()'` in a release) right after
   upgrading, before renaming anything, to find out which apps are affected.
 

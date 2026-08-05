@@ -11,9 +11,11 @@ defmodule Mix.Tasks.You.AuditSlugs do
   Run this right after upgrading to a version that validates `slug`, before
   renaming anything. A row written earlier keeps its non-conforming slug
   until something touches the slug itself, but from here on: renaming such
-  an app fails validation, and importing a bundle that carries one from a
-  pre-validation instance fails too. The non-conforming value is already
-  live everywhere a slug is used — the `client_id` a consumer configures,
+  an app fails validation, and importing a configuration bundle that carries
+  one from a pre-validation instance **silently skips that app** — the import
+  reports success with a count one short, because the import counts successes
+  rather than surfacing a rejected changeset. The non-conforming value is
+  already live everywhere a slug is used — the `client_id` a consumer configures,
   authorize URLs, and the role-resolution key — so this is the moment to
   find out which apps are affected, not a hard deadline.
 

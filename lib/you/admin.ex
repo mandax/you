@@ -211,9 +211,10 @@ defmodule You.Admin do
   A legacy row keeps its non-conforming slug until something touches the
   slug itself — an unrelated field update still succeeds, since changesets
   only validate a field that is actually changing. What breaks on such a
-  row: renaming it fails validation, importing a bundle that carries it from
-  a pre-validation instance fails, and the non-conforming value is already
-  live everywhere a slug is used — the `client_id` a consumer configures,
+  row: renaming it fails validation, importing a configuration bundle that
+  carries it from a pre-validation instance silently skips the app rather than
+  failing, and the non-conforming value is already live everywhere a slug is
+  used — the `client_id` a consumer configures,
   authorize URLs, and the role-resolution key. `mix you.audit_slugs` and
   `You.Release.audit_slugs/0` report these before whoever runs this instance
   hits one of those.
