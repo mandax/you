@@ -536,6 +536,7 @@ defmodule YouWeb.ConsoleLiveTest do
       assert html =~ ~s(role="tablist")
       assert html =~ "Session &amp; tokens"
       assert html =~ ~s(href="/console?view=settings&amp;tab=mail")
+      assert html =~ ~s(id="tabpanel-session" role="tabpanel" aria-labelledby="tab-session")
       refute html =~ "SMTP host"
     end
 
@@ -550,11 +551,12 @@ defmodule YouWeb.ConsoleLiveTest do
       {:ok, _lv, html} = live(conn, "/console?view=settings&tab=bogus")
 
       assert html =~ "Session expiry"
+      assert html =~ ~r/id="tab-session"[^>]*aria-selected="true"/
     end
 
     test "saving persists SCIM token and audit webhook", %{conn: conn} do
       on_exit(fn -> Application.put_env(:you, :audit_webhook_url, "") end)
-      {:ok, lv, _} = live(conn, "/console?view=settings&tab=provisioning")
+      {:ok, lv, _} = live(conn, "/console?view=settings&tab=integrations")
 
       render_submit(form(lv, "form[phx-submit=save_settings]"), %{
         "scim_bearer_token" => "sekret",
