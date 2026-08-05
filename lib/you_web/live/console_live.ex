@@ -67,6 +67,18 @@ defmodule YouWeb.ConsoleLive do
   # keeps the current value, cleared via the explicit "clear" button.
   @secret_settings [:erlang_cookie, :scim_bearer_token, :smtp_password, :api_token]
 
+  # One tab per settings_group; the group titles are the natural tabs (see
+  # AGENTS.md's tabbed multi-context convention).
+  @settings_tabs [
+    {"session", "Session & tokens"},
+    {"distribution", "Erlang distribution"},
+    {"provisioning", "Provisioning & audit"},
+    {"deployment", "Deployment mode"},
+    {"mail", "Mail"},
+    {"api", "Management API"},
+    {"analytics", "Analytics"}
+  ]
+
   @settings_fields [
     %{key: :session_expiry_hours, label: "Session expiry (hours)"},
     %{key: :jwt_expiry_hours, label: "JWT expiry (hours)"},
@@ -104,6 +116,8 @@ defmodule YouWeb.ConsoleLive do
        page_title: "Console",
        nav: nav(),
        view: "overview",
+       settings_tabs: @settings_tabs,
+       settings_tab: elem(hd(@settings_tabs), 0),
        node_name: Node.self(),
        new_secret: nil,
        secret_app: nil,
@@ -151,7 +165,15 @@ defmodule YouWeb.ConsoleLive do
     default = if socket.assigns.onboarding, do: "features", else: "overview"
     view = params["view"] || default
     view = if view in section_ids(), do: view, else: default
-    {:noreply, socket |> assign(view: view, saved: false) |> load_view(view)}
+
+    {:noreply,
+     socket
+     |> assign(view: view, settings_tab: settings_tab(params["tab"]), saved: false)
+     |> load_view(view)}
+  end
+
+  defp settings_tab(tab) do
+    if List.keymember?(@settings_tabs, tab, 0), do: tab, else: elem(hd(@settings_tabs), 0)
   end
 
   @doc """
@@ -896,6 +918,8 @@ defmodule YouWeb.ConsoleLive do
             base_url={@base_url}
             oidc_providers={@oidc_providers}
             saved={@saved}
+            tabs={@settings_tabs}
+            tab={@settings_tab}
           />
         <% "backup" -> %>
           <.backup_view
@@ -2116,6 +2140,8 @@ defmodule YouWeb.ConsoleLive do
   attr :base_url, :string, required: true
   attr :oidc_providers, :list, required: true
   attr :saved, :boolean, required: true
+  attr :tabs, :list, required: true
+  attr :tab, :string, required: true
 
   defp settings_view(assigns) do
     ~H"""
@@ -2127,130 +2153,164 @@ defmodule YouWeb.ConsoleLive do
         <span class="lucide-check size-4 block text-signal-ok" /> Settings saved.
       </div>
 
-      <form phx-submit="save_settings" class="space-y-4">
-        <.settings_group title="Session & tokens">
-          <p class="text-xs text-muted-foreground">
-            Defaults for every app. An app can pin its own JWT and auth-code lifetimes on its
-            page; session expiry is the You cookie itself, so it stays instance-wide.
-          </p>
-          <.setting_field
-            name="session_expiry_hours"
-            label="Session expiry (hours)"
-            value={@settings[:session_expiry_hours]}
-          />
-          <.setting_field
-            name="jwt_expiry_hours"
-            label="JWT expiry (hours)"
-            value={@settings[:jwt_expiry_hours]}
-          />
-          <.setting_field
-            name="code_expiry_minutes"
-            label="Auth code expiry (minutes)"
-            value={@settings[:code_expiry_minutes]}
-          />
-          <.setting_field
-            name="magic_link_expiry_minutes"
-            label="Magic link expiry (minutes)"
-            value={@settings[:magic_link_expiry_minutes]}
-          />
-        </.settings_group>
+      <.tab_strip tabs={@tabs} active={@tab} path={~p"/console?view=settings"} />
 
-        <.settings_group title="Erlang distribution">
-          <.setting_field
-            name="erlang_node_name"
-            label="Node name"
-            value={@settings[:erlang_node_name]}
-          />
-          <.setting_field name="epmd_port" label="EPMD port" value={@settings[:epmd_port]} />
-          <.secret_setting_field
-            name="erlang_cookie"
-            label="Cookie"
-            value={@settings[:erlang_cookie]}
-          />
-        </.settings_group>
+      <%= case @tab do %>
+        <% "session" -> %>
+          <form phx-submit="save_settings" class="space-y-4">
+            <.settings_group title="Session & tokens">
+              <p class="text-xs text-muted-foreground">
+                Defaults for every app. An app can pin its own JWT and auth-code lifetimes on its
+                page; session expiry is the You cookie itself, so it stays instance-wide.
+              </p>
+              <.setting_field
+                name="session_expiry_hours"
+                label="Session expiry (hours)"
+                value={@settings[:session_expiry_hours]}
+              />
+              <.setting_field
+                name="jwt_expiry_hours"
+                label="JWT expiry (hours)"
+                value={@settings[:jwt_expiry_hours]}
+              />
+              <.setting_field
+                name="code_expiry_minutes"
+                label="Auth code expiry (minutes)"
+                value={@settings[:code_expiry_minutes]}
+              />
+              <.setting_field
+                name="magic_link_expiry_minutes"
+                label="Magic link expiry (minutes)"
+                value={@settings[:magic_link_expiry_minutes]}
+              />
+            </.settings_group>
 
-        <.settings_group title="Provisioning & audit">
-          <.secret_setting_field
-            name="scim_bearer_token"
-            label="SCIM bearer token"
-            value={@settings[:scim_bearer_token]}
-          />
-          <.setting_field
-            name="audit_webhook_url"
-            label="Audit webhook URL"
-            value={@settings[:audit_webhook_url]}
-          />
-          <p class="pt-1 font-mono text-[11px] text-muted-foreground">
-            SCIM base: {@base_url}/scim/v2 · secrets are write-only, use clear to disable
-          </p>
-        </.settings_group>
+            <.button type="submit">Save settings</.button>
+          </form>
+        <% "distribution" -> %>
+          <form phx-submit="save_settings" class="space-y-4">
+            <.settings_group title="Erlang distribution">
+              <.setting_field
+                name="erlang_node_name"
+                label="Node name"
+                value={@settings[:erlang_node_name]}
+              />
+              <.setting_field name="epmd_port" label="EPMD port" value={@settings[:epmd_port]} />
+              <.secret_setting_field
+                name="erlang_cookie"
+                label="Cookie"
+                value={@settings[:erlang_cookie]}
+              />
+            </.settings_group>
 
-        <.settings_group title="Deployment mode">
-          <label class="flex items-center justify-between gap-4 text-sm">
-            <span class="text-muted-foreground">Mode</span>
-            <select
-              name="you_mode"
-              class="h-8 rounded-md border border-input bg-background px-2 font-mono text-xs"
-            >
-              <option value="multi" selected={@settings[:you_mode] != "single"}>multi</option>
-              <option value="single" selected={@settings[:you_mode] == "single"}>single</option>
-            </select>
-          </label>
-          <p class="pt-1 font-mono text-[11px] text-muted-foreground">
-            Single mode replaces the apps registry with one application. Applies to this console
-            session on save; other open console tabs pick it up on their next page load.
-          </p>
-        </.settings_group>
+            <.button type="submit">Save settings</.button>
+          </form>
+        <% "provisioning" -> %>
+          <form phx-submit="save_settings" class="space-y-4">
+            <.settings_group title="Provisioning & audit">
+              <.secret_setting_field
+                name="scim_bearer_token"
+                label="SCIM bearer token"
+                value={@settings[:scim_bearer_token]}
+              />
+              <.setting_field
+                name="audit_webhook_url"
+                label="Audit webhook URL"
+                value={@settings[:audit_webhook_url]}
+              />
+              <p class="pt-1 font-mono text-[11px] text-muted-foreground">
+                SCIM base: {@base_url}/scim/v2 · secrets are write-only, use clear to disable
+              </p>
+            </.settings_group>
 
-        <.settings_group title="Mail">
-          <.setting_field name="smtp_host" label="SMTP host" value={@settings[:smtp_host]} />
-          <.setting_field name="smtp_port" label="SMTP port" value={@settings[:smtp_port]} />
-          <.setting_field
-            name="smtp_username"
-            label="SMTP username"
-            value={@settings[:smtp_username]}
-          />
-          <.secret_setting_field
-            name="smtp_password"
-            label="SMTP password"
-            value={@settings[:smtp_password]}
-          />
-          <.setting_field name="mail_from" label="Mail from address" value={@settings[:mail_from]} />
-          <p class="pt-1 font-mono text-[11px] text-muted-foreground">
-            Applies to the next email sent — nothing to restart. Clear the host to fall back to
-            the in-memory mailbox at /console/mailbox.
-          </p>
-        </.settings_group>
+            <.button type="submit">Save settings</.button>
+          </form>
+        <% "deployment" -> %>
+          <form phx-submit="save_settings" class="space-y-4">
+            <.settings_group title="Deployment mode">
+              <label class="flex items-center justify-between gap-4 text-sm">
+                <span class="text-muted-foreground">Mode</span>
+                <select
+                  name="you_mode"
+                  class="h-8 rounded-md border border-input bg-background px-2 font-mono text-xs"
+                >
+                  <option value="multi" selected={@settings[:you_mode] != "single"}>multi</option>
+                  <option value="single" selected={@settings[:you_mode] == "single"}>single</option>
+                </select>
+              </label>
+              <p class="pt-1 font-mono text-[11px] text-muted-foreground">
+                Single mode replaces the apps registry with one application. Applies to this
+                console session on save; other open console tabs pick it up on their next page
+                load.
+              </p>
+            </.settings_group>
 
-        <.settings_group title="Management API">
-          <.secret_setting_field
-            name="api_token"
-            label="Bearer token"
-            value={@settings[:api_token]}
-          />
-          <p class="pt-1 font-mono text-[11px] text-muted-foreground">
-            Unset or empty disables the management API. Applies immediately.
-          </p>
-        </.settings_group>
+            <.button type="submit">Save settings</.button>
+          </form>
+        <% "mail" -> %>
+          <form phx-submit="save_settings" class="space-y-4">
+            <.settings_group title="Mail">
+              <.setting_field name="smtp_host" label="SMTP host" value={@settings[:smtp_host]} />
+              <.setting_field name="smtp_port" label="SMTP port" value={@settings[:smtp_port]} />
+              <.setting_field
+                name="smtp_username"
+                label="SMTP username"
+                value={@settings[:smtp_username]}
+              />
+              <.secret_setting_field
+                name="smtp_password"
+                label="SMTP password"
+                value={@settings[:smtp_password]}
+              />
+              <.setting_field
+                name="mail_from"
+                label="Mail from address"
+                value={@settings[:mail_from]}
+              />
+              <p class="pt-1 font-mono text-[11px] text-muted-foreground">
+                Applies to the next email sent — nothing to restart. Clear the host to fall back
+                to the in-memory mailbox at /console/mailbox.
+              </p>
+            </.settings_group>
 
-        <.settings_group title="Analytics">
-          <.setting_field
-            name="analytics_src"
-            label="Script URL"
-            value={@settings[:analytics_src]}
-          />
-          <.setting_field
-            name="analytics_domain"
-            label="Domain"
-            value={@settings[:analytics_domain]}
-          />
-          <p class="pt-1 font-mono text-[11px] text-muted-foreground">
-            Both fields are required for the snippet to appear. Plausible-compatible.
-          </p>
-        </.settings_group>
+            <.button type="submit">Save settings</.button>
+          </form>
+        <% "api" -> %>
+          <form phx-submit="save_settings" class="space-y-4">
+            <.settings_group title="Management API">
+              <.secret_setting_field
+                name="api_token"
+                label="Bearer token"
+                value={@settings[:api_token]}
+              />
+              <p class="pt-1 font-mono text-[11px] text-muted-foreground">
+                Unset or empty disables the management API. Applies immediately.
+              </p>
+            </.settings_group>
 
-        <.button type="submit">Save settings</.button>
-      </form>
+            <.button type="submit">Save settings</.button>
+          </form>
+        <% "analytics" -> %>
+          <form phx-submit="save_settings" class="space-y-4">
+            <.settings_group title="Analytics">
+              <.setting_field
+                name="analytics_src"
+                label="Script URL"
+                value={@settings[:analytics_src]}
+              />
+              <.setting_field
+                name="analytics_domain"
+                label="Domain"
+                value={@settings[:analytics_domain]}
+              />
+              <p class="pt-1 font-mono text-[11px] text-muted-foreground">
+                Both fields are required for the snippet to appear. Plausible-compatible.
+              </p>
+            </.settings_group>
+
+            <.button type="submit">Save settings</.button>
+          </form>
+      <% end %>
 
       <div class="rounded-lg border border-border bg-card p-5">
         <div class="flex items-center gap-2 text-sm font-medium">

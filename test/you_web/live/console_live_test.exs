@@ -530,9 +530,31 @@ defmodule YouWeb.ConsoleLiveTest do
   end
 
   describe "settings" do
+    test "renders as tabs, defaulting to the first", %{conn: conn} do
+      {:ok, _lv, html} = live(conn, "/console?view=settings")
+
+      assert html =~ ~s(role="tablist")
+      assert html =~ "Session &amp; tokens"
+      assert html =~ ~s(href="/console?view=settings&amp;tab=mail")
+      refute html =~ "SMTP host"
+    end
+
+    test "?tab= selects the matching tab", %{conn: conn} do
+      {:ok, _lv, html} = live(conn, "/console?view=settings&tab=mail")
+
+      assert html =~ "SMTP host"
+      refute html =~ "Session expiry"
+    end
+
+    test "an unknown ?tab= falls back to the first tab rather than blanking", %{conn: conn} do
+      {:ok, _lv, html} = live(conn, "/console?view=settings&tab=bogus")
+
+      assert html =~ "Session expiry"
+    end
+
     test "saving persists SCIM token and audit webhook", %{conn: conn} do
       on_exit(fn -> Application.put_env(:you, :audit_webhook_url, "") end)
-      {:ok, lv, _} = live(conn, "/console?view=settings")
+      {:ok, lv, _} = live(conn, "/console?view=settings&tab=provisioning")
 
       render_submit(form(lv, "form[phx-submit=save_settings]"), %{
         "scim_bearer_token" => "sekret",
@@ -551,7 +573,7 @@ defmodule YouWeb.ConsoleLiveTest do
           callback_url: "https://solo.example.com/cb"
         })
 
-      {:ok, lv, html} = live(conn, "/console?view=settings")
+      {:ok, lv, html} = live(conn, "/console?view=settings&tab=deployment")
       refute html =~ ~s(href="/console/apps/solo")
 
       render_submit(form(lv, "form[phx-submit=save_settings]"), %{"you_mode" => "single"})
@@ -566,14 +588,11 @@ defmodule YouWeb.ConsoleLiveTest do
       Settings.set(:erlang_cookie, "super-secret-cookie")
       on_exit(fn -> Settings.set(:erlang_cookie, "") end)
 
-      {:ok, lv, _html} = live(conn, "/console?view=settings")
+      {:ok, lv, _html} = live(conn, "/console?view=settings&tab=distribution")
 
       refute render(lv) =~ "super-secret-cookie"
 
-      render_submit(form(lv, "form[phx-submit=save_settings]"), %{
-        "erlang_cookie" => "",
-        "jwt_expiry_hours" => "24"
-      })
+      render_submit(form(lv, "form[phx-submit=save_settings]"), %{"erlang_cookie" => ""})
 
       assert Settings.get(:erlang_cookie) == "super-secret-cookie"
 
@@ -585,6 +604,20 @@ defmodule YouWeb.ConsoleLiveTest do
 
       render_click(lv, "clear_setting", %{"key" => "erlang_cookie"})
       assert Settings.get(:erlang_cookie) == ""
+    end
+
+    test "saving one tab leaves another tab's settings untouched", %{conn: conn} do
+      Settings.set(:mail_from, "noreply@example.com")
+      on_exit(fn -> Settings.set(:mail_from, "") end)
+
+      {:ok, lv, _html} = live(conn, "/console?view=settings&tab=session")
+
+      render_submit(form(lv, "form[phx-submit=save_settings]"), %{
+        "jwt_expiry_hours" => "48"
+      })
+
+      assert Settings.get(:jwt_expiry_hours) == 48
+      assert Settings.get(:mail_from) == "noreply@example.com"
     end
   end
 
