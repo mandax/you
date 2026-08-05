@@ -206,6 +206,17 @@ defmodule You.Admin do
   def count_apps, do: Repo.aggregate(App, :count)
 
   @doc """
+  Apps whose slug does not satisfy the format `App.changeset/2` now enforces.
+
+  Surfaces rows written before the validation existed, so `mix you.audit_slugs`
+  can report them before enforcement turns every unrelated update to one of
+  these apps into a failure.
+  """
+  def apps_with_invalid_slug do
+    Enum.filter(list_apps(), &App.invalid_slug?(&1.slug))
+  end
+
+  @doc """
   Fetches a single app by id, raising if it does not exist.
   """
   def get_app!(id), do: Repo.get!(App, id)

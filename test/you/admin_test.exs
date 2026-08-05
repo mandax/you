@@ -54,6 +54,84 @@ defmodule You.AdminTest do
     end
   end
 
+  describe "slug format" do
+    alias You.Admin.App
+
+    @valid_attrs %{slug: "myapp", name: "Myapp", callback_url: "https://myapp.example.com/cb"}
+
+    test "accepts lowercase letters, digits, hyphens and underscores" do
+      for slug <- ["myapp", "my-app", "my_app", "app2", "a"] do
+        assert App.changeset(%App{}, Map.put(@valid_attrs, :slug, slug)).valid?
+      end
+    end
+
+    # A dot would make client_id ambiguous against hostname-shaped values,
+    # and a slash would break path construction — the two cases the rule
+    # exists for, not just "reject everything weird".
+    test "rejects whitespace, dots, slashes and uppercase" do
+      for slug <- ["my app", "my.app", "my/app", "MyApp", "my\tapp"] do
+        assert %{slug: ["must contain only lowercase letters, digits, hyphens, or underscores"]} =
+                 errors_on(App.changeset(%App{}, Map.put(@valid_attrs, :slug, slug)))
+      end
+    end
+
+    test "is capped in length" do
+      too_long = String.duplicate("a", 65)
+      ok_length = String.duplicate("a", 64)
+
+      assert %{slug: ["should be at most 64 character(s)"]} =
+               errors_on(App.changeset(%App{}, Map.put(@valid_attrs, :slug, too_long)))
+
+      assert App.changeset(%App{}, Map.put(@valid_attrs, :slug, ok_length)).valid?
+    end
+
+    test "create_app rejects an invalid slug with a message naming the rule" do
+      assert {:error, changeset} =
+               Admin.create_app(Map.put(@valid_attrs, :slug, "not.a.slug"))
+
+      assert "must contain only lowercase letters, digits, hyphens, or underscores" in errors_on(
+               changeset
+             ).slug
+    end
+  end
+
+  describe "apps_with_invalid_slug/0" do
+    alias You.Admin.App
+
+    # Simulates a row written before this validation existed: `App.changeset/2`
+    # would now refuse this slug, but a bad row already on disk did not go
+    # through it to get there.
+    defp insert_legacy_app!(slug) do
+      %App{}
+      |> Ecto.Changeset.change(%{
+        slug: slug,
+        name: "Legacy",
+        callback_url: "https://legacy-#{System.unique_integer([:positive])}.example.com/cb",
+        allowed_roles: ["user", "admin"],
+        default_role: "user"
+      })
+      |> You.Repo.insert!()
+    end
+
+    test "is empty when every slug satisfies the rule" do
+      {:ok, _app, _secret} =
+        Admin.create_app(%{
+          slug: "clean-app",
+          name: "Clean",
+          callback_url: "https://clean.example.com/cb"
+        })
+
+      assert Admin.apps_with_invalid_slug() == []
+    end
+
+    test "reports rows whose slug predates the validation" do
+      bad = insert_legacy_app!("legacy.app")
+
+      assert [%App{id: id}] = Admin.apps_with_invalid_slug()
+      assert id == bad.id
+    end
+  end
+
   describe "app branding" do
     alias You.Admin.App
 

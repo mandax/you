@@ -43,6 +43,16 @@ defmodule You.Admin.App do
   @max_jwt_expiry_hours 720
   @max_code_expiry_minutes 60
 
+  # The slug is the OAuth client_id (app_live/show.ex) and a segment of every
+  # authorize URL, so it is constrained to what is safe in both places: a dot
+  # would make client_id ambiguous against hostname-shaped values, and a
+  # slash would break path construction. No reserved-name or DNS-label rule
+  # here — that constrains a separate `hostname_label` column (#121), kept
+  # apart precisely so hostname concerns do not reach into the client_id
+  # namespace.
+  @slug_format ~r/^[a-z0-9_-]+$/
+  @max_slug_length 64
+
   # Claims You itself issues, plus the registered JWT claims. An app that could
   # set these could rewrite its own token: `sub` is the identity the consumer
   # trusts, `role` is what it authorizes on, `exp` is the only thing making a
@@ -186,6 +196,22 @@ defmodule You.Admin.App do
   @doc "The auth methods an app may enable. `nil` on the column means all of them."
   def auth_methods, do: @auth_methods
 
+  @doc "The regex a slug must match: lowercase alphanumerics, hyphens and underscores."
+  def slug_format, do: @slug_format
+
+  @doc "The longest a slug may be."
+  def max_slug_length, do: @max_slug_length
+
+  @doc """
+  Whether `slug` violates the format or length rule `changeset/2` enforces.
+
+  Used by `mix you.audit_slugs` to find rows written before the validation
+  existed — `changeset/2` validates the whole struct, so a bad slug on a row
+  fails every future update to that app, not just ones touching the slug.
+  """
+  def invalid_slug?(slug) when is_binary(slug),
+    do: not String.match?(slug, @slug_format) or String.length(slug) > @max_slug_length
+
   def changeset(app, attrs) do
     app
     |> cast(attrs, [
@@ -214,6 +240,12 @@ defmodule You.Admin.App do
       :custom_claims
     ])
     |> validate_required([:slug, :name, :callback_url])
+    # The slug doubles as the OAuth client_id and a URL segment, so it is
+    # held to what is safe in both rather than free text.
+    |> validate_format(:slug, @slug_format,
+      message: "must contain only lowercase letters, digits, hyphens, or underscores"
+    )
+    |> validate_length(:slug, max: @max_slug_length)
     # An app with no allowed roles can never have a role assigned, so every
     # assignment attempt would fail. Keep at least one.
     |> validate_length(:allowed_roles, min: 1)
