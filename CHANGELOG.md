@@ -25,6 +25,12 @@ of them at once.
   short rather than raising, so check the count against what you exported. Run `mix you.audit_slugs`
   (`bin/you eval 'You.Release.audit_slugs()'` in a release) right after
   upgrading, before renaming anything, to find out which apps are affected.
+- **Console sections and tabs are now addressed by path, not query string.**
+  `/console?view=settings&tab=mail` is now `/console/settings/mail`, and every
+  other section and app tab moved the same way. Old `?view=`/`?tab=` links —
+  a bookmark, a link in your own docs — still work for this release: they
+  redirect (302) to the path form. That redirect is temporary; update any
+  saved links to the path form before the next release removes it.
 
 ## 0.4.0 — Per-app context, invitations, guests, and auth hardening
 

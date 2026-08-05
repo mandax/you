@@ -13,7 +13,7 @@ defmodule YouWeb.ConsoleLiveTest do
 
   test "every view mounts", %{conn: conn} do
     for view <- ~w(overview users apps providers audit webhooks settings) do
-      {:ok, _lv, html} = live(conn, "/console?view=#{view}")
+      {:ok, _lv, html} = live(conn, "/console/#{view}")
       assert html =~ "you"
     end
   end
@@ -31,7 +31,7 @@ defmodule YouWeb.ConsoleLiveTest do
     # Shown but locked, so an operator can see the feature exists rather than
     # wonder where it went.
     test "mandatory features are listed and disabled", %{conn: conn} do
-      {:ok, _lv, html} = live(conn, ~p"/console?view=features")
+      {:ok, _lv, html} = live(conn, ~p"/console/features")
 
       assert html =~ "Always on"
       assert html =~ "Password sign-in"
@@ -39,7 +39,7 @@ defmodule YouWeb.ConsoleLiveTest do
     end
 
     test "saving stores the toggles and completes onboarding", %{conn: conn} do
-      {:ok, lv, _} = live(conn, ~p"/console?view=features")
+      {:ok, lv, _} = live(conn, ~p"/console/features")
 
       html =
         lv
@@ -65,7 +65,7 @@ defmodule YouWeb.ConsoleLiveTest do
 
   describe "apps" do
     test "create reveals a one-time secret; delete removes", %{conn: conn} do
-      {:ok, lv, _} = live(conn, "/console?view=apps")
+      {:ok, lv, _} = live(conn, "/console/apps")
 
       html =
         lv
@@ -111,7 +111,7 @@ defmodule YouWeb.ConsoleLiveTest do
       {:ok, _} = You.Roles.set_role(app, user1, "admin")
       {:ok, _} = You.Roles.set_role(app, user2, "admin")
 
-      {:ok, _lv, html} = live(conn, "/console?view=apps")
+      {:ok, _lv, html} = live(conn, "/console/apps")
 
       assert html =~
                "permanently deletes 3 consents and 2 role assignments. This cannot be undone."
@@ -129,7 +129,7 @@ defmodule YouWeb.ConsoleLiveTest do
       {:ok, _} = Accounts.record_consent(user, app, ["profile"])
       {:ok, _} = You.Roles.set_role(app, user, "admin")
 
-      {:ok, _lv, html} = live(conn, "/console?view=apps")
+      {:ok, _lv, html} = live(conn, "/console/apps")
 
       assert html =~ "permanently deletes 1 consent and 1 role assignment. This cannot be undone."
     end
@@ -142,14 +142,14 @@ defmodule YouWeb.ConsoleLiveTest do
           "callback_url" => "https://no-impact.example.com/cb"
         })
 
-      {:ok, _lv, html} = live(conn, "/console?view=apps")
+      {:ok, _lv, html} = live(conn, "/console/apps")
 
       assert html =~
                "permanently deletes 0 consents and 0 role assignments. This cannot be undone."
     end
 
     test "create app with first_party true", %{conn: conn} do
-      {:ok, lv, _} = live(conn, "/console?view=apps")
+      {:ok, lv, _} = live(conn, "/console/apps")
 
       lv
       |> form("#new-app form", %{
@@ -167,7 +167,7 @@ defmodule YouWeb.ConsoleLiveTest do
 
   describe "provider setup guidance" do
     test "the new-provider dialog shows steps and the callback URL", %{conn: conn} do
-      {:ok, lv, _} = live(conn, ~p"/console?view=providers")
+      {:ok, lv, _} = live(conn, ~p"/console/providers")
 
       html = render_click(lv, "select_new_provider_preset", %{"value" => "github"})
 
@@ -180,7 +180,7 @@ defmodule YouWeb.ConsoleLiveTest do
     end
 
     test "guidance changes with the selected preset", %{conn: conn} do
-      {:ok, lv, _} = live(conn, ~p"/console?view=providers")
+      {:ok, lv, _} = live(conn, ~p"/console/providers")
 
       html = render_click(lv, "select_new_provider_preset", %{"value" => "slack"})
       assert html =~ "OAuth &amp; Permissions"
@@ -189,7 +189,7 @@ defmodule YouWeb.ConsoleLiveTest do
 
     # The generic preset has no vendor console to describe.
     test "the generic preset shows no guidance", %{conn: conn} do
-      {:ok, lv, _} = live(conn, ~p"/console?view=providers")
+      {:ok, lv, _} = live(conn, ~p"/console/providers")
 
       html = render_click(lv, "select_new_provider_preset", %{"value" => "generic"})
       refute html =~ "Where to get these credentials"
@@ -208,7 +208,7 @@ defmodule YouWeb.ConsoleLiveTest do
       {:ok, _, _} =
         Admin.create_app(%{slug: "beta", name: "Beta", callback_url: "https://b.example.com/cb"})
 
-      {:ok, lv, html} = live(conn, ~p"/console?view=apps")
+      {:ok, lv, html} = live(conn, ~p"/console/apps")
       assert html =~ ~s(phx-change="filter_apps")
 
       html = render_change(lv, "filter_apps", %{"query" => "alph"})
@@ -222,12 +222,12 @@ defmodule YouWeb.ConsoleLiveTest do
     end
 
     test "webhooks list has a search box", %{conn: conn} do
-      {:ok, _lv, html} = live(conn, ~p"/console?view=webhooks")
+      {:ok, _lv, html} = live(conn, ~p"/console/webhooks")
       assert html =~ ~s(phx-change="filter_webhooks")
     end
 
     test "providers list has a search box", %{conn: conn} do
-      {:ok, _lv, html} = live(conn, ~p"/console?view=providers")
+      {:ok, _lv, html} = live(conn, ~p"/console/providers")
       assert html =~ ~s(phx-change="filter_providers")
     end
   end
@@ -235,7 +235,7 @@ defmodule YouWeb.ConsoleLiveTest do
   describe "users" do
     test "change You role via the role dropdown", %{conn: conn} do
       other = You.AccountsFixtures.user_fixture()
-      {:ok, lv, _} = live(conn, "/console?view=users")
+      {:ok, lv, _} = live(conn, "/console/users")
 
       render_click(lv, "edit_user", %{"id" => other.id})
       render_click(lv, "set_you_role", %{"user_id" => other.id, "role" => "admin"})
@@ -246,7 +246,7 @@ defmodule YouWeb.ConsoleLiveTest do
     end
 
     test "admin cannot revoke their own admin rights", %{conn: conn, admin: admin} do
-      {:ok, lv, _} = live(conn, "/console?view=users")
+      {:ok, lv, _} = live(conn, "/console/users")
 
       render_click(lv, "edit_user", %{"id" => admin.id})
       render_click(lv, "set_you_role", %{"user_id" => admin.id, "role" => "user"})
@@ -256,7 +256,7 @@ defmodule YouWeb.ConsoleLiveTest do
     test "logout revokes sessions and anonymize wipes the account", %{conn: conn} do
       other = You.AccountsFixtures.user_fixture()
       token = Accounts.generate_user_session_token(other)
-      {:ok, lv, _} = live(conn, "/console?view=users")
+      {:ok, lv, _} = live(conn, "/console/users")
 
       render_click(lv, "logout_user", %{"id" => other.id})
       assert Accounts.get_user_by_session_token(token) == nil
@@ -290,7 +290,7 @@ defmodule YouWeb.ConsoleLiveTest do
         self()
       )
 
-      {:ok, lv, _} = live(conn, "/console?view=users")
+      {:ok, lv, _} = live(conn, "/console/users")
       render_click(lv, "edit_user", %{"id" => other.id})
       html = render_click(lv, "reset_2fa", %{"id" => other.id})
 
@@ -319,7 +319,7 @@ defmodule YouWeb.ConsoleLiveTest do
       {:ok, _} = Accounts.enable_totp(other, NimbleTOTP.verification_code(secret))
       other = Accounts.get_user!(other.id)
 
-      {:ok, lv, _} = live(conn, "/console?view=users")
+      {:ok, lv, _} = live(conn, "/console/users")
       render_click(lv, "edit_user", %{"id" => other.id})
       render_click(lv, "reset_2fa", %{"id" => other.id})
 
@@ -340,7 +340,7 @@ defmodule YouWeb.ConsoleLiveTest do
 
     test "filters narrow the user list", %{conn: conn} do
       You.AccountsFixtures.user_fixture(%{email: "findme@example.com"})
-      {:ok, lv, _} = live(conn, "/console?view=users")
+      {:ok, lv, _} = live(conn, "/console/users")
 
       html = render_change(lv, "filter_users", %{"email" => "findme"})
       assert html =~ "findme@example.com"
@@ -369,7 +369,7 @@ defmodule YouWeb.ConsoleLiveTest do
 
       other = You.AccountsFixtures.user_fixture()
       {:ok, _} = You.Roles.set_role(app, admin, "admin")
-      {:ok, lv, _} = live(conn, "/console?view=users")
+      {:ok, lv, _} = live(conn, "/console/users")
 
       render_click(lv, "filter_users", %{"filter_key" => "app", "value" => to_string(app.id)})
       html = render_click(lv, "filter_users", %{"filter_key" => "role", "value" => "admin"})
@@ -389,7 +389,7 @@ defmodule YouWeb.ConsoleLiveTest do
         })
 
       other = You.AccountsFixtures.user_fixture()
-      {:ok, lv, _} = live(conn, "/console?view=users")
+      {:ok, lv, _} = live(conn, "/console/users")
 
       render_click(lv, "edit_user", %{"id" => other.id})
 
@@ -411,7 +411,7 @@ defmodule YouWeb.ConsoleLiveTest do
       })
 
       _ = :sys.get_state(You.Audit.Streamer)
-      {:ok, lv, _} = live(conn, "/console?view=audit")
+      {:ok, lv, _} = live(conn, "/console/audit")
       assert render(lv) =~ "needle-xyz"
 
       assert render_change(lv, "filter_audit", %{"filter" => "needle"}) =~ "needle-xyz"
@@ -419,7 +419,7 @@ defmodule YouWeb.ConsoleLiveTest do
     end
 
     test "app select is wired to filter_audit_app", %{conn: conn} do
-      {:ok, _lv, html} = live(conn, "/console?view=audit")
+      {:ok, _lv, html} = live(conn, "/console/audit")
 
       assert html =~ ~s(id="filter-audit-app")
       assert html =~ ~s(data-on-change="filter_audit_app")
@@ -458,7 +458,7 @@ defmodule YouWeb.ConsoleLiveTest do
       })
 
       _ = :sys.get_state(You.Audit.Streamer)
-      {:ok, lv, html} = live(conn, "/console?view=audit")
+      {:ok, lv, html} = live(conn, "/console/audit")
 
       # sanity: all three events show up unfiltered. Assertions below key on
       # `app_slug=&quot;...&quot;` (the metadata brief, HTML-escaped by HEEx)
@@ -519,7 +519,7 @@ defmodule YouWeb.ConsoleLiveTest do
       })
 
       _ = :sys.get_state(You.Audit.Streamer)
-      {:ok, lv, _html} = live(conn, "/console?view=audit")
+      {:ok, lv, _html} = live(conn, "/console/audit")
 
       filtered = render_click(lv, "filter_audit_app", %{"value" => "legacy-app"})
 
@@ -531,11 +531,11 @@ defmodule YouWeb.ConsoleLiveTest do
 
   describe "settings" do
     test "renders as tabs, defaulting to the first", %{conn: conn} do
-      {:ok, _lv, html} = live(conn, "/console?view=settings")
+      {:ok, _lv, html} = live(conn, "/console/settings")
 
       assert html =~ ~s(role="tablist")
       assert html =~ "Session &amp; tokens"
-      assert html =~ ~s(href="/console?view=settings&amp;tab=mail")
+      assert html =~ ~s(href="/console/settings/mail")
       # Asserted as independent attributes rather than one contiguous string:
       # attribute order is not part of the contract, and pinning it makes an
       # unrelated addition look like a regression.
@@ -545,15 +545,15 @@ defmodule YouWeb.ConsoleLiveTest do
       refute html =~ "SMTP host"
     end
 
-    test "?tab= selects the matching tab", %{conn: conn} do
-      {:ok, _lv, html} = live(conn, "/console?view=settings&tab=mail")
+    test "the tab path segment selects the matching tab", %{conn: conn} do
+      {:ok, _lv, html} = live(conn, "/console/settings/mail")
 
       assert html =~ "SMTP host"
       refute html =~ "Session expiry"
     end
 
-    test "an unknown ?tab= falls back to the first tab rather than blanking", %{conn: conn} do
-      {:ok, _lv, html} = live(conn, "/console?view=settings&tab=bogus")
+    test "an unknown tab falls back to the first tab rather than blanking", %{conn: conn} do
+      {:ok, _lv, html} = live(conn, "/console/settings/bogus")
 
       assert html =~ "Session expiry"
       assert html =~ ~r/id="tab-session"[^>]*aria-selected="true"/
@@ -563,7 +563,7 @@ defmodule YouWeb.ConsoleLiveTest do
     # exactly what a refactor of the hoisted wrapper would break, and what a
     # reviewer misread as already broken.
     test "the Federation tab renders reference material and no form", %{conn: conn} do
-      {:ok, _lv, html} = live(conn, "/console?view=settings&tab=federation")
+      {:ok, _lv, html} = live(conn, "/console/settings/federation")
 
       refute html =~ "Save settings"
       refute html =~ "save_settings"
@@ -574,7 +574,7 @@ defmodule YouWeb.ConsoleLiveTest do
     # what stops one being dropped from the UI unnoticed, which would leave it
     # configurable only through the database.
     test "the Integrations tab carries every field that moved into it", %{conn: conn} do
-      {:ok, _lv, html} = live(conn, "/console?view=settings&tab=integrations")
+      {:ok, _lv, html} = live(conn, "/console/settings/integrations")
 
       for name <- ~w(scim_bearer_token audit_webhook_url api_token analytics_src analytics_domain) do
         assert html =~ ~s(name="#{name}"), "#{name} is missing from the Integrations tab"
@@ -583,7 +583,7 @@ defmodule YouWeb.ConsoleLiveTest do
 
     test "saving persists SCIM token and audit webhook", %{conn: conn} do
       on_exit(fn -> Application.put_env(:you, :audit_webhook_url, "") end)
-      {:ok, lv, _} = live(conn, "/console?view=settings&tab=integrations")
+      {:ok, lv, _} = live(conn, "/console/settings/integrations")
 
       render_submit(form(lv, "form[phx-submit=save_settings]"), %{
         "scim_bearer_token" => "sekret",
@@ -602,7 +602,7 @@ defmodule YouWeb.ConsoleLiveTest do
           callback_url: "https://solo.example.com/cb"
         })
 
-      {:ok, lv, html} = live(conn, "/console?view=settings&tab=deployment")
+      {:ok, lv, html} = live(conn, "/console/settings/deployment")
       refute html =~ ~s(href="/console/apps/solo")
 
       render_submit(form(lv, "form[phx-submit=save_settings]"), %{"you_mode" => "single"})
@@ -617,7 +617,7 @@ defmodule YouWeb.ConsoleLiveTest do
       Settings.set(:erlang_cookie, "super-secret-cookie")
       on_exit(fn -> Settings.set(:erlang_cookie, "") end)
 
-      {:ok, lv, _html} = live(conn, "/console?view=settings&tab=distribution")
+      {:ok, lv, _html} = live(conn, "/console/settings/distribution")
 
       refute render(lv) =~ "super-secret-cookie"
 
@@ -639,7 +639,7 @@ defmodule YouWeb.ConsoleLiveTest do
       Settings.set(:mail_from, "noreply@example.com")
       on_exit(fn -> Settings.set(:mail_from, "") end)
 
-      {:ok, lv, _html} = live(conn, "/console?view=settings&tab=session")
+      {:ok, lv, _html} = live(conn, "/console/settings/session")
 
       render_submit(form(lv, "form[phx-submit=save_settings]"), %{
         "jwt_expiry_hours" => "48"
@@ -652,13 +652,13 @@ defmodule YouWeb.ConsoleLiveTest do
 
   describe "providers" do
     test "the nav links to the providers view", %{conn: conn} do
-      {:ok, _lv, html} = live(conn, "/console?view=overview")
-      assert html =~ ~s(href="/console?view=providers")
+      {:ok, _lv, html} = live(conn, "/console/overview")
+      assert html =~ ~s(href="/console/providers")
       assert html =~ "Providers"
     end
 
     test "create from a preset expands the preset's endpoints", %{conn: conn} do
-      {:ok, lv, _} = live(conn, "/console?view=providers")
+      {:ok, lv, _} = live(conn, "/console/providers")
 
       # Selecting the preset through the real select event first, matching how
       # a browser would: `form/3` refuses to override a hidden input to a
@@ -684,7 +684,7 @@ defmodule YouWeb.ConsoleLiveTest do
     end
 
     test "create a generic provider with hand-entered endpoints", %{conn: conn} do
-      {:ok, lv, _} = live(conn, "/console?view=providers")
+      {:ok, lv, _} = live(conn, "/console/providers")
 
       lv
       |> form("#new-provider-form", %{
@@ -708,7 +708,7 @@ defmodule YouWeb.ConsoleLiveTest do
     end
 
     test "the preset select is wired to select_new_provider_preset", %{conn: conn} do
-      {:ok, _lv, html} = live(conn, "/console?view=providers")
+      {:ok, _lv, html} = live(conn, "/console/providers")
 
       assert html =~ ~s(id="new-provider-preset")
       assert html =~ ~s(data-on-change="select_new_provider_preset")
@@ -716,7 +716,7 @@ defmodule YouWeb.ConsoleLiveTest do
 
     test "picking a named preset hides the endpoint fields the generic preset shows",
          %{conn: conn} do
-      {:ok, lv, html} = live(conn, "/console?view=providers")
+      {:ok, lv, html} = live(conn, "/console/providers")
       # "generic" is the default preset, so the endpoint fields start visible.
       assert html =~ ~s(name="authorize_url")
 
@@ -737,7 +737,7 @@ defmodule YouWeb.ConsoleLiveTest do
           "client_secret" => "csecret"
         })
 
-      {:ok, lv, _} = live(conn, "/console?view=providers")
+      {:ok, lv, _} = live(conn, "/console/providers")
 
       render_click(lv, "edit_provider", %{"id" => provider.id})
 
@@ -765,7 +765,7 @@ defmodule YouWeb.ConsoleLiveTest do
           "kind" => "generic"
         })
 
-      {:ok, lv, html} = live(conn, "/console?view=providers")
+      {:ok, lv, html} = live(conn, "/console/providers")
       refute html =~ ~s(id="edit-provider-form")
 
       html = render_click(lv, "edit_provider", %{"id" => provider.id})
@@ -787,7 +787,7 @@ defmodule YouWeb.ConsoleLiveTest do
           "client_secret" => "super-secret-value"
         })
 
-      {:ok, lv, html} = live(conn, "/console?view=providers")
+      {:ok, lv, html} = live(conn, "/console/providers")
       refute html =~ "super-secret-value"
 
       html = render_click(lv, "edit_provider", %{"id" => provider.id})
@@ -826,7 +826,7 @@ defmodule YouWeb.ConsoleLiveTest do
           "kind" => "generic"
         })
 
-      {:ok, lv, html} = live(conn, "/console?view=providers")
+      {:ok, lv, html} = live(conn, "/console/providers")
       assert html =~ ~s(phx-click="toggle_provider")
       assert html =~ ~s(phx-value-id="#{provider.id}")
 
@@ -845,7 +845,7 @@ defmodule YouWeb.ConsoleLiveTest do
           "kind" => "generic"
         })
 
-      {:ok, lv, html} = live(conn, "/console?view=providers")
+      {:ok, lv, html} = live(conn, "/console/providers")
 
       # Confirm the same `<button>` carries `phx-click="delete_provider"`,
       # `phx-value-id`, and `data-confirm` together — not merely that each
@@ -881,7 +881,7 @@ defmodule YouWeb.ConsoleLiveTest do
       server = start_supervised!({Bandit, plug: plug, port: port, ip: :loopback})
       on_exit(fn -> Process.unlink(server) end)
 
-      {:ok, lv, _html} = live(conn, "/console?view=providers")
+      {:ok, lv, _html} = live(conn, "/console/providers")
       render_click(lv, "select_new_provider_preset", %{"value" => "generic"})
 
       html =
@@ -900,14 +900,14 @@ defmodule YouWeb.ConsoleLiveTest do
       extra_admin = You.AccountsFixtures.user_fixture()
       Admin.promote_admin!(extra_admin)
 
-      {:ok, _lv, html} = live(conn, "/console?view=overview")
+      {:ok, _lv, html} = live(conn, "/console/overview")
 
       assert metric_value(html, "Users") == Admin.count_users()
       assert metric_value(html, "Admins") == Admin.count_admins()
     end
 
     test "patching to another view loads that view's data", %{conn: conn} do
-      {:ok, lv, _html} = live(conn, "/console?view=audit")
+      {:ok, lv, _html} = live(conn, "/console/audit")
 
       html = lv |> element("a", "add a webhook for durable retention") |> render_click()
 
@@ -919,7 +919,7 @@ defmodule YouWeb.ConsoleLiveTest do
     } do
       other = You.AccountsFixtures.user_fixture()
       token = Accounts.generate_user_session_token(other)
-      {:ok, lv, _html} = live(conn, "/console?view=users")
+      {:ok, lv, _html} = live(conn, "/console/users")
 
       {:ok, _app, _secret} =
         Admin.create_app(%{
@@ -937,7 +937,7 @@ defmodule YouWeb.ConsoleLiveTest do
     test "the 5s tick reloads the audit feed only on the overview and audit views", %{
       conn: conn
     } do
-      {:ok, lv, _html} = live(conn, "/console?view=overview")
+      {:ok, lv, _html} = live(conn, "/console/overview")
 
       :telemetry.execute([:you, :audit, :admin, :action], %{}, %{
         action: "probe",
@@ -954,7 +954,7 @@ defmodule YouWeb.ConsoleLiveTest do
     test "the 5s tick does not re-query users, apps, or providers on other views", %{
       conn: conn
     } do
-      {:ok, lv, html} = live(conn, "/console?view=apps")
+      {:ok, lv, html} = live(conn, "/console/apps")
       refute html =~ "Ghost App"
 
       {:ok, _app, _secret} =
@@ -966,6 +966,30 @@ defmodule YouWeb.ConsoleLiveTest do
 
       send(lv.pid, :refresh)
       refute render(lv) =~ "Ghost App"
+    end
+  end
+
+  describe "path-based sections (#136)" do
+    test "switching sections patches rather than remounts", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/console/users")
+      pid = lv.pid
+
+      html = render_patch(lv, ~p"/console/settings")
+
+      assert lv.pid == pid
+      assert html =~ "Session &amp; tokens"
+    end
+
+    test "the old ?view=x&tab=y query form redirects to the path equivalent", %{conn: conn} do
+      conn = get(conn, "/console?view=settings&tab=mail")
+
+      assert redirected_to(conn) == "/console/settings/mail"
+    end
+
+    test "the old ?view=x query form redirects to the view's path", %{conn: conn} do
+      conn = get(conn, "/console?view=users")
+
+      assert redirected_to(conn) == "/console/users"
     end
   end
 

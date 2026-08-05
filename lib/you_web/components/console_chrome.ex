@@ -72,7 +72,8 @@ defmodule YouWeb.Components.ConsoleChrome do
 
   @doc """
   Nav ids naming a section the console renders. Entries carrying `:href` point
-  elsewhere, so they are valid nav ids but not valid `?view=` values.
+  elsewhere, so they are valid nav ids but not valid `/console/<view>`
+  segments.
   """
   def section_ids do
     nav() |> Enum.reject(&Map.has_key?(&1, :href)) |> Enum.map(& &1.id)
@@ -101,7 +102,7 @@ defmodule YouWeb.Components.ConsoleChrome do
         <nav class="flex-1 space-y-px px-2 pt-3">
           <.link
             :for={n <- @nav}
-            navigate={n[:href] || ~p"/console?view=#{n.id}"}
+            navigate={n[:href] || nav_href(n.id)}
             aria-current={@active == n.id && "page"}
             class={[
               "group flex h-8 w-full items-center gap-2.5 rounded-md px-3 text-sm transition-colors",
@@ -157,6 +158,12 @@ defmodule YouWeb.Components.ConsoleChrome do
     </div>
     """
   end
+
+  # `/console` itself is overview's canonical address (see the route table in
+  # `YouWeb.Router`), not `/console/overview` — every other section is a path
+  # segment under it.
+  defp nav_href("overview"), do: ~p"/console"
+  defp nav_href(id), do: ~p"/console/#{id}"
 
   @doc """
   Bordered table with a mono header row and an empty state that spans every
@@ -224,12 +231,10 @@ defmodule YouWeb.Components.ConsoleChrome do
   end
 
   @doc """
-  Tab strip that patches `?tab=`. Each tab is `{id, label}`.
+  Tab strip that patches to `path/id`. Each tab is `{id, label}`.
 
-  `path` may already carry its own query string (a page addressed by
-  `?view=`, for instance) — `tab=` is appended with `&` when it does and `?`
-  when it doesn't, so a tab never clobbers the query that got the visitor to
-  this page.
+  `path` is the tabbed page's own base path (`/console/settings`,
+  `/console/apps/solo`) — each tab appends its id as a further segment.
 
   Each tab gets `id="tab-\#{id}"` and `aria-controls="tabpanel-\#{id}"`; the
   page rendering the active panel is responsible for giving it a matching
@@ -245,7 +250,7 @@ defmodule YouWeb.Components.ConsoleChrome do
       <.link
         :for={{id, label} <- @tabs}
         id={"tab-#{id}"}
-        patch={tab_href(@path, id)}
+        patch={"#{@path}/#{id}"}
         role="tab"
         aria-selected={to_string(@active == id)}
         aria-controls={@active == id && "tabpanel-#{id}"}
@@ -261,11 +266,6 @@ defmodule YouWeb.Components.ConsoleChrome do
       </.link>
     </div>
     """
-  end
-
-  defp tab_href(path, id) do
-    separator = if String.contains?(path, "?"), do: "&", else: "?"
-    "#{path}#{separator}tab=#{id}"
   end
 
   @doc "Section card with a title and free-form body."

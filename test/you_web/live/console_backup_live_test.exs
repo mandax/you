@@ -30,7 +30,7 @@ defmodule YouWeb.ConsoleBackupLiveTest do
   test "submitting the export form flips the trigger and points at the download route", %{
     conn: conn
   } do
-    {:ok, lv, html} = live(conn, "/console?view=backup")
+    {:ok, lv, html} = live(conn, "/console/backup")
     refute html =~ "phx-trigger-action"
 
     html =
@@ -44,7 +44,7 @@ defmodule YouWeb.ConsoleBackupLiveTest do
   end
 
   test "a short export password is refused", %{conn: conn} do
-    {:ok, lv, _html} = live(conn, "/console?view=backup")
+    {:ok, lv, _html} = live(conn, "/console/backup")
 
     html =
       render_submit(form(lv, "#export-form"), %{
@@ -57,7 +57,7 @@ defmodule YouWeb.ConsoleBackupLiveTest do
   end
 
   test "a mismatched confirmation is refused", %{conn: conn} do
-    {:ok, lv, _html} = live(conn, "/console?view=backup")
+    {:ok, lv, _html} = live(conn, "/console/backup")
 
     html =
       render_submit(form(lv, "#export-form"), %{
@@ -82,7 +82,7 @@ defmodule YouWeb.ConsoleBackupLiveTest do
     sealed = Bundle.export() |> Vault.seal(@password)
     Settings.set(:jwt_expiry_hours, 9)
 
-    {:ok, lv, _html} = live(conn, "/console?view=backup")
+    {:ok, lv, _html} = live(conn, "/console/backup")
 
     upload = bundle_upload(lv, sealed)
     render_upload(upload, "bundle.you-bundle")
@@ -113,7 +113,7 @@ defmodule YouWeb.ConsoleBackupLiveTest do
 
     sealed = Vault.seal(payload, @password)
 
-    {:ok, lv, _html} = live(conn, "/console?view=backup")
+    {:ok, lv, _html} = live(conn, "/console/backup")
 
     upload = bundle_upload(lv, sealed)
     render_upload(upload, "bundle.you-bundle")
@@ -133,7 +133,7 @@ defmodule YouWeb.ConsoleBackupLiveTest do
   test "a wrong password is reported without crashing, and can be retried", %{conn: conn} do
     sealed = Bundle.export() |> Vault.seal(@password)
 
-    {:ok, lv, _html} = live(conn, "/console?view=backup")
+    {:ok, lv, _html} = live(conn, "/console/backup")
 
     upload = bundle_upload(lv, sealed)
     render_upload(upload, "bundle.you-bundle")
@@ -149,7 +149,7 @@ defmodule YouWeb.ConsoleBackupLiveTest do
   end
 
   test "a file that is not a bundle is reported as malformed", %{conn: conn} do
-    {:ok, lv, _html} = live(conn, "/console?view=backup")
+    {:ok, lv, _html} = live(conn, "/console/backup")
 
     upload = bundle_upload(lv, "not a bundle at all", "bundle.you-bundle")
     render_upload(upload, "bundle.you-bundle")
@@ -163,7 +163,7 @@ defmodule YouWeb.ConsoleBackupLiveTest do
   test "an unsupported version is reported distinctly", %{conn: conn} do
     sealed = Vault.seal(%{"version" => 999}, @password)
 
-    {:ok, lv, _html} = live(conn, "/console?view=backup")
+    {:ok, lv, _html} = live(conn, "/console/backup")
 
     upload = bundle_upload(lv, sealed)
     render_upload(upload, "bundle.you-bundle")
@@ -175,7 +175,7 @@ defmodule YouWeb.ConsoleBackupLiveTest do
   end
 
   test "submitting the password without a file is a flash, not a crash", %{conn: conn} do
-    {:ok, lv, _html} = live(conn, "/console?view=backup")
+    {:ok, lv, _html} = live(conn, "/console/backup")
 
     html =
       render_submit(form(lv, "form[phx-submit=preview_import]"), %{"password" => @password})
@@ -197,7 +197,7 @@ defmodule YouWeb.ConsoleBackupLiveTest do
     sealed = Bundle.export() |> Vault.seal(@password)
     Settings.set(:jwt_expiry_hours, 1)
 
-    {:ok, lv, _html} = live(conn, "/console?view=backup")
+    {:ok, lv, _html} = live(conn, "/console/backup")
 
     upload = bundle_upload(lv, sealed)
     render_upload(upload, "bundle.you-bundle")

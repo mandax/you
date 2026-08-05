@@ -13,9 +13,9 @@ This is a web application written using the Phoenix web framework.
 
   `config/*.exs` is the exception: no private functions to extract to, so keep it compact and flat instead.
 - Documentation belongs in `@doc` and `@moduledoc`. Avoid inline `#` comments that narrate what the code is doing inside a function body; a short one is fine for a genuinely non-obvious guard.
-- **Any console page with more than one context uses tabs**, not stacked sections in one scrolling form. `?tab=` names the active one, so a context is linkable and a refresh keeps it. Standard, established in `app_live/show.ex` and applied to `console_live.ex`'s Settings view:
-  - Reuse `tab_strip/1` from `YouWeb.Components.ConsoleChrome` — never a local reimplementation. It appends `tab=` to whatever query string `path` already carries (`&` if one exists, `?` otherwise), so a page addressed by its own query param (`?view=settings`) doesn't collide with the tab param (`?view=settings&tab=mail`, not `?view=settings?tab=mail`).
-  - `handle_params/3` resolves `?tab=` against the known tab ids and falls back to the first tab on anything unknown or missing — never a blank page. See `app_live/show.ex`'s `handle_params/3`.
+- **Any console page with more than one context uses tabs**, not stacked sections in one scrolling form. The active tab is a path segment, not a query param — `/console/apps/:slug/:tab`, `/console/:view/:tab` — so a context is linkable and a refresh keeps it. Standard, established in `app_live/show.ex` and applied to `console_live.ex`'s Settings view:
+  - Reuse `tab_strip/1` from `YouWeb.Components.ConsoleChrome` — never a local reimplementation. It takes the page's own base path (`/console/settings`, `/console/apps/solo`) and appends each tab's id as a further segment; it never emits a query string.
+  - `handle_params/3` resolves the tab path segment against the known tab ids and falls back to the first tab on anything unknown or missing — never a blank page. See `app_live/show.ex`'s `handle_params/3`.
   - Tabs group by *context*, not to even out field counts per tab. The natural boundary is usually already visible as separate groups/sections in the pre-tab layout — consolidate two only when they are plainly one concern.
   - Give each tab its own `<form>` rather than one form spanning every tab, so a save only touches what the admin is looking at. This is safe by construction wherever a save handler reads only the params present in the submit (skips absent keys).
 

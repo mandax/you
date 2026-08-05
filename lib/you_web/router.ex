@@ -73,23 +73,44 @@ defmodule YouWeb.Router do
     get "/sitemap.xml", SEOController, :sitemap
   end
 
+  # Admin-only and local-transport-only: it holds magic links and 2FA codes,
+  # and Swoosh runs no storage process when mail goes out over SMTP.
+  #
+  # Declared ahead of the `/:view` catch-all below: both are a single path
+  # segment under `/console`, and the literal `/mailbox` must win the match
+  # or every hit here would be read as the console view named "mailbox".
+  scope "/console" do
+    pipe_through [:browser, :require_authenticated_user, :require_admin, :require_local_mailbox]
+
+    forward "/mailbox", Plug.Swoosh.MailboxPreview
+  end
+
+  # Console sections and Settings/app tabs are path segments, not query
+  # params (`/console/settings/mail`, `/console/apps/solo/members`) — a place
+  # is a path. Order is load-bearing:
+  #
+  #   - `/apps/:slug` must precede `/:view/:tab`, or `/console/apps/solo`
+  #     resolves as the `apps` *view* with a tab named `solo` instead of the
+  #     per-app page.
+  #   - `/apps/new` (app creation, #130) must precede `/apps/:slug`, or
+  #     `new` is read as a slug — not declared here since that page does not
+  #     exist yet; #130 must insert it above `/apps/:slug` when it lands.
+  #
+  # Consequence to accept: the apps registry can never have tabs of its own,
+  # since `/console/apps/<x>` is already claimed by the per-app page. That is
+  # fine — it is a list, and lists do not need tabs.
   scope "/console", YouWeb do
     pipe_through [:browser, :require_authenticated_user, :require_admin]
 
     live_session :admin, on_mount: {YouWeb.UserAuth, :default} do
       live "/", ConsoleLive, :index
       live "/apps/:slug", AppLive.Show, :show
+      live "/apps/:slug/:tab", AppLive.Show, :show
+      live "/:view", ConsoleLive, :index
+      live "/:view/:tab", ConsoleLive, :index
     end
 
     post "/backup/export", ConsoleBackupController, :export
-  end
-
-  # Admin-only and local-transport-only: it holds magic links and 2FA codes,
-  # and Swoosh runs no storage process when mail goes out over SMTP.
-  scope "/console" do
-    pipe_through [:browser, :require_authenticated_user, :require_admin, :require_local_mailbox]
-
-    forward "/mailbox", Plug.Swoosh.MailboxPreview
   end
 
   defp ensure_local_mailbox(conn, _opts) do

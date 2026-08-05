@@ -4,8 +4,8 @@ defmodule YouWeb.ConsoleLive do
 
   A single LiveView shell (sidebar + topbar + section views) with a dense,
   mono-accented design: cards and tables, a live
-  connection indicator, and `?view=` navigation. Every section is wired to the
-  real domain (`You.Admin`, `You.Settings`,
+  connection indicator, and sections addressed at `/console/<view>`. Every
+  section is wired to the real domain (`You.Admin`, `You.Settings`,
   `You.Audit.Streamer`). No fabricated data.
   """
   use YouWeb, :live_view
@@ -165,26 +165,58 @@ defmodule YouWeb.ConsoleLive do
   end
 
   @doc """
-  Resolves `?view=` and loads exactly the data that view renders.
+  Resolves the section and Settings tab from the path and loads exactly the
+  data that section renders.
 
   `handle_params/3` runs after `mount/3` on every render — disconnected and
   connected alike — so this is the one place a view's dataset needs loading;
   nothing is preloaded in `mount/3` that might not match the view a
   redirect or deep link actually lands on.
+
+  A request still shaped like the old `/console?view=x&tab=y` query string —
+  an admin's bookmark, a link in published docs — is redirected to its path
+  equivalent rather than served, via `legacy_redirect/2`.
   """
   @impl true
-  def handle_params(params, _uri, socket) do
-    # First admin login lands here rather than on an overview of a console
-    # they have not shaped yet.
-    default = if socket.assigns.onboarding, do: "features", else: "overview"
-    view = params["view"] || default
-    view = if view in section_ids(), do: view, else: default
+  def handle_params(params, uri, socket) do
+    case legacy_redirect(uri, params) do
+      {:redirect, to} ->
+        {:noreply, redirect(socket, to: to)}
 
-    {:noreply,
-     socket
-     |> assign(view: view, settings_tab: settings_tab(params["tab"]), saved: false)
-     |> load_view(view)}
+      :ok ->
+        # First admin login lands here rather than on an overview of a console
+        # they have not shaped yet.
+        default = if socket.assigns.onboarding, do: "features", else: "overview"
+        view = params["view"] || default
+        view = if view in section_ids(), do: view, else: default
+
+        {:noreply,
+         socket
+         |> assign(view: view, settings_tab: settings_tab(params["tab"]), saved: false)
+         |> load_view(view)}
+    end
   end
+
+  # Redirects the pre-#136 `/console?view=x&tab=y` query form to its path
+  # equivalent `/console/x` (or `/console/x/y`), kept for one release so an
+  # admin's bookmark or a published doc link still lands somewhere. Fires only
+  # on the bare `/console` path carrying a `view` query param — `/console/x`
+  # itself sets `params["view"]` from the path segment and must render
+  # normally rather than redirect to itself.
+  defp legacy_redirect(uri, %{"view" => view} = params) do
+    case URI.parse(uri) do
+      %URI{path: "/console", query: query} when is_binary(query) ->
+        to =
+          if params["tab"], do: ~p"/console/#{view}/#{params["tab"]}", else: ~p"/console/#{view}"
+
+        {:redirect, to}
+
+      _ ->
+        :ok
+    end
+  end
+
+  defp legacy_redirect(_uri, _params), do: :ok
 
   defp settings_tab(tab) do
     if List.keymember?(@settings_tabs, tab, 0), do: tab, else: elem(hd(@settings_tabs), 0)
@@ -1703,7 +1735,7 @@ defmodule YouWeb.ConsoleLive do
       <div class="flex items-center justify-between gap-4">
         <p class="font-mono text-xs text-muted-foreground">
           in-memory, capped at 100 events
-          <.link patch={~p"/console?view=webhooks"} class="text-primary hover:underline">
+          <.link patch={~p"/console/webhooks"} class="text-primary hover:underline">
             add a webhook for durable retention
           </.link>
         </p>
@@ -2167,7 +2199,7 @@ defmodule YouWeb.ConsoleLive do
         <span class="lucide-check size-4 block text-signal-ok" /> Settings saved.
       </div>
 
-      <.tab_strip tabs={@tabs} active={@tab} path={~p"/console?view=settings"} />
+      <.tab_strip tabs={@tabs} active={@tab} path={~p"/console/settings"} />
 
       <div id={"tabpanel-#{@tab}"} role="tabpanel" tabindex="0" aria-labelledby={"tab-#{@tab}"}>
         <.federation_panel

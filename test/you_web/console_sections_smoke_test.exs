@@ -33,7 +33,7 @@ defmodule YouWeb.ConsoleSectionsSmokeTest do
 
   test "every section renders, then survives a tick and a mutation", %{conn: conn} do
     for view <- ~w(overview users apps providers audit webhooks emails features settings backup) do
-      {:ok, lv, html} = live(conn, "/console?view=#{view}")
+      {:ok, lv, html} = live(conn, "/console/#{view}")
       assert html =~ "YOU"
 
       send(lv.pid, :refresh)
@@ -43,11 +43,16 @@ defmodule YouWeb.ConsoleSectionsSmokeTest do
 
   test "navigating between sections loads each one's data", %{conn: conn} do
     for view <- ~w(users apps providers audit webhooks emails settings backup overview) do
-      {:ok, lv, _} = live(conn, ~p"/console?view=overview")
+      {:ok, lv, _} = live(conn, ~p"/console/overview")
+
+      # "overview" is the one section whose nav href is the bare `/console`
+      # (its canonical address, per the route table in `YouWeb.Router`)
+      # rather than `/console/overview`.
+      href = if view == "overview", do: "/console", else: "/console/#{view}"
 
       {:ok, _lv, html} =
         lv
-        |> element("a[href='/console?view=#{view}']")
+        |> element("a[href='#{href}']")
         |> render_click()
         |> follow_redirect(conn)
 

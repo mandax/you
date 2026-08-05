@@ -17,7 +17,7 @@ defmodule YouWeb.ConsoleEmailTemplatesTest do
   end
 
   test "lists every template and marks the untouched ones as default", %{conn: conn} do
-    {:ok, _lv, html} = live(conn, ~p"/console?view=emails")
+    {:ok, _lv, html} = live(conn, ~p"/console/emails")
 
     for definition <- EmailTemplates.definitions() do
       assert html =~ definition.label
@@ -27,7 +27,7 @@ defmodule YouWeb.ConsoleEmailTemplatesTest do
   end
 
   test "saving stores an override", %{conn: conn} do
-    {:ok, lv, _html} = live(conn, ~p"/console?view=emails")
+    {:ok, lv, _html} = live(conn, ~p"/console/emails")
 
     lv
     |> form("#email-template-magic_link", %{"subject" => "Meridian sign-in", "body" => "{{url}}"})
@@ -37,7 +37,7 @@ defmodule YouWeb.ConsoleEmailTemplatesTest do
   end
 
   test "a template missing its required placeholder is refused with a message", %{conn: conn} do
-    {:ok, lv, _html} = live(conn, ~p"/console?view=emails")
+    {:ok, lv, _html} = live(conn, ~p"/console/emails")
 
     html =
       lv
@@ -51,7 +51,7 @@ defmodule YouWeb.ConsoleEmailTemplatesTest do
   test "resetting drops the override", %{conn: conn} do
     {:ok, _} = EmailTemplates.upsert("magic_link", %{"subject" => "Custom", "body" => "{{url}}"})
 
-    {:ok, lv, _html} = live(conn, ~p"/console?view=emails")
+    {:ok, lv, _html} = live(conn, ~p"/console/emails")
 
     lv
     |> element("button[phx-click='reset_email_template'][phx-value-key='magic_link']")

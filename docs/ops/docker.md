@@ -106,7 +106,7 @@ All nodes must share the same cookie and distribution must be enabled.
 Erlang distribution uses a **cookie-based authentication** model. Two nodes can
 communicate only if they present the same cookie.
 
-You manages the cookie through the console settings page (`/console?view=settings`):
+You manages the cookie through the console settings page (`/console/settings`):
 
 1. The `erlang_cookie` setting is stored in the database
 2. At boot, `CookieSync` reads it and applies it via `Node.set_cookie/1`

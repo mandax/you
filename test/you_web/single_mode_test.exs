@@ -216,29 +216,29 @@ defmodule YouWeb.SingleModeTest do
 
       assert html =~ "Application"
       assert html =~ ~s(href="/console/apps/solo")
-      refute html =~ ~s(href="/console?view=apps")
+      refute html =~ ~s(href="/console/apps")
     end
 
     test "refuses to render the apps registry", %{conn: conn} do
-      {:ok, _lv, html} = live(conn, ~p"/console?view=apps")
+      {:ok, _lv, html} = live(conn, ~p"/console/apps")
 
       refute html =~ "Register app"
     end
 
-    test "survives ?view= naming the single-app nav entry", %{conn: conn} do
-      {:ok, _lv, html} = live(conn, ~p"/console?view=app")
+    test "survives a path naming the single-app nav entry", %{conn: conn} do
+      {:ok, _lv, html} = live(conn, ~p"/console/app")
 
       assert html =~ "Overview"
     end
 
     test "drops the per-app filter from the users view", %{conn: conn} do
-      {:ok, _lv, html} = live(conn, ~p"/console?view=users")
+      {:ok, _lv, html} = live(conn, ~p"/console/users")
 
       refute html =~ "all apps"
     end
 
     test "drops the per-app filter from the audit view", %{conn: conn} do
-      {:ok, _lv, html} = live(conn, ~p"/console?view=audit")
+      {:ok, _lv, html} = live(conn, ~p"/console/audit")
 
       refute html =~ "all apps"
     end
@@ -247,7 +247,7 @@ defmodule YouWeb.SingleModeTest do
       user = You.AccountsFixtures.user_fixture()
       {:ok, _} = You.Roles.set_role(app, user, "admin")
 
-      {:ok, _lv, html} = live(conn, ~p"/console?view=users")
+      {:ok, _lv, html} = live(conn, ~p"/console/users")
 
       assert html =~ "admin"
       refute html =~ "admin·Solo"
@@ -259,7 +259,7 @@ defmodule YouWeb.SingleModeTest do
       app: app
     } do
       user = You.AccountsFixtures.user_fixture()
-      {:ok, lv, _html} = live(conn, ~p"/console?view=users")
+      {:ok, lv, _html} = live(conn, ~p"/console/users")
 
       html =
         lv
@@ -296,8 +296,8 @@ defmodule YouWeb.SingleModeTest do
     end
 
     test "has an apps registry and a per-app filter", %{conn: conn} do
-      {:ok, _lv, apps_html} = live(conn, ~p"/console?view=apps")
-      {:ok, _lv, users_html} = live(conn, ~p"/console?view=users")
+      {:ok, _lv, apps_html} = live(conn, ~p"/console/apps")
+      {:ok, _lv, users_html} = live(conn, ~p"/console/users")
 
       assert apps_html =~ "Register app"
       assert users_html =~ "all apps"
