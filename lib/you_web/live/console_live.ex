@@ -173,50 +173,46 @@ defmodule YouWeb.ConsoleLive do
   nothing is preloaded in `mount/3` that might not match the view a
   redirect or deep link actually lands on.
 
-  A request still shaped like the old `/console?view=x&tab=y` query string —
-  an admin's bookmark, a link in published docs — is redirected to its path
-  equivalent rather than served, via `legacy_redirect/2`.
+  `/console/overview` redirects to the bare `/console` — its canonical
+  address (see the route table in `YouWeb.Router`) — so there is one way to
+  link to it rather than two pages answering to the same content. A path
+  segment naming anything else that isn't a real section 404s: unlike a
+  query param decorating a page that exists, a path segment *is* the
+  address, and an address that resolves to nothing should say so rather than
+  quietly rendering the overview at 200. An unknown **tab** inside a section
+  that does exist still falls back to that section's first tab — that is
+  sub-state, not an address, and following #129's original rule.
   """
   @impl true
-  def handle_params(params, uri, socket) do
-    case legacy_redirect(uri, params) do
-      {:redirect, to} ->
-        {:noreply, redirect(socket, to: to)}
+  def handle_params(%{"view" => "overview"}, _uri, socket) do
+    {:noreply, redirect(socket, to: ~p"/console")}
+  end
 
-      :ok ->
-        # First admin login lands here rather than on an overview of a console
-        # they have not shaped yet.
-        default = if socket.assigns.onboarding, do: "features", else: "overview"
-        view = params["view"] || default
-        view = if view in section_ids(), do: view, else: default
+  def handle_params(params, _uri, socket) do
+    resolve_section(params["view"], params["tab"], socket)
+  end
 
-        {:noreply,
-         socket
-         |> assign(view: view, settings_tab: settings_tab(params["tab"]), saved: false)
-         |> load_view(view)}
+  defp resolve_section(nil, tab, socket) do
+    # First admin login lands here rather than on an overview of a console
+    # they have not shaped yet.
+    default = if socket.assigns.onboarding, do: "features", else: "overview"
+    render_section(default, tab, socket)
+  end
+
+  defp resolve_section(view, tab, socket) do
+    if view in section_ids() do
+      render_section(view, tab, socket)
+    else
+      raise YouWeb.NotFoundError, "no such console section: #{inspect(view)}"
     end
   end
 
-  # Redirects the pre-#136 `/console?view=x&tab=y` query form to its path
-  # equivalent `/console/x` (or `/console/x/y`), kept for one release so an
-  # admin's bookmark or a published doc link still lands somewhere. Fires only
-  # on the bare `/console` path carrying a `view` query param — `/console/x`
-  # itself sets `params["view"]` from the path segment and must render
-  # normally rather than redirect to itself.
-  defp legacy_redirect(uri, %{"view" => view} = params) do
-    case URI.parse(uri) do
-      %URI{path: "/console", query: query} when is_binary(query) ->
-        to =
-          if params["tab"], do: ~p"/console/#{view}/#{params["tab"]}", else: ~p"/console/#{view}"
-
-        {:redirect, to}
-
-      _ ->
-        :ok
-    end
+  defp render_section(view, tab, socket) do
+    {:noreply,
+     socket
+     |> assign(view: view, settings_tab: settings_tab(tab), saved: false)
+     |> load_view(view)}
   end
-
-  defp legacy_redirect(_uri, _params), do: :ok
 
   defp settings_tab(tab) do
     if List.keymember?(@settings_tabs, tab, 0), do: tab, else: elem(hd(@settings_tabs), 0)

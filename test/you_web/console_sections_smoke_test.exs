@@ -32,7 +32,15 @@ defmodule YouWeb.ConsoleSectionsSmokeTest do
   end
 
   test "every section renders, then survives a tick and a mutation", %{conn: conn} do
-    for view <- ~w(overview users apps providers audit webhooks emails features settings backup) do
+    # "overview" is addressed at the bare `/console`, not `/console/overview`
+    # (see `YouWeb.ConsoleLive.handle_params/3`), so it is mounted directly
+    # rather than through the `"/console/#{view}"` loop below.
+    {:ok, lv, html} = live(conn, ~p"/console")
+    assert html =~ "YOU"
+    send(lv.pid, :refresh)
+    assert render(lv) =~ "YOU"
+
+    for view <- ~w(users apps providers audit webhooks emails features settings backup) do
       {:ok, lv, html} = live(conn, "/console/#{view}")
       assert html =~ "YOU"
 
@@ -41,22 +49,20 @@ defmodule YouWeb.ConsoleSectionsSmokeTest do
     end
   end
 
+  # Every entry patches from the sidebar (see `YouWeb.Components.ConsoleChrome
+  # .console_shell/1`), all of them `YouWeb.ConsoleLive`, so one connected
+  # process carries the whole loop rather than a fresh `live/2` mount per
+  # section.
   test "navigating between sections loads each one's data", %{conn: conn} do
+    {:ok, lv, _html} = live(conn, ~p"/console")
+
     for view <- ~w(users apps providers audit webhooks emails settings backup overview) do
-      {:ok, lv, _} = live(conn, ~p"/console/overview")
-
-      # "overview" is the one section whose nav href is the bare `/console`
-      # (its canonical address, per the route table in `YouWeb.Router`)
-      # rather than `/console/overview`.
-      href = if view == "overview", do: "/console", else: "/console/#{view}"
-
-      {:ok, _lv, html} =
-        lv
-        |> element("a[href='#{href}']")
-        |> render_click()
-        |> follow_redirect(conn)
+      html = lv |> element("nav a[href='#{section_href(view)}']") |> render_click()
 
       assert html =~ "YOU"
     end
   end
+
+  defp section_href("overview"), do: "/console"
+  defp section_href(view), do: "/console/#{view}"
 end

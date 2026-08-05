@@ -12,7 +12,10 @@ defmodule YouWeb.ConsoleLiveTest do
   end
 
   test "every view mounts", %{conn: conn} do
-    for view <- ~w(overview users apps providers audit webhooks settings) do
+    {:ok, _lv, html} = live(conn, ~p"/console")
+    assert html =~ "you"
+
+    for view <- ~w(users apps providers audit webhooks settings) do
       {:ok, _lv, html} = live(conn, "/console/#{view}")
       assert html =~ "you"
     end
@@ -652,7 +655,7 @@ defmodule YouWeb.ConsoleLiveTest do
 
   describe "providers" do
     test "the nav links to the providers view", %{conn: conn} do
-      {:ok, _lv, html} = live(conn, "/console/overview")
+      {:ok, _lv, html} = live(conn, "/console")
       assert html =~ ~s(href="/console/providers")
       assert html =~ "Providers"
     end
@@ -896,11 +899,12 @@ defmodule YouWeb.ConsoleLiveTest do
 
   describe "per-section data loading" do
     test "overview renders live counts rather than cached rows", %{conn: conn} do
+      You.Settings.set(:onboarding_completed, true)
       You.AccountsFixtures.user_fixture()
       extra_admin = You.AccountsFixtures.user_fixture()
       Admin.promote_admin!(extra_admin)
 
-      {:ok, _lv, html} = live(conn, "/console/overview")
+      {:ok, _lv, html} = live(conn, "/console")
 
       assert metric_value(html, "Users") == Admin.count_users()
       assert metric_value(html, "Admins") == Admin.count_admins()
@@ -937,7 +941,8 @@ defmodule YouWeb.ConsoleLiveTest do
     test "the 5s tick reloads the audit feed only on the overview and audit views", %{
       conn: conn
     } do
-      {:ok, lv, _html} = live(conn, "/console/overview")
+      You.Settings.set(:onboarding_completed, true)
+      {:ok, lv, _html} = live(conn, "/console")
 
       :telemetry.execute([:you, :audit, :admin, :action], %{}, %{
         action: "probe",
@@ -970,14 +975,49 @@ defmodule YouWeb.ConsoleLiveTest do
   end
 
   describe "path-based sections (#136)" do
-    test "switching sections patches rather than remounts", %{conn: conn} do
+    # `render_patch/2` alone doesn't prove this: it succeeds against *any*
+    # route the router can resolve, including one belonging to a different
+    # LiveView, so it cannot tell a same-process patch from a silent
+    # remount. Clicking the real sidebar link is the only way to exercise
+    # what the browser actually does — `data-phx-link="patch"` is what
+    # keeps the client from doing a full navigation, and the unchanged pid
+    # is the proof the server side didn't remount either.
+    test "clicking a sidebar section link patches rather than remounts", %{conn: conn} do
       {:ok, lv, _html} = live(conn, ~p"/console/users")
       pid = lv.pid
 
-      html = render_patch(lv, ~p"/console/settings")
+      link = element(lv, "nav a[href='/console/settings']")
+      assert render(link) =~ ~s(data-phx-link="patch")
+
+      html = render_click(link)
 
       assert lv.pid == pid
       assert html =~ "Session &amp; tokens"
+    end
+
+    # The single-app nav entry (`YouWeb.Components.ConsoleChrome.apps_entry/1`)
+    # points at `AppLive.Show`, a different module — patch cannot cross
+    # modules, so this one link keeps `navigate=`.
+    test "the single-app nav entry navigates rather than patches", %{conn: conn} do
+      {:ok, _app, _secret} =
+        Admin.create_app(%{
+          slug: "solo",
+          name: "Solo",
+          callback_url: "https://solo.example.com/cb"
+        })
+
+      You.Settings.set(:you_mode, "single")
+
+      Application.put_env(:you, :single_app,
+        slug: "solo",
+        callback_url: "https://solo.example.com/cb"
+      )
+
+      on_exit(fn -> Application.delete_env(:you, :single_app) end)
+
+      {:ok, _lv, html} = live(conn, ~p"/console")
+
+      assert html =~ ~s(href="/console/apps/solo" data-phx-link="redirect")
     end
 
     test "the old ?view=x&tab=y query form redirects to the path equivalent", %{conn: conn} do
@@ -990,6 +1030,52 @@ defmodule YouWeb.ConsoleLiveTest do
       conn = get(conn, "/console?view=users")
 
       assert redirected_to(conn) == "/console/users"
+    end
+
+    test "a trailing slash on the old query form still redirects", %{conn: conn} do
+      conn = get(conn, "/console/?view=settings")
+
+      assert redirected_to(conn) == "/console/settings"
+    end
+
+    test "the old /console/apps/:slug?tab=x form redirects to the path equivalent", %{
+      conn: conn
+    } do
+      {:ok, app, _secret} =
+        Admin.create_app(%{
+          slug: "edit-me",
+          name: "Edit Me",
+          callback_url: "https://e.example.com/cb"
+        })
+
+      conn = get(conn, "/console/apps/#{app.slug}?tab=members")
+
+      assert redirected_to(conn) == "/console/apps/#{app.slug}/members"
+    end
+
+    # A crawler or a hand-edited bookmark can produce this shape
+    # (`?view[a]=b` decodes to a map, not a string) — it must be ignored by
+    # the redirect and 404 on its own terms, never crash the request.
+    test "a bracketed query param does not crash the legacy redirect", %{conn: conn} do
+      assert_raise YouWeb.NotFoundError, fn -> live(conn, "/console?view[a]=b") end
+    end
+
+    test "an unknown section 404s instead of rendering the overview", %{conn: conn} do
+      assert_raise YouWeb.NotFoundError, fn -> live(conn, ~p"/console/not-a-section") end
+    end
+
+    test "an unknown tab within a real section still falls back rather than 404ing", %{
+      conn: conn
+    } do
+      {:ok, _lv, html} = live(conn, ~p"/console/settings/not-a-tab")
+
+      assert html =~ "Session &amp; tokens"
+    end
+
+    test "/console/overview redirects to the bare /console", %{conn: conn} do
+      conn = get(conn, "/console/overview")
+
+      assert redirected_to(conn) == "/console"
     end
   end
 

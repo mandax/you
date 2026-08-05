@@ -59,6 +59,10 @@ defmodule YouWeb.Router do
     plug YouWeb.Plugs.RateLimit, key: :oauth_token
   end
 
+  pipeline :console_legacy_redirect do
+    plug YouWeb.Plugs.ConsoleLegacyRedirect
+  end
+
   scope "/", YouWeb do
     pipe_through :browser
 
@@ -100,7 +104,7 @@ defmodule YouWeb.Router do
   # since `/console/apps/<x>` is already claimed by the per-app page. That is
   # fine — it is a list, and lists do not need tabs.
   scope "/console", YouWeb do
-    pipe_through [:browser, :require_authenticated_user, :require_admin]
+    pipe_through [:browser, :require_authenticated_user, :require_admin, :console_legacy_redirect]
 
     live_session :admin, on_mount: {YouWeb.UserAuth, :default} do
       live "/", ConsoleLive, :index

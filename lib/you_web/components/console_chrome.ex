@@ -84,6 +84,11 @@ defmodule YouWeb.Components.ConsoleChrome do
 
   `active` marks the highlighted nav entry, which is a nav id on the console
   itself and stays `"apps"` while a per-app page is open.
+
+  Section entries patch — every section is `YouWeb.ConsoleLive`, so switching
+  between them needs no remount. An entry carrying `:href` (the single-app
+  link, which points at `YouWeb.AppLive.Show`) still navigates: patch only
+  works within one LiveView module.
   """
   attr :nav, :list, required: true
   attr :active, :string, required: true
@@ -102,7 +107,8 @@ defmodule YouWeb.Components.ConsoleChrome do
         <nav class="flex-1 space-y-px px-2 pt-3">
           <.link
             :for={n <- @nav}
-            navigate={n[:href] || nav_href(n.id)}
+            navigate={n[:href]}
+            patch={if(n[:href], do: nil, else: nav_href(n.id))}
             aria-current={@active == n.id && "page"}
             class={[
               "group flex h-8 w-full items-center gap-2.5 rounded-md px-3 text-sm transition-colors",
@@ -247,6 +253,9 @@ defmodule YouWeb.Components.ConsoleChrome do
   def tab_strip(assigns) do
     ~H"""
     <div class="flex gap-1 border-b border-border" role="tablist">
+      <%!-- Not ~p: @path is a runtime value (the caller's own base path),
+            and ~p requires a literal prefix to verify against the router at
+            compile time — it cannot start from a variable. --%>
       <.link
         :for={{id, label} <- @tabs}
         id={"tab-#{id}"}

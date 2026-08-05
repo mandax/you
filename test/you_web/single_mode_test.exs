@@ -219,16 +219,12 @@ defmodule YouWeb.SingleModeTest do
       refute html =~ ~s(href="/console/apps")
     end
 
-    test "refuses to render the apps registry", %{conn: conn} do
-      {:ok, _lv, html} = live(conn, ~p"/console/apps")
-
-      refute html =~ "Register app"
+    test "the apps registry 404s rather than rendering", %{conn: conn} do
+      assert_raise YouWeb.NotFoundError, fn -> live(conn, ~p"/console/apps") end
     end
 
-    test "survives a path naming the single-app nav entry", %{conn: conn} do
-      {:ok, _lv, html} = live(conn, ~p"/console/app")
-
-      assert html =~ "Overview"
+    test "the single-app nav entry's own id is not a real section", %{conn: conn} do
+      assert_raise YouWeb.NotFoundError, fn -> live(conn, ~p"/console/app") end
     end
 
     test "drops the per-app filter from the users view", %{conn: conn} do
