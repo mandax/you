@@ -225,6 +225,15 @@ defmodule YouWeb.Components.ConsoleChrome do
 
   @doc """
   Tab strip that patches `?tab=`. Each tab is `{id, label}`.
+
+  `path` may already carry its own query string (a page addressed by
+  `?view=`, for instance) — `tab=` is appended with `&` when it does and `?`
+  when it doesn't, so a tab never clobbers the query that got the visitor to
+  this page.
+
+  Each tab gets `id="tab-\#{id}"` and `aria-controls="tabpanel-\#{id}"`; the
+  page rendering the active panel is responsible for giving it a matching
+  `id="tabpanel-\#{id}"`, `role="tabpanel"` and `aria-labelledby="tab-\#{id}"`.
   """
   attr :tabs, :list, required: true
   attr :active, :string, required: true
@@ -235,9 +244,11 @@ defmodule YouWeb.Components.ConsoleChrome do
     <div class="flex gap-1 border-b border-border" role="tablist">
       <.link
         :for={{id, label} <- @tabs}
-        patch={"#{@path}?tab=#{id}"}
+        id={"tab-#{id}"}
+        patch={tab_href(@path, id)}
         role="tab"
         aria-selected={to_string(@active == id)}
+        aria-controls={@active == id && "tabpanel-#{id}"}
         class={[
           "-mb-px border-b-2 px-3 py-2 text-sm transition-colors",
           if(@active == id,
@@ -250,6 +261,11 @@ defmodule YouWeb.Components.ConsoleChrome do
       </.link>
     </div>
     """
+  end
+
+  defp tab_href(path, id) do
+    separator = if String.contains?(path, "?"), do: "&", else: "?"
+    "#{path}#{separator}tab=#{id}"
   end
 
   @doc "Section card with a title and free-form body."

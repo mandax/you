@@ -67,6 +67,32 @@ defmodule YouWeb.ConsoleLive do
   # keeps the current value, cleared via the explicit "clear" button.
   @secret_settings [:erlang_cookie, :scim_bearer_token, :smtp_password, :api_token]
 
+  # Session/Erlang/Mail/Deployment mode are distinct concerns and keep their
+  # own tab; Provisioning & audit, Management API and Analytics are all one
+  # concern — how outside systems talk to this instance — folded into
+  # Integrations rather than left as three mostly-empty tabs. Federation is
+  # read-only reference material with no form of its own (see AGENTS.md's
+  # tabbed multi-context convention).
+  @settings_tabs [
+    {"session", "Session & tokens"},
+    {"distribution", "Erlang distribution"},
+    {"integrations", "Integrations"},
+    {"deployment", "Deployment mode"},
+    {"mail", "Mail"},
+    {"federation", "Federation"}
+  ]
+
+  # Every entry is text or numeric. A boolean here would break the premise
+  # that licenses splitting this form into tabs: an unchecked checkbox
+  # submits no key at all, indistinguishable from a field on a tab that was
+  # never submitted.
+  # Tabs that show reference material rather than editable settings. The form
+  # and its Save button are skipped for these, so the list and the render stay
+  # one fact rather than a string literal repeated a hundred lines apart.
+  @read_only_settings_tabs ~w(federation)
+
+  defp read_only_settings_tab?(tab), do: tab in @read_only_settings_tabs
+
   @settings_fields [
     %{key: :session_expiry_hours, label: "Session expiry (hours)"},
     %{key: :jwt_expiry_hours, label: "JWT expiry (hours)"},
@@ -104,6 +130,8 @@ defmodule YouWeb.ConsoleLive do
        page_title: "Console",
        nav: nav(),
        view: "overview",
+       settings_tabs: @settings_tabs,
+       settings_tab: elem(hd(@settings_tabs), 0),
        node_name: Node.self(),
        new_secret: nil,
        secret_app: nil,
@@ -151,7 +179,15 @@ defmodule YouWeb.ConsoleLive do
     default = if socket.assigns.onboarding, do: "features", else: "overview"
     view = params["view"] || default
     view = if view in section_ids(), do: view, else: default
-    {:noreply, socket |> assign(view: view, saved: false) |> load_view(view)}
+
+    {:noreply,
+     socket
+     |> assign(view: view, settings_tab: settings_tab(params["tab"]), saved: false)
+     |> load_view(view)}
+  end
+
+  defp settings_tab(tab) do
+    if List.keymember?(@settings_tabs, tab, 0), do: tab, else: elem(hd(@settings_tabs), 0)
   end
 
   @doc """
@@ -896,6 +932,8 @@ defmodule YouWeb.ConsoleLive do
             base_url={@base_url}
             oidc_providers={@oidc_providers}
             saved={@saved}
+            tabs={@settings_tabs}
+            tab={@settings_tab}
           />
         <% "backup" -> %>
           <.backup_view
@@ -2116,6 +2154,8 @@ defmodule YouWeb.ConsoleLive do
   attr :base_url, :string, required: true
   attr :oidc_providers, :list, required: true
   attr :saved, :boolean, required: true
+  attr :tabs, :list, required: true
+  attr :tab, :string, required: true
 
   defp settings_view(assigns) do
     ~H"""
@@ -2127,156 +2167,219 @@ defmodule YouWeb.ConsoleLive do
         <span class="lucide-check size-4 block text-signal-ok" /> Settings saved.
       </div>
 
-      <form phx-submit="save_settings" class="space-y-4">
-        <.settings_group title="Session & tokens">
-          <p class="text-xs text-muted-foreground">
-            Defaults for every app. An app can pin its own JWT and auth-code lifetimes on its
-            page; session expiry is the You cookie itself, so it stays instance-wide.
-          </p>
-          <.setting_field
-            name="session_expiry_hours"
-            label="Session expiry (hours)"
-            value={@settings[:session_expiry_hours]}
-          />
-          <.setting_field
-            name="jwt_expiry_hours"
-            label="JWT expiry (hours)"
-            value={@settings[:jwt_expiry_hours]}
-          />
-          <.setting_field
-            name="code_expiry_minutes"
-            label="Auth code expiry (minutes)"
-            value={@settings[:code_expiry_minutes]}
-          />
-          <.setting_field
-            name="magic_link_expiry_minutes"
-            label="Magic link expiry (minutes)"
-            value={@settings[:magic_link_expiry_minutes]}
-          />
-        </.settings_group>
+      <.tab_strip tabs={@tabs} active={@tab} path={~p"/console?view=settings"} />
 
-        <.settings_group title="Erlang distribution">
-          <.setting_field
-            name="erlang_node_name"
-            label="Node name"
-            value={@settings[:erlang_node_name]}
-          />
-          <.setting_field name="epmd_port" label="EPMD port" value={@settings[:epmd_port]} />
-          <.secret_setting_field
-            name="erlang_cookie"
-            label="Cookie"
-            value={@settings[:erlang_cookie]}
-          />
-        </.settings_group>
+      <div id={"tabpanel-#{@tab}"} role="tabpanel" tabindex="0" aria-labelledby={"tab-#{@tab}"}>
+        <.federation_panel
+          :if={read_only_settings_tab?(@tab)}
+          base_url={@base_url}
+          oidc_providers={@oidc_providers}
+        />
+        <form
+          :if={not read_only_settings_tab?(@tab)}
+          id={"settings-#{@tab}-form"}
+          phx-submit="save_settings"
+          class="space-y-4"
+        >
+          <.settings_panel tab={@tab} settings={@settings} base_url={@base_url} />
+          <.button type="submit">Save settings</.button>
+        </form>
+      </div>
+    </div>
+    """
+  end
 
-        <.settings_group title="Provisioning & audit">
-          <.secret_setting_field
-            name="scim_bearer_token"
-            label="SCIM bearer token"
-            value={@settings[:scim_bearer_token]}
-          />
-          <.setting_field
-            name="audit_webhook_url"
-            label="Audit webhook URL"
-            value={@settings[:audit_webhook_url]}
-          />
-          <p class="pt-1 font-mono text-[11px] text-muted-foreground">
-            SCIM base: {@base_url}/scim/v2 · secrets are write-only, use clear to disable
-          </p>
-        </.settings_group>
+  # One panel per settings tab, dispatching on `tab` (multiple function
+  # heads, not a `case`, per AGENTS.md's dispatch-on-shape rule).
+  attr :tab, :string, required: true
+  attr :settings, :map, required: true
+  attr :base_url, :string, required: true
 
-        <.settings_group title="Deployment mode">
-          <label class="flex items-center justify-between gap-4 text-sm">
-            <span class="text-muted-foreground">Mode</span>
-            <select
-              name="you_mode"
-              class="h-8 rounded-md border border-input bg-background px-2 font-mono text-xs"
-            >
-              <option value="multi" selected={@settings[:you_mode] != "single"}>multi</option>
-              <option value="single" selected={@settings[:you_mode] == "single"}>single</option>
-            </select>
-          </label>
-          <p class="pt-1 font-mono text-[11px] text-muted-foreground">
-            Single mode replaces the apps registry with one application. Applies to this console
-            session on save; other open console tabs pick it up on their next page load.
-          </p>
-        </.settings_group>
+  defp settings_panel(%{tab: "session"} = assigns) do
+    ~H"""
+    <.settings_card>
+      <p class="text-xs text-muted-foreground">
+        Defaults for every app. An app can pin its own JWT and auth-code lifetimes on its page;
+        session expiry is the You cookie itself, so it stays instance-wide.
+      </p>
+      <.setting_field
+        name="session_expiry_hours"
+        label="Session expiry (hours)"
+        value={@settings[:session_expiry_hours]}
+      />
+      <.setting_field
+        name="jwt_expiry_hours"
+        label="JWT expiry (hours)"
+        value={@settings[:jwt_expiry_hours]}
+      />
+      <.setting_field
+        name="code_expiry_minutes"
+        label="Auth code expiry (minutes)"
+        value={@settings[:code_expiry_minutes]}
+      />
+      <.setting_field
+        name="magic_link_expiry_minutes"
+        label="Magic link expiry (minutes)"
+        value={@settings[:magic_link_expiry_minutes]}
+      />
+    </.settings_card>
+    """
+  end
 
-        <.settings_group title="Mail">
-          <.setting_field name="smtp_host" label="SMTP host" value={@settings[:smtp_host]} />
-          <.setting_field name="smtp_port" label="SMTP port" value={@settings[:smtp_port]} />
-          <.setting_field
-            name="smtp_username"
-            label="SMTP username"
-            value={@settings[:smtp_username]}
-          />
-          <.secret_setting_field
-            name="smtp_password"
-            label="SMTP password"
-            value={@settings[:smtp_password]}
-          />
-          <.setting_field name="mail_from" label="Mail from address" value={@settings[:mail_from]} />
-          <p class="pt-1 font-mono text-[11px] text-muted-foreground">
-            Applies to the next email sent — nothing to restart. Clear the host to fall back to
-            the in-memory mailbox at /console/mailbox.
-          </p>
-        </.settings_group>
+  defp settings_panel(%{tab: "distribution"} = assigns) do
+    ~H"""
+    <.settings_card>
+      <.setting_field
+        name="erlang_node_name"
+        label="Node name"
+        value={@settings[:erlang_node_name]}
+      />
+      <.setting_field name="epmd_port" label="EPMD port" value={@settings[:epmd_port]} />
+      <.secret_setting_field
+        name="erlang_cookie"
+        label="Cookie"
+        value={@settings[:erlang_cookie]}
+      />
+    </.settings_card>
+    """
+  end
 
-        <.settings_group title="Management API">
-          <.secret_setting_field
-            name="api_token"
-            label="Bearer token"
-            value={@settings[:api_token]}
-          />
-          <p class="pt-1 font-mono text-[11px] text-muted-foreground">
-            Unset or empty disables the management API. Applies immediately.
-          </p>
-        </.settings_group>
+  defp settings_panel(%{tab: "integrations"} = assigns) do
+    ~H"""
+    <div class="space-y-4">
+      <.settings_card>
+        <.secret_setting_field
+          name="scim_bearer_token"
+          label="SCIM bearer token"
+          value={@settings[:scim_bearer_token]}
+        />
+        <.setting_field
+          name="audit_webhook_url"
+          label="Audit webhook URL"
+          value={@settings[:audit_webhook_url]}
+        />
+        <p class="pt-1 font-mono text-[11px] text-muted-foreground">
+          SCIM base: {@base_url}/scim/v2 · secrets are write-only, use clear to disable
+        </p>
+      </.settings_card>
 
-        <.settings_group title="Analytics">
-          <.setting_field
-            name="analytics_src"
-            label="Script URL"
-            value={@settings[:analytics_src]}
-          />
-          <.setting_field
-            name="analytics_domain"
-            label="Domain"
-            value={@settings[:analytics_domain]}
-          />
-          <p class="pt-1 font-mono text-[11px] text-muted-foreground">
-            Both fields are required for the snippet to appear. Plausible-compatible.
-          </p>
-        </.settings_group>
+      <.settings_card>
+        <.secret_setting_field
+          name="api_token"
+          label="Management API bearer token"
+          value={@settings[:api_token]}
+        />
+        <p class="pt-1 font-mono text-[11px] text-muted-foreground">
+          Unset or empty disables the management API. Applies immediately.
+        </p>
+      </.settings_card>
 
-        <.button type="submit">Save settings</.button>
-      </form>
+      <.settings_card>
+        <.setting_field
+          name="analytics_src"
+          label="Analytics script URL"
+          value={@settings[:analytics_src]}
+        />
+        <.setting_field
+          name="analytics_domain"
+          label="Analytics domain"
+          value={@settings[:analytics_domain]}
+        />
+        <p class="pt-1 font-mono text-[11px] text-muted-foreground">
+          Both fields are required for the snippet to appear. Plausible-compatible.
+        </p>
+      </.settings_card>
+    </div>
+    """
+  end
 
-      <div class="rounded-lg border border-border bg-card p-5">
-        <div class="flex items-center gap-2 text-sm font-medium">
-          <span class="lucide-globe size-4 block text-primary" /> OIDC &amp; federation
-        </div>
-        <dl class="mt-3 space-y-2 text-xs">
-          <.kv k="Discovery" v={"#{@base_url}/.well-known/openid-configuration"} />
-          <.kv k="JWKS" v={"#{@base_url}/.well-known/jwks.json"} />
-          <.kv k="Token" v={"#{@base_url}/oauth/token"} />
-          <.kv k="PKCE" v="S256" />
-        </dl>
-        <div class="mt-3">
-          <div class="mb-1.5 text-xs font-medium">Upstream providers</div>
-          <span :if={@oidc_providers == []} class="font-mono text-[11px] text-muted-foreground">
-            none configured
+  defp settings_panel(%{tab: "deployment"} = assigns) do
+    ~H"""
+    <.settings_card>
+      <label class="flex items-center justify-between gap-4 text-sm">
+        <span class="text-muted-foreground">Mode</span>
+        <select
+          name="you_mode"
+          class="h-8 rounded-md border border-input bg-background px-2 font-mono text-xs"
+        >
+          <option value="multi" selected={@settings[:you_mode] != "single"}>multi</option>
+          <option value="single" selected={@settings[:you_mode] == "single"}>single</option>
+        </select>
+      </label>
+      <p class="pt-1 font-mono text-[11px] text-muted-foreground">
+        Single mode replaces the apps registry with one application. Applies to this console
+        session on save; other open console tabs pick it up on their next page load.
+      </p>
+    </.settings_card>
+    """
+  end
+
+  defp settings_panel(%{tab: "mail"} = assigns) do
+    ~H"""
+    <.settings_card>
+      <.setting_field name="smtp_host" label="SMTP host" value={@settings[:smtp_host]} />
+      <.setting_field name="smtp_port" label="SMTP port" value={@settings[:smtp_port]} />
+      <.setting_field
+        name="smtp_username"
+        label="SMTP username"
+        value={@settings[:smtp_username]}
+      />
+      <.secret_setting_field
+        name="smtp_password"
+        label="SMTP password"
+        value={@settings[:smtp_password]}
+      />
+      <.setting_field name="mail_from" label="Mail from address" value={@settings[:mail_from]} />
+      <p class="pt-1 font-mono text-[11px] text-muted-foreground">
+        Applies to the next email sent — nothing to restart. Clear the host to fall back to the
+        in-memory mailbox at /console/mailbox.
+      </p>
+    </.settings_card>
+    """
+  end
+
+  # Read-only OIDC/federation reference material — no form, nothing to save.
+  attr :base_url, :string, required: true
+  attr :oidc_providers, :list, required: true
+
+  defp federation_panel(assigns) do
+    ~H"""
+    <div class="rounded-lg border border-border bg-card p-5">
+      <div class="flex items-center gap-2 text-sm font-medium">
+        <span class="lucide-globe size-4 block text-primary" /> OIDC &amp; federation
+      </div>
+      <dl class="mt-3 space-y-2 text-xs">
+        <.kv k="Discovery" v={"#{@base_url}/.well-known/openid-configuration"} />
+        <.kv k="JWKS" v={"#{@base_url}/.well-known/jwks.json"} />
+        <.kv k="Token" v={"#{@base_url}/oauth/token"} />
+        <.kv k="PKCE" v="S256" />
+      </dl>
+      <div class="mt-3">
+        <div class="mb-1.5 text-xs font-medium">Upstream providers</div>
+        <span :if={@oidc_providers == []} class="font-mono text-[11px] text-muted-foreground">
+          none configured
+        </span>
+        <div :if={@oidc_providers != []} class="flex flex-wrap gap-1.5">
+          <span
+            :for={p <- @oidc_providers}
+            class="rounded border border-border bg-muted px-2 py-0.5 font-mono text-[11px]"
+          >
+            {p}
           </span>
-          <div :if={@oidc_providers != []} class="flex flex-wrap gap-1.5">
-            <span
-              :for={p <- @oidc_providers}
-              class="rounded border border-border bg-muted px-2 py-0.5 font-mono text-[11px]"
-            >
-              {p}
-            </span>
-          </div>
         </div>
       </div>
+    </div>
+    """
+  end
+
+  # Unlabeled settings card: the tab label already names the concern, so a
+  # repeated inner title is noise.
+  slot :inner_block, required: true
+
+  defp settings_card(assigns) do
+    ~H"""
+    <div class="rounded-lg border border-border bg-card p-5 space-y-3">
+      {render_slot(@inner_block)}
     </div>
     """
   end
