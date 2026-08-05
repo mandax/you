@@ -536,7 +536,12 @@ defmodule YouWeb.ConsoleLiveTest do
       assert html =~ ~s(role="tablist")
       assert html =~ "Session &amp; tokens"
       assert html =~ ~s(href="/console?view=settings&amp;tab=mail")
-      assert html =~ ~s(id="tabpanel-session" role="tabpanel" aria-labelledby="tab-session")
+      # Asserted as independent attributes rather than one contiguous string:
+      # attribute order is not part of the contract, and pinning it makes an
+      # unrelated addition look like a regression.
+      assert html =~ ~s(id="tabpanel-session")
+      assert html =~ ~s(role="tabpanel")
+      assert html =~ ~s(aria-labelledby="tab-session")
       refute html =~ "SMTP host"
     end
 
@@ -552,6 +557,28 @@ defmodule YouWeb.ConsoleLiveTest do
 
       assert html =~ "Session expiry"
       assert html =~ ~r/id="tab-session"[^>]*aria-selected="true"/
+    end
+
+    # Federation is the one tab whose contract is "renders no form". That is
+    # exactly what a refactor of the hoisted wrapper would break, and what a
+    # reviewer misread as already broken.
+    test "the Federation tab renders reference material and no form", %{conn: conn} do
+      {:ok, _lv, html} = live(conn, "/console?view=settings&tab=federation")
+
+      refute html =~ "Save settings"
+      refute html =~ "save_settings"
+      assert html =~ "openid-configuration"
+    end
+
+    # Five fields changed tab in this consolidation. Naming each one here is
+    # what stops one being dropped from the UI unnoticed, which would leave it
+    # configurable only through the database.
+    test "the Integrations tab carries every field that moved into it", %{conn: conn} do
+      {:ok, _lv, html} = live(conn, "/console?view=settings&tab=integrations")
+
+      for name <- ~w(scim_bearer_token audit_webhook_url api_token analytics_src analytics_domain) do
+        assert html =~ ~s(name="#{name}"), "#{name} is missing from the Integrations tab"
+      end
     end
 
     test "saving persists SCIM token and audit webhook", %{conn: conn} do

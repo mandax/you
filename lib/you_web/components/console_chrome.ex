@@ -248,7 +248,7 @@ defmodule YouWeb.Components.ConsoleChrome do
         patch={tab_href(@path, id)}
         role="tab"
         aria-selected={to_string(@active == id)}
-        aria-controls={"tabpanel-#{id}"}
+        aria-controls={@active == id && "tabpanel-#{id}"}
         class={[
           "-mb-px border-b-2 px-3 py-2 text-sm transition-colors",
           if(@active == id,

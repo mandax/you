@@ -86,6 +86,13 @@ defmodule YouWeb.ConsoleLive do
   # that licenses splitting this form into tabs: an unchecked checkbox
   # submits no key at all, indistinguishable from a field on a tab that was
   # never submitted.
+  # Tabs that show reference material rather than editable settings. The form
+  # and its Save button are skipped for these, so the list and the render stay
+  # one fact rather than a string literal repeated a hundred lines apart.
+  @read_only_settings_tabs ~w(federation)
+
+  defp read_only_settings_tab?(tab), do: tab in @read_only_settings_tabs
+
   @settings_fields [
     %{key: :session_expiry_hours, label: "Session expiry (hours)"},
     %{key: :jwt_expiry_hours, label: "JWT expiry (hours)"},
@@ -2162,14 +2169,14 @@ defmodule YouWeb.ConsoleLive do
 
       <.tab_strip tabs={@tabs} active={@tab} path={~p"/console?view=settings"} />
 
-      <div id={"tabpanel-#{@tab}"} role="tabpanel" aria-labelledby={"tab-#{@tab}"}>
+      <div id={"tabpanel-#{@tab}"} role="tabpanel" tabindex="0" aria-labelledby={"tab-#{@tab}"}>
         <.federation_panel
-          :if={@tab == "federation"}
+          :if={read_only_settings_tab?(@tab)}
           base_url={@base_url}
           oidc_providers={@oidc_providers}
         />
         <form
-          :if={@tab != "federation"}
+          :if={not read_only_settings_tab?(@tab)}
           id={"settings-#{@tab}-form"}
           phx-submit="save_settings"
           class="space-y-4"
