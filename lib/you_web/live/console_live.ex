@@ -78,6 +78,10 @@ defmodule YouWeb.ConsoleLive do
   # Integrations rather than left as three mostly-empty tabs. Federation is
   # read-only reference material with no form of its own (see AGENTS.md's
   # tabbed multi-context convention).
+  # The users view's filter names, shared by the query-string builder, the
+  # params reader and the pager, so the three cannot drift apart.
+  @user_filter_keys ~w(email status app role)
+
   @settings_tabs [
     {"session", "Session & tokens"},
     {"distribution", "Erlang distribution"},
@@ -219,10 +223,13 @@ defmodule YouWeb.ConsoleLive do
   # it and must not survive a patch to a different one; a settings tab
   # change within the same section leaves it alone.
   #
-  # `page` comes from the query string (`?page=`), never the path — see
-  # AGENTS.md — and is read fresh here on every params change, so a plain nav
-  # to a section (no `page` in the URL) always lands on page 1 rather than
-  # inheriting whatever page a previous filter change left behind.
+  # `page` and every filter live in the query string (`?page=`, `?email=`),
+  # never the path — see AGENTS.md — and are read fresh here on every params
+  # change. That makes the URL the single source of truth for both: a plain
+  # nav to a section (no query at all) always lands on page 1 with no
+  # filters, a filtered link restores that filter on a fresh mount, and a
+  # page link that carries the filters along (see `users_page_path/2` et al)
+  # keeps them applied rather than silently widening the list.
   defp render_section(view, tab, params, socket) do
     socket = if socket.assigns.view == view, do: socket, else: reset_section_state(socket)
 
@@ -232,7 +239,10 @@ defmodule YouWeb.ConsoleLive do
        view: view,
        settings_tab: settings_tab(tab),
        saved: false,
-       page: parse_page(params)
+       page: parse_page(params),
+       user_filters: Map.take(params, @user_filter_keys),
+       audit_filter: params["filter"] || "",
+       audit_app_filter: params["app"] || ""
      )
      |> load_view(view)}
   end
@@ -255,13 +265,38 @@ defmodule YouWeb.ConsoleLive do
     page |> max(1) |> min(last_page)
   end
 
+  # Builds `base` plus a query string carrying only the filter keys that are
+  # actually set (an unfiltered, page-1 view is just `base` — one URL per
+  # view, not a blank query string standing in as a second one) and, when
+  # `page` is past 1, `page` itself. The one place both users and audit
+  # assemble a link, so a page link and a filter link can never disagree
+  # about what belongs in the query.
+  defp view_query_path(base, filters, page) do
+    set_filters = Enum.reject(filters, fn {_k, v} -> blank?(v) end)
+    query = if page > 1, do: set_filters ++ [{"page", page}], else: set_filters
+
+    case query do
+      [] -> base
+      _ -> base <> "?" <> URI.encode_query(query)
+    end
+  end
+
+  defp blank?(nil), do: true
+  defp blank?(""), do: true
+  defp blank?(_), do: false
+
   # Sections navigate by patch rather than remount (#136), so `page` is a
   # socket assign that outlives a filter change unless something resets it.
-  # Patching to the view's bare path (no `page` param) re-runs
-  # `handle_params/3`, which reads `page` fresh from the URL and lands on 1 —
-  # the same path every other page change goes through, rather than a second
-  # reset codepath that could drift from it.
-  defp patch_to_page_one(socket, path), do: push_patch(socket, to: path)
+  # A filter change always lands on page 1, carrying the new filters — the
+  # same `view_query_path/3` a page link builds, just with `page` omitted —
+  # and patches with `replace: true` so filtering-as-you-type doesn't leave
+  # a browser-history entry per keystroke; only paging is a history-worthy
+  # navigation.
+  defp users_path(filters, page),
+    do: view_query_path(~p"/console/users", Map.take(filters, @user_filter_keys), page)
+
+  defp audit_path(filter, app_slug, page),
+    do: view_query_path(~p"/console/audit", %{"filter" => filter, "app" => app_slug}, page)
 
   defp reset_section_state(socket) do
     assign(socket,
@@ -473,12 +508,20 @@ defmodule YouWeb.ConsoleLive do
 
   def handle_event("filter_users", %{"filter_key" => key, "value" => value}, socket) do
     filters = Map.put(socket.assigns.user_filters, key, value)
-    {:noreply, socket |> assign(user_filters: filters) |> patch_to_page_one(~p"/console/users")}
+
+    {:noreply,
+     socket
+     |> assign(user_filters: filters)
+     |> push_patch(to: users_path(filters, 1), replace: true)}
   end
 
   def handle_event("filter_users", params, socket) do
     filters = Map.merge(socket.assigns.user_filters, Map.take(params, ["email"]))
-    {:noreply, socket |> assign(user_filters: filters) |> patch_to_page_one(~p"/console/users")}
+
+    {:noreply,
+     socket
+     |> assign(user_filters: filters)
+     |> push_patch(to: users_path(filters, 1), replace: true)}
   end
 
   def handle_event("set_you_role", %{"user_id" => user_id} = params, socket) do
@@ -548,12 +591,23 @@ defmodule YouWeb.ConsoleLive do
   end
 
   def handle_event("filter_audit", %{"filter" => filter}, socket) do
-    {:noreply, socket |> assign(:audit_filter, filter) |> patch_to_page_one(~p"/console/audit")}
+    {:noreply,
+     socket
+     |> assign(:audit_filter, filter)
+     |> push_patch(
+       to: audit_path(filter, socket.assigns.audit_app_filter, 1),
+       replace: true
+     )}
   end
 
   def handle_event("filter_audit_app", %{"value" => app_slug}, socket) do
     {:noreply,
-     socket |> assign(:audit_app_filter, app_slug) |> patch_to_page_one(~p"/console/audit")}
+     socket
+     |> assign(:audit_app_filter, app_slug)
+     |> push_patch(
+       to: audit_path(socket.assigns.audit_filter, app_slug, 1),
+       replace: true
+     )}
   end
 
   # ── webhooks ──────────────────────────────────────────────────
@@ -1310,7 +1364,8 @@ defmodule YouWeb.ConsoleLive do
       </.data_table>
 
       <.pager
-        path={~p"/console/users"}
+        prev_path={users_path(@filters, @page - 1)}
+        next_path={users_path(@filters, @page + 1)}
         page={@page}
         page_size={@page_size}
         total={@users_total}
@@ -1885,7 +1940,8 @@ defmodule YouWeb.ConsoleLive do
       </.data_table>
 
       <.pager
-        path={~p"/console/audit"}
+        prev_path={audit_path(@audit_filter, @audit_app_filter, @page - 1)}
+        next_path={audit_path(@audit_filter, @audit_app_filter, @page + 1)}
         page={@page}
         page_size={@page_size}
         total={@total}

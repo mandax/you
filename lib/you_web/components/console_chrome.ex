@@ -314,7 +314,11 @@ defmodule YouWeb.Components.ConsoleChrome do
   few hundred rows and stops being useful long before an instance with
   thousands of users would need it.
   """
-  attr :path, :string, required: true
+  # The caller builds these, because it is the caller that knows the filters
+  # in play — a pager that assembles its own `?page=` drops them and silently
+  # widens a filtered list on the first click.
+  attr :prev_path, :string, required: true
+  attr :next_path, :string, required: true
   attr :page, :integer, required: true
   attr :page_size, :integer, required: true
   attr :total, :integer, required: true
@@ -335,7 +339,7 @@ defmodule YouWeb.Components.ConsoleChrome do
       <div class="flex items-center gap-1">
         <.link
           :if={@page > 1}
-          patch={"#{@path}?page=#{@page - 1}"}
+          patch={@prev_path}
           class="rounded px-2 py-1 transition-colors hover:bg-accent hover:text-foreground"
         >
           Prev
@@ -343,7 +347,7 @@ defmodule YouWeb.Components.ConsoleChrome do
         <span :if={@page <= 1} class="rounded px-2 py-1 opacity-40">Prev</span>
         <.link
           :if={@page < @last_page}
-          patch={"#{@path}?page=#{@page + 1}"}
+          patch={@next_path}
           class="rounded px-2 py-1 transition-colors hover:bg-accent hover:text-foreground"
         >
           Next

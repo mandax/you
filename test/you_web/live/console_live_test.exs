@@ -414,6 +414,51 @@ defmodule YouWeb.ConsoleLiveTest do
       assert filtered =~ "zzz-findme@example.com"
     end
 
+    # Filters live in the query string so a filtered view is shareable and
+    # survives a refresh — and so the pager cannot widen it, which is what a
+    # pager that builds its own `?page=` does.
+    test "a filter is reflected in the URL", %{conn: conn} do
+      seed_paginated_users("zzz-findme@example.com")
+      {:ok, lv, _html} = live(conn, "/console/users")
+
+      render_change(lv, "filter_users", %{"email" => "zzz-findme"})
+
+      assert_patch(lv, "/console/users?email=zzz-findme")
+    end
+
+    test "a filtered URL restores that filter on a fresh mount", %{conn: conn} do
+      seed_paginated_users("zzz-findme@example.com")
+
+      {:ok, _lv, html} = live(conn, "/console/users?email=zzz-findme")
+
+      assert html =~ "zzz-findme@example.com"
+      refute html =~ "page-user-01@example.com"
+    end
+
+    test "paging preserves the filter instead of widening the list", %{conn: conn} do
+      for i <- 1..60 do
+        You.AccountsFixtures.user_fixture(%{
+          email: "keep-#{String.pad_leading(to_string(i), 2, "0")}@example.com"
+        })
+      end
+
+      {:ok, lv, _html} = live(conn, "/console/users?email=keep-")
+
+      next = lv |> element("a", "Next") |> render_click()
+
+      assert_patch(lv, "/console/users?email=keep-&page=2")
+      refute next =~ "page-user-01@example.com"
+    end
+
+    test "an unfiltered first page emits no query string", %{conn: conn} do
+      seed_paginated_users("zzz-findme@example.com")
+      {:ok, lv, _html} = live(conn, "/console/users?email=zzz")
+
+      render_change(lv, "filter_users", %{"email" => ""})
+
+      assert_patch(lv, "/console/users")
+    end
+
     test "the displayed total is the filtered count, not the page length", %{conn: conn} do
       seed_paginated_users("zzz-findme@example.com")
 
@@ -681,7 +726,10 @@ defmodule YouWeb.ConsoleLiveTest do
       assert render(lv) =~ prefix <> "01"
 
       render_change(lv, "filter_audit", %{"filter" => prefix <> "6"})
-      assert_patch(lv, "/console/audit")
+
+      # The filter travels in the URL and `page` is dropped, so the patch
+      # target proves both halves at once: back to page 1, filter preserved.
+      assert_patch(lv, "/console/audit?filter=#{prefix}6")
       assert render(lv) =~ prefix <> "60"
     end
 
