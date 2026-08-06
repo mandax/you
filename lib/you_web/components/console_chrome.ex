@@ -301,4 +301,64 @@ defmodule YouWeb.Components.ConsoleChrome do
     </div>
     """
   end
+
+  @doc """
+  Prev/Next pager with a "51–100 of 4,213" range label.
+
+  `path` is the view's own base path (`/console/users`, `/console/audit`);
+  only the page number is appended as a query string (`?page=2`), never a
+  path segment — see AGENTS.md's path/query rule. Not `~p`: like `tab_strip/1`,
+  `path` is a runtime value and `~p` needs a literal prefix.
+
+  Prev/Next rather than numbered pages: numbering every page reads fine at a
+  few hundred rows and stops being useful long before an instance with
+  thousands of users would need it.
+  """
+  attr :path, :string, required: true
+  attr :page, :integer, required: true
+  attr :page_size, :integer, required: true
+  attr :total, :integer, required: true
+  attr :noun, :string, default: "results"
+
+  def pager(assigns) do
+    assigns =
+      assign(assigns,
+        last_page: max(1, div(assigns.total + assigns.page_size - 1, assigns.page_size))
+      )
+
+    ~H"""
+    <div class="flex items-center justify-between gap-3 font-mono text-xs text-muted-foreground">
+      <span>
+        {pager_range(@page, @page_size, @total)} of
+        <span class="text-foreground">{@total}</span> {@noun}
+      </span>
+      <div class="flex items-center gap-1">
+        <.link
+          :if={@page > 1}
+          patch={"#{@path}?page=#{@page - 1}"}
+          class="rounded px-2 py-1 transition-colors hover:bg-accent hover:text-foreground"
+        >
+          Prev
+        </.link>
+        <span :if={@page <= 1} class="rounded px-2 py-1 opacity-40">Prev</span>
+        <.link
+          :if={@page < @last_page}
+          patch={"#{@path}?page=#{@page + 1}"}
+          class="rounded px-2 py-1 transition-colors hover:bg-accent hover:text-foreground"
+        >
+          Next
+        </.link>
+        <span :if={@page >= @last_page} class="rounded px-2 py-1 opacity-40">Next</span>
+      </div>
+    </div>
+    """
+  end
+
+  defp pager_range(_page, _page_size, 0), do: "0"
+
+  defp pager_range(page, page_size, total) do
+    first = (page - 1) * page_size + 1
+    last = min(page * page_size, total)
+    "#{first}–#{last}"
+  end
 end

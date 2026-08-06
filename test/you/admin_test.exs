@@ -472,4 +472,94 @@ defmodule You.AdminTest do
       assert same.is_admin
     end
   end
+
+  describe "list_users_with_stats/2 and count_users_matching/1" do
+    test "email filter matches case-insensitively and paginates" do
+      AccountsFixtures.user_fixture(%{email: "findme@example.com"})
+      AccountsFixtures.user_fixture(%{email: "someoneelse@example.com"})
+
+      assert Admin.count_users_matching(%{email: "FINDME"}) == 1
+
+      assert [%{user: %{email: "findme@example.com"}}] =
+               Admin.list_users_with_stats(%{email: "FINDME"})
+    end
+
+    test "status filter narrows to confirmed or unconfirmed" do
+      confirmed = AccountsFixtures.user_fixture()
+      unconfirmed = AccountsFixtures.unconfirmed_user_fixture()
+
+      assert Admin.count_users_matching(%{status: "confirmed"}) == 1
+      assert Admin.count_users_matching(%{status: "unconfirmed"}) == 1
+
+      assert [%{user: found}] = Admin.list_users_with_stats(%{status: "confirmed"})
+      assert found.id == confirmed.id
+
+      assert [%{user: found}] = Admin.list_users_with_stats(%{status: "unconfirmed"})
+      assert found.id == unconfirmed.id
+    end
+
+    test "app and role filters compose to an explicit assignment" do
+      {:ok, app, _secret} =
+        Admin.create_app(%{
+          slug: "combo-app",
+          name: "Combo App",
+          callback_url: "https://combo-app.example.com/cb"
+        })
+
+      admin_user = AccountsFixtures.user_fixture()
+      other = AccountsFixtures.user_fixture()
+      {:ok, _} = You.Roles.set_role(app, admin_user, "admin")
+
+      assert Admin.count_users_matching(%{app_id: app.id, role: "admin"}) == 1
+      assert [%{user: found}] = Admin.list_users_with_stats(%{app_id: app.id, role: "admin"})
+      assert found.id == admin_user.id
+      refute found.id == other.id
+    end
+
+    test "limit/offset page the filtered result" do
+      for n <- 1..5, do: AccountsFixtures.user_fixture(%{email: "page#{n}@example.com"})
+
+      page = Admin.list_users_with_stats(%{}, limit: 2, offset: 2)
+      assert length(page) == 2
+      assert Admin.count_users_matching(%{}) == 5
+    end
+
+    test "passkey and identity counts are scoped to exactly the users returned" do
+      on_page = AccountsFixtures.user_fixture(%{email: "on-page@example.com"})
+      off_page = AccountsFixtures.user_fixture(%{email: "off-page@example.com"})
+
+      insert_passkey!(on_page)
+      insert_passkey!(off_page)
+      insert_passkey!(off_page)
+      insert_federated_identity!(off_page)
+
+      assert [%{user: found, passkeys: passkeys, identities: identities}] =
+               Admin.list_users_with_stats(%{email: "on-page"})
+
+      assert found.id == on_page.id
+      assert passkeys == 1
+      assert identities == 0
+    end
+
+    defp insert_passkey!(user) do
+      %You.Accounts.Passkey{}
+      |> You.Accounts.Passkey.changeset(%{
+        user_id: user.id,
+        credential_id: :crypto.strong_rand_bytes(16),
+        public_key: :crypto.strong_rand_bytes(16)
+      })
+      |> You.Repo.insert!()
+    end
+
+    defp insert_federated_identity!(user) do
+      %You.Accounts.FederatedIdentity{}
+      |> You.Accounts.FederatedIdentity.changeset(%{
+        user_id: user.id,
+        provider: "google",
+        subject: "sub-#{System.unique_integer([:positive])}",
+        email: user.email
+      })
+      |> You.Repo.insert!()
+    end
+  end
 end

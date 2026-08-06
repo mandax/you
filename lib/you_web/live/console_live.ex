@@ -67,6 +67,11 @@ defmodule YouWeb.ConsoleLive do
   # keeps the current value, cleared via the explicit "clear" button.
   @secret_settings [:erlang_cookie, :scim_bearer_token, :smtp_password, :api_token]
 
+  # Shared by the users and audit views — the only two console tables with
+  # enough rows to need paging. `?page=` is query state, not a path segment
+  # (see AGENTS.md); both views reset to page 1 whenever their filters change.
+  @page_size 50
+
   # Session/Erlang/Mail/Deployment mode are distinct concerns and keep their
   # own tab; Provisioning & audit, Management API and Analytics are all one
   # concern — how outside systems talk to this instance — folded into
@@ -130,6 +135,7 @@ defmodule YouWeb.ConsoleLive do
        page_title: "Console",
        nav: nav(),
        view: "overview",
+       page: 1,
        settings_tabs: @settings_tabs,
        settings_tab: elem(hd(@settings_tabs), 0),
        node_name: Node.self(),
@@ -189,20 +195,20 @@ defmodule YouWeb.ConsoleLive do
   """
   @impl true
   def handle_params(params, _uri, socket) do
-    resolve_section(params["view"], params["tab"], socket)
+    resolve_section(params["view"], params["tab"], params, socket)
   end
 
-  defp resolve_section(nil, tab, socket) do
+  defp resolve_section(nil, tab, params, socket) do
     if socket.assigns.onboarding do
       {:noreply, redirect(socket, to: ~p"/console/features")}
     else
-      render_section("overview", tab, socket)
+      render_section("overview", tab, params, socket)
     end
   end
 
-  defp resolve_section(view, tab, socket) do
+  defp resolve_section(view, tab, params, socket) do
     if view in section_ids() do
-      render_section(view, tab, socket)
+      render_section(view, tab, params, socket)
     else
       raise YouWeb.NotFoundError, "no such console section: #{inspect(view)}"
     end
@@ -212,14 +218,50 @@ defmodule YouWeb.ConsoleLive do
   # import preview, a sheet mid-edit — is scoped to the section that opened
   # it and must not survive a patch to a different one; a settings tab
   # change within the same section leaves it alone.
-  defp render_section(view, tab, socket) do
+  #
+  # `page` comes from the query string (`?page=`), never the path — see
+  # AGENTS.md — and is read fresh here on every params change, so a plain nav
+  # to a section (no `page` in the URL) always lands on page 1 rather than
+  # inheriting whatever page a previous filter change left behind.
+  defp render_section(view, tab, params, socket) do
     socket = if socket.assigns.view == view, do: socket, else: reset_section_state(socket)
 
     {:noreply,
      socket
-     |> assign(view: view, settings_tab: settings_tab(tab), saved: false)
+     |> assign(
+       view: view,
+       settings_tab: settings_tab(tab),
+       saved: false,
+       page: parse_page(params)
+     )
      |> load_view(view)}
   end
+
+  defp parse_page(params) do
+    case Integer.parse(params["page"] || "") do
+      {n, ""} when n > 0 -> n
+      _ -> 1
+    end
+  end
+
+  # A page beyond the last is clamped rather than 404ed: a page number is
+  # view state that drifts on its own as the underlying data changes — the
+  # same filter that fit on 3 pages yesterday may fit on 1 today — unlike a
+  # section or tab, which is a real address. Clamping keeps a bookmarked or
+  # refreshed URL showing real, current rows instead of an empty table
+  # standing in for "that page doesn't exist any more".
+  defp clamp_page(page, total, page_size) do
+    last_page = max(1, div(total + page_size - 1, page_size))
+    page |> max(1) |> min(last_page)
+  end
+
+  # Sections navigate by patch rather than remount (#136), so `page` is a
+  # socket assign that outlives a filter change unless something resets it.
+  # Patching to the view's bare path (no `page` param) re-runs
+  # `handle_params/3`, which reads `page` fresh from the URL and lands on 1 —
+  # the same path every other page change goes through, rather than a second
+  # reset codepath that could drift from it.
+  defp patch_to_page_one(socket, path), do: push_patch(socket, to: path)
 
   defp reset_section_state(socket) do
     assign(socket,
@@ -246,13 +288,17 @@ defmodule YouWeb.ConsoleLive do
   providers and role assignments do not change on their own between admin
   actions, and reloading them here would repeat the wholesale re-read this
   module used to do per connected admin, per tick.
+
+  The audit view re-slices the refreshed ring against the admin's current
+  `page` rather than reading `page` from the URL, so a tick never moves them
+  off the page they are looking at.
   """
   @impl true
   def handle_info(:refresh, socket) do
-    if socket.assigns.view in ["overview", "audit"] do
-      {:noreply, load_events(socket)}
-    else
-      {:noreply, socket}
+    case socket.assigns.view do
+      "overview" -> {:noreply, load_events(socket)}
+      "audit" -> {:noreply, socket |> load_events() |> paginate_audit()}
+      _ -> {:noreply, socket}
     end
   end
 
@@ -426,12 +472,13 @@ defmodule YouWeb.ConsoleLive do
   end
 
   def handle_event("filter_users", %{"filter_key" => key, "value" => value}, socket) do
-    {:noreply, assign(socket, user_filters: Map.put(socket.assigns.user_filters, key, value))}
+    filters = Map.put(socket.assigns.user_filters, key, value)
+    {:noreply, socket |> assign(user_filters: filters) |> patch_to_page_one(~p"/console/users")}
   end
 
   def handle_event("filter_users", params, socket) do
     filters = Map.merge(socket.assigns.user_filters, Map.take(params, ["email"]))
-    {:noreply, assign(socket, user_filters: filters)}
+    {:noreply, socket |> assign(user_filters: filters) |> patch_to_page_one(~p"/console/users")}
   end
 
   def handle_event("set_you_role", %{"user_id" => user_id} = params, socket) do
@@ -501,11 +548,12 @@ defmodule YouWeb.ConsoleLive do
   end
 
   def handle_event("filter_audit", %{"filter" => filter}, socket) do
-    {:noreply, assign(socket, :audit_filter, filter)}
+    {:noreply, socket |> assign(:audit_filter, filter) |> patch_to_page_one(~p"/console/audit")}
   end
 
   def handle_event("filter_audit_app", %{"value" => app_slug}, socket) do
-    {:noreply, assign(socket, :audit_app_filter, app_slug)}
+    {:noreply,
+     socket |> assign(:audit_app_filter, app_slug) |> patch_to_page_one(~p"/console/audit")}
   end
 
   # ── webhooks ──────────────────────────────────────────────────
@@ -826,11 +874,11 @@ defmodule YouWeb.ConsoleLive do
   defp load_view(socket, "overview"), do: socket |> load_counts() |> load_events()
 
   defp load_view(socket, "users"),
-    do: socket |> load_users() |> load_apps() |> load_assignments()
+    do: socket |> load_apps() |> load_users() |> load_assignments()
 
   defp load_view(socket, "apps"), do: load_apps(socket)
   defp load_view(socket, "providers"), do: load_providers(socket)
-  defp load_view(socket, "audit"), do: socket |> load_events() |> load_apps()
+  defp load_view(socket, "audit"), do: socket |> load_events() |> load_apps() |> paginate_audit()
   defp load_view(socket, "webhooks"), do: load_endpoints(socket)
   defp load_view(socket, "emails"), do: load_email_templates(socket)
   defp load_view(socket, "features"), do: socket
@@ -855,12 +903,74 @@ defmodule YouWeb.ConsoleLive do
     )
   end
 
-  defp load_users(socket), do: assign(socket, users: Admin.list_users_with_stats())
+  # Filters, then pages: the total behind the header and pager comes from a
+  # count query over the same filters, not from `length/1` of whatever page
+  # happens to be loaded — and `page` is clamped against that count before
+  # it drives the `offset`, so a stale or hand-edited `?page=` never asks the
+  # query for rows past the end.
+  defp load_users(socket) do
+    filters = user_query_filters(socket.assigns.user_filters)
+    total = Admin.count_users_matching(filters)
+    page = clamp_page(socket.assigns.page, total, @page_size)
+
+    rows =
+      Admin.list_users_with_stats(filters, limit: @page_size, offset: (page - 1) * @page_size)
+
+    assign(socket, users: rows, users_total: total, page: page)
+  end
+
+  defp user_query_filters(filters) do
+    %{
+      email: present(filters["email"]),
+      status: present(filters["status"]),
+      app_id: filters["app"] |> present() |> parse_app_id(),
+      role: present(filters["role"])
+    }
+  end
+
+  defp parse_app_id(nil), do: nil
+
+  defp parse_app_id(str) do
+    case Integer.parse(str) do
+      {id, ""} -> id
+      _ -> nil
+    end
+  end
+
   defp load_apps(socket), do: assign(socket, apps: Admin.list_apps())
-  defp load_assignments(socket), do: assign(socket, assignments: Roles.all_assignments())
+
+  # Scoped to exactly the page `load_users/1` just fetched — never every
+  # `app_user_roles` row on the instance.
+  defp load_assignments(socket) do
+    ids = Enum.map(socket.assigns.users, & &1.user.id)
+    assign(socket, assignments: Roles.assignments_for_users(ids))
+  end
+
   defp load_providers(socket), do: assign(socket, providers: IdentityProviders.list_providers())
   defp load_endpoints(socket), do: assign(socket, endpoints: Webhooks.list_endpoints())
   defp load_events(socket), do: assign(socket, events: Streamer.recent())
+
+  # `Streamer.recent/0` is an in-memory ring already capped at 100 rows
+  # (`streamer.ex`), so filtering and paging it in memory here is correct
+  # today — there is no query to push either into. #87 replaces the ring with
+  # a durable event store; when it lands, this is where the filter and the
+  # `offset`/`limit` move into that store's query, the same shape
+  # `load_users/1` above already uses.
+  defp paginate_audit(socket) do
+    filtered =
+      socket.assigns.events
+      |> Enum.filter(&audit_matches?(&1, socket.assigns.audit_filter))
+      |> Enum.filter(&audit_app_matches?(&1, socket.assigns.audit_app_filter))
+
+    total = length(filtered)
+    page = clamp_page(socket.assigns.page, total, @page_size)
+
+    assign(socket,
+      audit_events: Enum.slice(filtered, (page - 1) * @page_size, @page_size),
+      audit_total: total,
+      page: page
+    )
+  end
 
   defp load_email_templates(socket),
     do: assign(socket, email_overrides: You.EmailTemplates.overrides())
@@ -942,6 +1052,8 @@ defmodule YouWeb.ConsoleLive do
         <% "users" -> %>
           <.users_view
             users={@users}
+            users_total={@users_total}
+            page={@page}
             apps={@apps}
             assignments={@assignments}
             filters={@user_filters}
@@ -968,7 +1080,9 @@ defmodule YouWeb.ConsoleLive do
           />
         <% "audit" -> %>
           <.audit_view
-            events={@events}
+            events={@audit_events}
+            total={@audit_total}
+            page={@page}
             apps={@apps}
             audit_filter={@audit_filter}
             audit_app_filter={@audit_app_filter}
@@ -1064,6 +1178,8 @@ defmodule YouWeb.ConsoleLive do
 
   # ── section: users ────────────────────────────────────────────
   attr :users, :list, required: true
+  attr :users_total, :integer, required: true
+  attr :page, :integer, required: true
   attr :apps, :list, required: true
   attr :assignments, :map, required: true
   attr :filters, :map, required: true
@@ -1072,17 +1188,11 @@ defmodule YouWeb.ConsoleLive do
   attr :single_mode, :boolean, default: false
 
   defp users_view(assigns) do
-    assigns =
-      assign(assigns,
-        filtered: filter_users(assigns.users, assigns.filters, assigns.assignments)
-      )
+    assigns = assign(assigns, page_size: @page_size)
 
     ~H"""
     <div class="space-y-4">
       <div class="flex flex-wrap items-center gap-3">
-        <span class="font-mono text-xs text-muted-foreground">
-          <span class="text-foreground">{length(@filtered)}</span> of {length(@users)} users
-        </span>
         <div class="flex flex-wrap items-center gap-2">
           <form phx-change="filter_users">
             <input
@@ -1131,14 +1241,14 @@ defmodule YouWeb.ConsoleLive do
         </div>
       </div>
 
-      <.data_table cols={["Email", "Status", "You", "Access", ""]} empty={@filtered == []}>
+      <.data_table cols={["Email", "Status", "You", "Access", ""]} empty={@users == []}>
         <%!-- The row opens the detail sheet, but the binding sits on the data
               cells rather than the <tr>: LiveView delegates clicks from the
               document root, so stopping propagation around the action buttons
               to keep them from also opening the sheet would swallow their own
               phx-click on the way up. --%>
         <tr
-          :for={row <- @filtered}
+          :for={row <- @users}
           class="border-b border-border/60 transition-colors last:border-0 hover:bg-muted/40"
         >
           <td
@@ -1198,6 +1308,14 @@ defmodule YouWeb.ConsoleLive do
           </td>
         </tr>
       </.data_table>
+
+      <.pager
+        path={~p"/console/users"}
+        page={@page}
+        page_size={@page_size}
+        total={@users_total}
+        noun="users"
+      />
 
       <.sheet id="edit-user" open={@editing_user != nil} on_close="cancel_edit_user">
         <:title>{@editing_user && @editing_user.email}</:title>
@@ -1341,45 +1459,6 @@ defmodule YouWeb.ConsoleLive do
 
   defp app_role(assignments, user_id, app_id) do
     get_in(assignments, [user_id, app_id]) || "user"
-  end
-
-  defp filter_users(users, filters, assignments) do
-    Enum.filter(users, fn row ->
-      email_match?(row.user, filters["email"]) and
-        status_match?(row.user, filters["status"]) and
-        app_roles_match?(row.user, filters, assignments)
-    end)
-  end
-
-  defp email_match?(_user, nil), do: true
-  defp email_match?(_user, ""), do: true
-
-  defp email_match?(user, filter),
-    do: String.contains?(String.downcase(user.email || ""), String.downcase(filter))
-
-  defp status_match?(_user, nil), do: true
-  defp status_match?(_user, ""), do: true
-  defp status_match?(user, "confirmed"), do: not is_nil(user.confirmed_at)
-  defp status_match?(user, "unconfirmed"), do: is_nil(user.confirmed_at)
-
-  defp app_roles_match?(user, filters, assignments) do
-    app_id = present(filters["app"])
-    role = present(filters["role"])
-    user_roles = Map.get(assignments, user.id, %{})
-
-    cond do
-      app_id && role ->
-        Map.get(user_roles, String.to_integer(app_id)) == role
-
-      app_id ->
-        Map.has_key?(user_roles, String.to_integer(app_id))
-
-      role ->
-        role in Map.values(user_roles)
-
-      true ->
-        true
-    end
   end
 
   defp present(nil), do: nil
@@ -1743,20 +1822,19 @@ defmodule YouWeb.ConsoleLive do
   end
 
   # ── section: audit ────────────────────────────────────────────
+  # `events` arrives already filtered and sliced to the current page —
+  # `paginate_audit/1` does that against the in-memory ring, since it is
+  # already bounded (see the comment there). This component only renders.
   attr :events, :list, required: true
+  attr :total, :integer, required: true
+  attr :page, :integer, required: true
   attr :apps, :list, required: true
   attr :audit_filter, :string, required: true
   attr :audit_app_filter, :string, required: true
   attr :single_mode, :boolean, default: false
 
   defp audit_view(assigns) do
-    assigns =
-      assign(assigns,
-        filtered:
-          assigns.events
-          |> Enum.filter(&audit_matches?(&1, assigns.audit_filter))
-          |> Enum.filter(&audit_app_matches?(&1, assigns.audit_app_filter))
-      )
+    assigns = assign(assigns, page_size: @page_size)
 
     ~H"""
     <div class="space-y-4">
@@ -1791,9 +1869,9 @@ defmodule YouWeb.ConsoleLive do
           </form>
         </div>
       </div>
-      <.data_table cols={~w(Event Details At)} empty={@filtered == []}>
+      <.data_table cols={~w(Event Details At)} empty={@events == []}>
         <tr
-          :for={e <- @filtered}
+          :for={e <- @events}
           class="border-b border-border/60 last:border-0 hover:bg-muted/40"
         >
           <td class="px-3 py-2 font-mono text-xs text-foreground/90">{e.event}</td>
@@ -1805,6 +1883,14 @@ defmodule YouWeb.ConsoleLive do
           </td>
         </tr>
       </.data_table>
+
+      <.pager
+        path={~p"/console/audit"}
+        page={@page}
+        page_size={@page_size}
+        total={@total}
+        noun="events"
+      />
     </div>
     """
   end

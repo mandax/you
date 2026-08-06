@@ -116,15 +116,14 @@ defmodule You.Admin do
   is fine for the console but not for an API answering an unbounded request.
   """
   def list_users(opts \\ []) do
-    query = from(u in User, order_by: [asc: u.email])
+    from(u in User, order_by: [asc: u.email]) |> paginate(opts) |> Repo.all()
+  end
 
-    query =
-      case opts[:limit] do
-        nil -> query
-        limit -> from(q in query, limit: ^limit, offset: ^(opts[:offset] || 0))
-      end
-
-    Repo.all(query)
+  defp paginate(query, opts) do
+    case opts[:limit] do
+      nil -> query
+      limit -> from(q in query, limit: ^limit, offset: ^(opts[:offset] || 0))
+    end
   end
 
   @doc "How many users exist."
@@ -134,23 +133,29 @@ defmodule You.Admin do
   def count_admins, do: Repo.aggregate(from(u in User, where: u.is_admin), :count)
 
   @doc """
-  Lists all users with their passkey and federated-identity counts.
+  Lists users matching `filters`, with their passkey and federated-identity
+  counts, ordered by email. `:limit`/`:offset` in `opts` page the result
+  exactly like `list_users/1`; unpaged, this is the whole-instance shape
+  `list_users_with_stats/0` used to be.
 
-  Returns a list of `%{user:, passkeys:, identities:}` maps, ordered by email.
-  Counts are gathered in two grouped queries (no N+1).
+  Passkey and identity counts are scoped to exactly the users this call
+  returns (two grouped queries, no N+1) — a caller paging through the console
+  filters and pages first, so the count queries never touch a passkey or
+  identity belonging to a user outside the current page.
+
+  `filters` (a map, all keys optional):
+    * `:email` — case-insensitive substring match
+    * `:status` — `"confirmed"` or `"unconfirmed"`
+    * `:app_id` — the user has an explicit role assignment in this app
+    * `:role` — the user holds this role in some app, or, combined with
+      `:app_id`, in that specific app
   """
-  def list_users_with_stats do
-    users = Repo.all(from u in User, order_by: [asc: u.email])
+  def list_users_with_stats(filters \\ %{}, opts \\ []) do
+    users = filters |> filtered_users_query() |> paginate(opts) |> Repo.all()
+    ids = Enum.map(users, & &1.id)
 
-    passkey_counts =
-      Map.new(Repo.all(from p in Passkey, group_by: p.user_id, select: {p.user_id, count(p.id)}))
-
-    identity_counts =
-      Map.new(
-        Repo.all(
-          from f in FederatedIdentity, group_by: f.user_id, select: {f.user_id, count(f.id)}
-        )
-      )
+    passkey_counts = counts_by_user(Passkey, ids)
+    identity_counts = counts_by_user(FederatedIdentity, ids)
 
     Enum.map(users, fn u ->
       %{
@@ -159,6 +164,58 @@ defmodule You.Admin do
         identities: Map.get(identity_counts, u.id, 0)
       }
     end)
+  end
+
+  @doc "Counts the users matching `filters` (see `list_users_with_stats/2`)."
+  def count_users_matching(filters \\ %{}) do
+    filters |> filtered_users_query() |> exclude(:order_by) |> Repo.aggregate(:count)
+  end
+
+  defp filtered_users_query(filters) do
+    from(u in User, order_by: [asc: u.email])
+    |> filter_by_email(Map.get(filters, :email))
+    |> filter_by_status(Map.get(filters, :status))
+    |> filter_by_app_role(Map.get(filters, :app_id), Map.get(filters, :role))
+  end
+
+  defp filter_by_email(query, nil), do: query
+
+  defp filter_by_email(query, email),
+    do: from(u in query, where: like(u.email, ^"%#{email}%"))
+
+  defp filter_by_status(query, "confirmed"),
+    do: from(u in query, where: not is_nil(u.confirmed_at))
+
+  defp filter_by_status(query, "unconfirmed"), do: from(u in query, where: is_nil(u.confirmed_at))
+  defp filter_by_status(query, _), do: query
+
+  defp filter_by_app_role(query, nil, nil), do: query
+
+  defp filter_by_app_role(query, app_id, role) do
+    condition = assignment_condition(app_id, role)
+
+    from(u in query,
+      where: u.id in subquery(from(a in Assignment, where: ^condition, select: a.user_id))
+    )
+  end
+
+  defp assignment_condition(nil, role), do: dynamic([a], a.role == ^role)
+  defp assignment_condition(app_id, nil), do: dynamic([a], a.app_id == ^app_id)
+
+  defp assignment_condition(app_id, role),
+    do: dynamic([a], a.app_id == ^app_id and a.role == ^role)
+
+  defp counts_by_user(_schema, []), do: %{}
+
+  defp counts_by_user(schema, ids) do
+    Map.new(
+      Repo.all(
+        from r in schema,
+          where: r.user_id in ^ids,
+          group_by: r.user_id,
+          select: {r.user_id, count(r.id)}
+      )
+    )
   end
 
   @doc """

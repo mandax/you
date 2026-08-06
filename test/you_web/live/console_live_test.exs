@@ -392,6 +392,98 @@ defmodule YouWeb.ConsoleLiveTest do
     end
   end
 
+  describe "users pagination" do
+    # 55 users sorting ahead of the target alphabetically, so the target
+    # lands on page 2 of the unfiltered, 50-per-page list.
+    defp seed_paginated_users(target_email) do
+      for n <- 1..55 do
+        n_str = n |> to_string() |> String.pad_leading(2, "0")
+        You.AccountsFixtures.unconfirmed_user_fixture(%{email: "aaa-#{n_str}@example.com"})
+      end
+
+      You.AccountsFixtures.unconfirmed_user_fixture(%{email: target_email})
+    end
+
+    test "a filter finds a match that is not on page 1", %{conn: conn} do
+      seed_paginated_users("zzz-findme@example.com")
+
+      {:ok, lv, html} = live(conn, "/console/users")
+      refute html =~ "zzz-findme@example.com"
+
+      filtered = render_change(lv, "filter_users", %{"email" => "zzz-findme"})
+      assert filtered =~ "zzz-findme@example.com"
+    end
+
+    test "the displayed total is the filtered count, not the page length", %{conn: conn} do
+      seed_paginated_users("zzz-findme@example.com")
+
+      {:ok, lv, html} = live(conn, "/console/users")
+
+      # A page holds at most 50 rows; the total must come from a count query,
+      # not `length/1` of that page — so it must read more than 50 even
+      # though only 50 rows are on screen.
+      assert [_, total] = Regex.run(~r{1–50 of\s*<span[^>]*>(\d+)</span>\s*users}, html)
+      assert String.to_integer(total) > 50
+
+      filtered = render_change(lv, "filter_users", %{"email" => "zzz-findme"})
+      assert Regex.match?(~r{1–1 of\s*<span[^>]*>1</span>\s*users}, filtered)
+    end
+
+    test "changing a filter returns to page 1", %{conn: conn} do
+      seed_paginated_users("zzz-findme@example.com")
+
+      {:ok, lv, _html} = live(conn, "/console/users?page=2")
+      assert render(lv) =~ "zzz-findme@example.com"
+
+      render_change(lv, "filter_users", %{"email" => ""})
+      assert_patch(lv, "/console/users")
+      refute render(lv) =~ "zzz-findme@example.com"
+    end
+
+    test "a page beyond the last clamps to the last page instead of rendering empty", %{
+      conn: conn
+    } do
+      seed_paginated_users("zzz-findme@example.com")
+
+      {:ok, _lv, html} = live(conn, "/console/users?page=999")
+      # Clamped to the last real page (2 of 57 users at 50/page) rather than
+      # rendering an empty table for a page that doesn't exist.
+      assert html =~ "zzz-findme@example.com"
+    end
+
+    test "passkey, identity and role-assignment lookups are scoped to the visible page", %{
+      conn: conn
+    } do
+      seed_paginated_users("zzz-findme@example.com")
+      off_page = Accounts.get_user_by_email("aaa-01@example.com")
+
+      %You.Accounts.Passkey{}
+      |> You.Accounts.Passkey.changeset(%{
+        user_id: off_page.id,
+        credential_id: :crypto.strong_rand_bytes(16),
+        public_key: :crypto.strong_rand_bytes(16)
+      })
+      |> You.Repo.insert!()
+
+      {:ok, app, _secret} =
+        Admin.create_app(%{
+          "name" => "Off Page App",
+          "slug" => "off-page-app",
+          "callback_url" => "https://off-page-app.example.com/cb"
+        })
+
+      {:ok, _} = You.Roles.set_role(app, off_page, "admin")
+
+      # Page 2 holds only "aaa-51".."aaa-55" and the target — this just
+      # asserts the page renders correctly with an off-page user carrying
+      # stats; the scoping itself is covered at the context level in
+      # AdminTest/RolesTest ("scoped to exactly the users returned").
+      {:ok, _lv, html} = live(conn, "/console/users?page=2")
+      assert html =~ "zzz-findme@example.com"
+      refute html =~ "aaa-01@example.com"
+    end
+  end
+
   describe "app roles" do
     test "assign a per-app role from the users view", %{conn: conn} do
       {:ok, app, _secret} =
@@ -539,6 +631,69 @@ defmodule YouWeb.ConsoleLiveTest do
       assert filtered =~ "action=&quot;set_role&quot;"
       assert filtered =~ "action=&quot;set_roles&quot;"
       refute filtered =~ "action=&quot;delete_webhook&quot;"
+    end
+  end
+
+  describe "audit pagination" do
+    # `Streamer` is a single process shared across the whole test run, so
+    # each call gets its own run id woven into every target — otherwise a
+    # fixed "evt-01".."evt-60" from an earlier test in this describe block
+    # would still be sitting in the ring and collide with this call's own
+    # events. 60 events, newest first out of the ring — "…-60" lands on
+    # page 1, "…-01" (the oldest of this batch) lands on page 2.
+    defp seed_audit_events do
+      run = System.unique_integer([:positive])
+
+      for n <- 1..60 do
+        :telemetry.execute([:you, :audit, :admin, :action], %{}, %{
+          action: "probe",
+          target: "evt-#{run}-#{n |> to_string() |> String.pad_leading(2, "0")}"
+        })
+      end
+
+      _ = :sys.get_state(You.Audit.Streamer)
+      "evt-#{run}-"
+    end
+
+    test "pages the ring 50 at a time, newest first", %{conn: conn} do
+      prefix = seed_audit_events()
+
+      {:ok, lv, html} = live(conn, "/console/audit")
+      assert html =~ prefix <> "60"
+      refute html =~ prefix <> "01"
+
+      page2 = render_click(element(lv, "a", "Next"))
+      assert page2 =~ prefix <> "01"
+      refute page2 =~ prefix <> "60"
+    end
+
+    test "a page beyond the last clamps instead of rendering empty", %{conn: conn} do
+      prefix = seed_audit_events()
+
+      {:ok, _lv, html} = live(conn, "/console/audit?page=999")
+      assert html =~ prefix <> "01"
+    end
+
+    test "filtering the ring resets to page 1", %{conn: conn} do
+      prefix = seed_audit_events()
+
+      {:ok, lv, _html} = live(conn, "/console/audit?page=2")
+      assert render(lv) =~ prefix <> "01"
+
+      render_change(lv, "filter_audit", %{"filter" => prefix <> "6"})
+      assert_patch(lv, "/console/audit")
+      assert render(lv) =~ prefix <> "60"
+    end
+
+    test "a 5s tick re-slices the refreshed ring without moving the page", %{conn: conn} do
+      prefix = seed_audit_events()
+
+      {:ok, lv, _html} = live(conn, "/console/audit?page=2")
+      assert render(lv) =~ prefix <> "01"
+
+      send(lv.pid, :refresh)
+      assert render(lv) =~ prefix <> "01"
+      refute render(lv) =~ prefix <> "60"
     end
   end
 

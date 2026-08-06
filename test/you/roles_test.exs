@@ -66,6 +66,27 @@ defmodule You.RolesTest do
     assert length(members) == length(Enum.uniq_by(members, fn {u, _} -> u.id end))
   end
 
+  test "assignments_for_users returns the same shape as all_assignments/0, scoped to the given ids" do
+    app = app_fixture()
+    on_page = You.AccountsFixtures.user_fixture()
+    off_page = You.AccountsFixtures.user_fixture()
+
+    {:ok, _} = Roles.set_role(app, on_page, "admin")
+    {:ok, _} = Roles.set_role(app, off_page, "admin")
+
+    scoped = Roles.assignments_for_users([on_page.id])
+
+    assert scoped == %{on_page.id => %{app.id => "admin"}}
+    refute Map.has_key?(scoped, off_page.id)
+
+    assert Roles.all_assignments() ==
+             Map.merge(scoped, Roles.assignments_for_users([off_page.id]))
+  end
+
+  test "assignments_for_users returns an empty map for an empty id list" do
+    assert Roles.assignments_for_users([]) == %{}
+  end
+
   test "roles scope carries the per-app role; without an app it uses the admin flag" do
     app = app_fixture()
     user = You.AccountsFixtures.user_fixture()
