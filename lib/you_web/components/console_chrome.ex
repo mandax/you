@@ -259,7 +259,10 @@ defmodule YouWeb.Components.ConsoleChrome do
 
   def tab_strip(assigns) do
     ~H"""
-    <div class="flex gap-1 border-b border-border" role="tablist">
+    <%!-- Flex items shrink by default, which squeezes a long label like
+          "Erlang distribution" until it wraps and the tab becomes two lines
+          tall. The labels never wrap; the strip scrolls instead. --%>
+    <div class="flex gap-1 overflow-x-auto border-b border-border" role="tablist">
       <%!-- Not ~p: @path is a runtime value (the caller's own base path),
             and ~p requires a literal prefix to verify against the router at
             compile time — it cannot start from a variable. --%>
@@ -271,7 +274,7 @@ defmodule YouWeb.Components.ConsoleChrome do
         aria-selected={to_string(@active == id)}
         aria-controls={@active == id && "tabpanel-#{id}"}
         class={[
-          "-mb-px border-b-2 px-3 py-2 text-sm transition-colors",
+          "-mb-px shrink-0 whitespace-nowrap border-b-2 px-3 py-2 text-sm transition-colors",
           if(@active == id,
             do: "border-primary text-foreground",
             else: "border-transparent text-muted-foreground hover:text-foreground"
