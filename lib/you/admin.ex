@@ -144,11 +144,18 @@ defmodule You.Admin do
   identity belonging to a user outside the current page.
 
   `filters` (a map, all keys optional):
-    * `:email` — case-insensitive substring match
+    * `:email` — substring match. Case-insensitive for ASCII only, because
+      SQLite's `LIKE` folds nothing else: `JOSÉ` will not find `josé`.
+      `%` and `_` are escaped, so the box is a search and not a pattern.
     * `:status` — `"confirmed"` or `"unconfirmed"`
     * `:app_id` — the user has an explicit role assignment in this app
-    * `:role` — the user holds this role in some app, or, combined with
-      `:app_id`, in that specific app
+    * `:role` — the user has an **explicit assignment** of this role, in some
+      app or (with `:app_id`) in that one. Deliberately not the *effective*
+      role: `Roles.role_for/2` falls back to the app's `default_role`, so
+      every unassigned user effectively holds it, and matching that would
+      make the app's default role select the entire instance. Filtering by a
+      role nobody has been explicitly given returns nothing, which is the
+      honest answer to "who did we grant this to".
   """
   def list_users_with_stats(filters \\ %{}, opts \\ []) do
     users = filters |> filtered_users_query() |> paginate(opts) |> Repo.all()
@@ -180,8 +187,17 @@ defmodule You.Admin do
 
   defp filter_by_email(query, nil), do: query
 
-  defp filter_by_email(query, email),
-    do: from(u in query, where: like(u.email, ^"%#{email}%"))
+  # A literal substring search, not a pattern match. `LIKE` would make `%` and
+  # `_` typed into the filter box into wildcards — `a_b` matching `axb@`, a
+  # lone `%` matching everyone — and escaping them needs an ESCAPE clause that
+  # SQLite will not accept as a bound parameter. `instr` has no pattern
+  # language to escape in the first place.
+  #
+  # `lower/1` folds ASCII only, here and in SQLite generally, so `JOSÉ` will
+  # not find `josé`. Documented on the caller rather than silently accepted.
+  defp filter_by_email(query, email) do
+    from(u in query, where: fragment("instr(lower(?), lower(?)) > 0", u.email, ^email))
+  end
 
   defp filter_by_status(query, "confirmed"),
     do: from(u in query, where: not is_nil(u.confirmed_at))

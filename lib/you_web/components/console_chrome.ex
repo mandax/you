@@ -303,6 +303,14 @@ defmodule YouWeb.Components.ConsoleChrome do
   end
 
   @doc """
+  The highest page number `total` rows fill at `page_size`, never below 1.
+
+  Public because the caller clamps an out-of-range page against it; two copies
+  of this arithmetic would let Next point past where the clamp lands.
+  """
+  def last_page(total, page_size), do: max(1, div(total + page_size - 1, page_size))
+
+  @doc """
   Prev/Next pager with a "51–100 of 4,213" range label.
 
   `path` is the view's own base path (`/console/users`, `/console/audit`);
@@ -327,7 +335,7 @@ defmodule YouWeb.Components.ConsoleChrome do
   def pager(assigns) do
     assigns =
       assign(assigns,
-        last_page: max(1, div(assigns.total + assigns.page_size - 1, assigns.page_size))
+        last_page: last_page(assigns.total, assigns.page_size)
       )
 
     ~H"""

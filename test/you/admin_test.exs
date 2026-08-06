@@ -6,6 +6,45 @@ defmodule You.AdminTest do
   alias You.AccountsFixtures
   alias You.AdminFixtures
 
+  # The role filter matches an *explicit* assignment, deliberately — not the
+  # effective role, which falls back to the app's default_role and would make
+  # filtering by that default select the whole instance. Pinned because the
+  # distinction is invisible from the UI: the Access column shows the
+  # effective role, so an admin can see "admin" on a row the filter will not
+  # find.
+  describe "role filter semantics" do
+    test "matches an explicit assignment" do
+      {:ok, app, _} =
+        You.Admin.create_app(%{
+          slug: "rf-explicit",
+          name: "RF",
+          callback_url: "https://rf-explicit.example.com/cb",
+          allowed_roles: ["user", "admin"]
+        })
+
+      user = You.AccountsFixtures.user_fixture()
+      {:ok, _} = You.Roles.set_role(app, user, "admin")
+
+      assert You.Admin.count_users_matching(%{role: "admin"}) == 1
+    end
+
+    test "does not match a user who only holds the app's default_role" do
+      {:ok, app, _} =
+        You.Admin.create_app(%{
+          slug: "rf-default",
+          name: "RF",
+          callback_url: "https://rf-default.example.com/cb",
+          default_role: "admin",
+          allowed_roles: ["user", "admin"]
+        })
+
+      user = You.AccountsFixtures.user_fixture()
+
+      assert You.Roles.role_for(app.slug, user.id) == "admin"
+      assert You.Admin.count_users_matching(%{role: "admin"}) == 0
+    end
+  end
+
   describe "promote_admin/1" do
     test "sets is_admin to true" do
       user = AccountsFixtures.user_fixture()

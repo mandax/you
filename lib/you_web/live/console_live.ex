@@ -78,10 +78,6 @@ defmodule YouWeb.ConsoleLive do
   # Integrations rather than left as three mostly-empty tabs. Federation is
   # read-only reference material with no form of its own (see AGENTS.md's
   # tabbed multi-context convention).
-  # The users view's filter names, shared by the query-string builder, the
-  # params reader and the pager, so the three cannot drift apart.
-  @user_filter_keys ~w(email status app role)
-
   @settings_tabs [
     {"session", "Session & tokens"},
     {"distribution", "Erlang distribution"},
@@ -101,6 +97,10 @@ defmodule YouWeb.ConsoleLive do
   @read_only_settings_tabs ~w(federation)
 
   defp read_only_settings_tab?(tab), do: tab in @read_only_settings_tabs
+
+  # The users view's filter names, shared by the query-string builder, the
+  # params reader and the pager, so the three cannot drift apart.
+  @user_filter_keys ~w(email status app role)
 
   @settings_fields [
     %{key: :session_expiry_hours, label: "Session expiry (hours)"},
@@ -228,7 +228,7 @@ defmodule YouWeb.ConsoleLive do
   # change. That makes the URL the single source of truth for both: a plain
   # nav to a section (no query at all) always lands on page 1 with no
   # filters, a filtered link restores that filter on a fresh mount, and a
-  # page link that carries the filters along (see `users_page_path/2` et al)
+  # page link that carries the filters along (see `users_path/2` et al)
   # keeps them applied rather than silently widening the list.
   defp render_section(view, tab, params, socket) do
     socket = if socket.assigns.view == view, do: socket, else: reset_section_state(socket)
@@ -261,8 +261,7 @@ defmodule YouWeb.ConsoleLive do
   # refreshed URL showing real, current rows instead of an empty table
   # standing in for "that page doesn't exist any more".
   defp clamp_page(page, total, page_size) do
-    last_page = max(1, div(total + page_size - 1, page_size))
-    page |> max(1) |> min(last_page)
+    page |> max(1) |> min(last_page(total, page_size))
   end
 
   # Builds `base` plus a query string carrying only the filter keys that are
@@ -347,14 +346,22 @@ defmodule YouWeb.ConsoleLive do
     audit_admin(socket, "logout_user", user.email)
 
     {:noreply,
-     socket |> load_users() |> put_flash(:info, "All sessions revoked for #{user.email}.")}
+     socket
+     |> load_users()
+     |> load_assignments()
+     |> put_flash(:info, "All sessions revoked for #{user.email}.")}
   end
 
   def handle_event("anonymize_user", %{"id" => id}, socket) do
     user = Admin.get_user!(id)
     {:ok, _} = Accounts.anonymize_user(user)
     audit_admin(socket, "anonymize_user", user.email)
-    {:noreply, socket |> load_users() |> put_flash(:info, "User anonymized.")}
+
+    {:noreply,
+     socket
+     |> load_users()
+     |> load_assignments()
+     |> put_flash(:info, "User anonymized.")}
   end
 
   # Also revokes every session: a second factor is reset either because a
@@ -372,6 +379,7 @@ defmodule YouWeb.ConsoleLive do
     {:noreply,
      socket
      |> load_users()
+     |> load_assignments()
      |> refresh_editing_user(id)
      |> put_flash(:info, "Two-factor authentication reset for #{user.email}.")}
   end
@@ -567,7 +575,11 @@ defmodule YouWeb.ConsoleLive do
 
     case Roles.set_role(app, user, params["value"] || params["role"]) do
       {:ok, _} ->
-        {:noreply, socket |> load_assignments() |> refresh_editing_user(params["user_id"])}
+        {:noreply,
+         socket
+         |> load_users()
+         |> load_assignments()
+         |> refresh_editing_user(params["user_id"])}
 
       {:error, _} ->
         {:noreply, put_flash(socket, :error, "Role is not allowed for this app.")}
@@ -1254,6 +1266,7 @@ defmodule YouWeb.ConsoleLive do
               name="email"
               value={@filters["email"]}
               placeholder="filter email"
+              phx-debounce="300"
               class="h-8 w-44 rounded-md border border-input bg-background px-3 font-mono text-xs placeholder:text-muted-foreground/60"
             />
           </form>

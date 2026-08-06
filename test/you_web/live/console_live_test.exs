@@ -432,13 +432,23 @@ defmodule YouWeb.ConsoleLiveTest do
       {:ok, _lv, html} = live(conn, "/console/users?email=zzz-findme")
 
       assert html =~ "zzz-findme@example.com"
-      refute html =~ "page-user-01@example.com"
+      # A user the seed really does create, and the filter really does exclude.
+      refute html =~ "aaa-01@example.com"
     end
 
     test "paging preserves the filter instead of widening the list", %{conn: conn} do
+      # Sixty matching users so the filtered list spans two pages, plus users
+      # that do not match — without those there is nothing for a dropped
+      # filter to widen *to*, and the test cannot detect the bug it names.
       for i <- 1..60 do
         You.AccountsFixtures.user_fixture(%{
           email: "keep-#{String.pad_leading(to_string(i), 2, "0")}@example.com"
+        })
+      end
+
+      for i <- 1..20 do
+        You.AccountsFixtures.user_fixture(%{
+          email: "zother-#{String.pad_leading(to_string(i), 2, "0")}@example.com"
         })
       end
 
@@ -447,7 +457,8 @@ defmodule YouWeb.ConsoleLiveTest do
       next = lv |> element("a", "Next") |> render_click()
 
       assert_patch(lv, "/console/users?email=keep-&page=2")
-      refute next =~ "page-user-01@example.com"
+      assert next =~ "keep-60@example.com"
+      refute next =~ "zother-01@example.com"
     end
 
     test "an unfiltered first page emits no query string", %{conn: conn} do
