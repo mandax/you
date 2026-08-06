@@ -4,8 +4,8 @@ defmodule YouWeb.ConsoleLive do
 
   A single LiveView shell (sidebar + topbar + section views) with a dense,
   mono-accented design: cards and tables, a live
-  connection indicator, and `?view=` navigation. Every section is wired to the
-  real domain (`You.Admin`, `You.Settings`,
+  connection indicator, and sections addressed at `/console/<view>`. Every
+  section is wired to the real domain (`You.Admin`, `You.Settings`,
   `You.Audit.Streamer`). No fabricated data.
   """
   use YouWeb, :live_view
@@ -146,7 +146,7 @@ defmodule YouWeb.ConsoleLive do
        new_provider_preset: "generic",
        discovery: nil,
        base_url: YouWeb.Endpoint.url(),
-       oidc_providers: IdentityProviders.list_providers() |> Enum.map(& &1.slug) |> Enum.sort(),
+       oidc_providers: oidc_provider_slugs(),
        saved: false,
        app_filter: "",
        provider_filter: "",
@@ -165,25 +165,75 @@ defmodule YouWeb.ConsoleLive do
   end
 
   @doc """
-  Resolves `?view=` and loads exactly the data that view renders.
+  Resolves the section and Settings tab from the path and loads exactly the
+  data that section renders.
 
   `handle_params/3` runs after `mount/3` on every render — disconnected and
   connected alike — so this is the one place a view's dataset needs loading;
   nothing is preloaded in `mount/3` that might not match the view a
   redirect or deep link actually lands on.
+
+  `overview` is an ordinary section like any other, reachable at its own
+  `/console/overview` regardless of onboarding state — the bare `/console`
+  is only ever the *default* landing page, not overview's exclusive address.
+  With onboarding incomplete that default is `/console/features` instead,
+  reached by a real redirect rather than silently swapping in different
+  content for the same URL, so the bare path always means one thing.
+
+  A path segment naming anything that isn't a real section 404s: unlike a
+  query param decorating a page that exists, a path segment *is* the
+  address, and an address that resolves to nothing should say so rather than
+  quietly rendering the overview at 200. An unknown **tab** inside a section
+  that does exist still falls back to that section's first tab — that is
+  sub-state, not an address, and following #129's original rule.
   """
   @impl true
   def handle_params(params, _uri, socket) do
-    # First admin login lands here rather than on an overview of a console
-    # they have not shaped yet.
-    default = if socket.assigns.onboarding, do: "features", else: "overview"
-    view = params["view"] || default
-    view = if view in section_ids(), do: view, else: default
+    resolve_section(params["view"], params["tab"], socket)
+  end
+
+  defp resolve_section(nil, tab, socket) do
+    if socket.assigns.onboarding do
+      {:noreply, redirect(socket, to: ~p"/console/features")}
+    else
+      render_section("overview", tab, socket)
+    end
+  end
+
+  defp resolve_section(view, tab, socket) do
+    if view in section_ids() do
+      render_section(view, tab, socket)
+    else
+      raise YouWeb.NotFoundError, "no such console section: #{inspect(view)}"
+    end
+  end
+
+  # Per-section transient state — a one-time secret dialog, a decrypted
+  # import preview, a sheet mid-edit — is scoped to the section that opened
+  # it and must not survive a patch to a different one; a settings tab
+  # change within the same section leaves it alone.
+  defp render_section(view, tab, socket) do
+    socket = if socket.assigns.view == view, do: socket, else: reset_section_state(socket)
 
     {:noreply,
      socket
-     |> assign(view: view, settings_tab: settings_tab(params["tab"]), saved: false)
+     |> assign(view: view, settings_tab: settings_tab(tab), saved: false)
      |> load_view(view)}
+  end
+
+  defp reset_section_state(socket) do
+    assign(socket,
+      new_secret: nil,
+      secret_app: nil,
+      webhook_secret: nil,
+      webhook_endpoint: nil,
+      editing_user: nil,
+      editing_provider: nil,
+      import_ciphertext: nil,
+      import_payload: nil,
+      import_preview: nil,
+      import_error: nil
+    )
   end
 
   defp settings_tab(tab) do
@@ -524,7 +574,8 @@ defmodule YouWeb.ConsoleLive do
      socket
      |> assign(
        features: Settings.features() |> Map.new(&{&1, Settings.get(&1)}),
-       onboarding: false
+       onboarding: false,
+       nav: nav()
      )
      |> put_flash(:info, "Features updated.")}
   end
@@ -783,7 +834,13 @@ defmodule YouWeb.ConsoleLive do
   defp load_view(socket, "webhooks"), do: load_endpoints(socket)
   defp load_view(socket, "emails"), do: load_email_templates(socket)
   defp load_view(socket, "features"), do: socket
-  defp load_view(socket, "settings"), do: load_settings(socket)
+  # `oidc_providers` backs the Federation tab's reference material — loaded
+  # here rather than only at `mount/3` so a provider created after the
+  # socket connected shows up on a later visit to Settings rather than the
+  # list frozen at connect time.
+  defp load_view(socket, "settings"),
+    do: socket |> load_settings() |> assign(oidc_providers: oidc_provider_slugs())
+
   defp load_view(socket, "backup"), do: socket
   defp load_view(socket, _view), do: socket
 
@@ -834,6 +891,9 @@ defmodule YouWeb.ConsoleLive do
 
   defp load_settings(socket),
     do: assign(socket, settings: Settings.all())
+
+  defp oidc_provider_slugs,
+    do: IdentityProviders.list_providers() |> Enum.map(& &1.slug) |> Enum.sort()
 
   defp parse_value(:you_mode, "single"), do: "single"
   defp parse_value(:you_mode, _raw), do: "multi"
@@ -1703,7 +1763,7 @@ defmodule YouWeb.ConsoleLive do
       <div class="flex items-center justify-between gap-4">
         <p class="font-mono text-xs text-muted-foreground">
           in-memory, capped at 100 events
-          <.link patch={~p"/console?view=webhooks"} class="text-primary hover:underline">
+          <.link patch={~p"/console/webhooks"} class="text-primary hover:underline">
             add a webhook for durable retention
           </.link>
         </p>
@@ -2167,7 +2227,7 @@ defmodule YouWeb.ConsoleLive do
         <span class="lucide-check size-4 block text-signal-ok" /> Settings saved.
       </div>
 
-      <.tab_strip tabs={@tabs} active={@tab} path={~p"/console?view=settings"} />
+      <.tab_strip tabs={@tabs} active={@tab} path={~p"/console/settings"} />
 
       <div id={"tabpanel-#{@tab}"} role="tabpanel" tabindex="0" aria-labelledby={"tab-#{@tab}"}>
         <.federation_panel

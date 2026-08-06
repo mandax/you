@@ -31,7 +31,7 @@ defmodule YouWeb.SettingsAuditTest do
   end
 
   test "saving a changed setting records which key changed", %{conn: conn} do
-    {:ok, lv, _} = live(conn, ~p"/console?view=settings")
+    {:ok, lv, _} = live(conn, ~p"/console/settings")
 
     render_submit(lv, "save_settings", %{
       "audit_webhook_url" => "https://attacker.example/collect"
@@ -42,7 +42,7 @@ defmodule YouWeb.SettingsAuditTest do
   end
 
   test "the trail names keys, never their values", %{conn: conn} do
-    {:ok, lv, _} = live(conn, ~p"/console?view=settings")
+    {:ok, lv, _} = live(conn, ~p"/console/settings")
 
     render_submit(lv, "save_settings", %{"scim_bearer_token" => "super-secret-value"})
 
@@ -52,7 +52,7 @@ defmodule YouWeb.SettingsAuditTest do
   end
 
   test "a save that changes nothing records nothing", %{conn: conn} do
-    {:ok, lv, _} = live(conn, ~p"/console?view=settings")
+    {:ok, lv, _} = live(conn, ~p"/console/settings")
 
     render_submit(lv, "save_settings", %{
       "session_expiry_hours" => to_string(You.Settings.get(:session_expiry_hours))
@@ -63,7 +63,7 @@ defmodule YouWeb.SettingsAuditTest do
 
   test "clearing a secret is recorded", %{conn: conn} do
     You.Settings.set(:scim_bearer_token, "something")
-    {:ok, lv, _} = live(conn, ~p"/console?view=settings")
+    {:ok, lv, _} = live(conn, ~p"/console/settings")
 
     render_click(lv, "clear_setting", %{"key" => "scim_bearer_token"})
 

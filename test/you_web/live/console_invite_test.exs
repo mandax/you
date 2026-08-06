@@ -21,7 +21,7 @@ defmodule YouWeb.ConsoleInviteTest do
   end
 
   test "sends an invitation and lists it as pending", %{conn: conn, app: app, admin: admin} do
-    {:ok, lv, _html} = live(conn, ~p"/console/apps/#{app.slug}?tab=members")
+    {:ok, lv, _html} = live(conn, ~p"/console/apps/#{app.slug}/members")
 
     # The role select is a custom component whose value is set by clicking, so
     # the role rides along as an extra submit param rather than a form field.
@@ -41,7 +41,7 @@ defmodule YouWeb.ConsoleInviteTest do
 
   test "refuses a role the app does not allow", %{conn: conn, app: app} do
     {:ok, _app} = You.Admin.update_app(app, %{"allowed_roles" => ["user"]})
-    {:ok, lv, _html} = live(conn, ~p"/console/apps/#{app.slug}?tab=members")
+    {:ok, lv, _html} = live(conn, ~p"/console/apps/#{app.slug}/members")
 
     html =
       lv
@@ -56,7 +56,7 @@ defmodule YouWeb.ConsoleInviteTest do
     {:ok, invitation, _token} =
       Invitations.create(%{email: "invitee@example.com", app_id: app.id, role: "user"})
 
-    {:ok, lv, _html} = live(conn, ~p"/console/apps/#{app.slug}?tab=members")
+    {:ok, lv, _html} = live(conn, ~p"/console/apps/#{app.slug}/members")
 
     lv
     |> element("button[phx-click='revoke_invitation'][phx-value-id='#{invitation.id}']")

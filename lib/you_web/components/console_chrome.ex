@@ -72,7 +72,8 @@ defmodule YouWeb.Components.ConsoleChrome do
 
   @doc """
   Nav ids naming a section the console renders. Entries carrying `:href` point
-  elsewhere, so they are valid nav ids but not valid `?view=` values.
+  elsewhere, so they are valid nav ids but not valid `/console/<view>`
+  segments.
   """
   def section_ids do
     nav() |> Enum.reject(&Map.has_key?(&1, :href)) |> Enum.map(& &1.id)
@@ -99,24 +100,7 @@ defmodule YouWeb.Components.ConsoleChrome do
         </div>
 
         <nav class="flex-1 space-y-px px-2 pt-3">
-          <.link
-            :for={n <- @nav}
-            navigate={n[:href] || ~p"/console?view=#{n.id}"}
-            aria-current={@active == n.id && "page"}
-            class={[
-              "group flex h-8 w-full items-center gap-2.5 rounded-md px-3 text-sm transition-colors",
-              if(@active == n.id,
-                do: "bg-sidebar-accent font-medium text-sidebar-accent-foreground",
-                else: "text-sidebar-foreground hover:bg-sidebar-muted hover:text-foreground"
-              )
-            ]}
-          >
-            <span class={[
-              n.icon,
-              "size-4 block shrink-0 transition-opacity",
-              if(@active == n.id, do: "opacity-100", else: "opacity-60 group-hover:opacity-100")
-            ]} /> {n.label}
-          </.link>
+          <.nav_link :for={n <- @nav} entry={n} active={@active} />
         </nav>
 
         <div class="space-y-px border-t border-sidebar-border px-2 py-2">
@@ -157,6 +141,42 @@ defmodule YouWeb.Components.ConsoleChrome do
     </div>
     """
   end
+
+  # One sidebar nav entry. A section entry (the ordinary case) patches to
+  # `/console/<id>` — every section is `YouWeb.ConsoleLive`, so switching
+  # between them needs no remount. An entry carrying `:href` (the single-app
+  # link, which points at `YouWeb.AppLive.Show`, a different module)
+  # navigates instead: patch only works within one LiveView module.
+  attr :entry, :map, required: true
+  attr :active, :string, required: true
+
+  defp nav_link(assigns) do
+    ~H"""
+    <.link
+      navigate={@entry[:href]}
+      patch={nav_patch(@entry)}
+      aria-current={@active == @entry.id && "page"}
+      class={[
+        "group flex h-8 w-full items-center gap-2.5 rounded-md px-3 text-sm transition-colors",
+        if(@active == @entry.id,
+          do: "bg-sidebar-accent font-medium text-sidebar-accent-foreground",
+          else: "text-sidebar-foreground hover:bg-sidebar-muted hover:text-foreground"
+        )
+      ]}
+    >
+      <span class={[
+        @entry.icon,
+        "size-4 block shrink-0 transition-opacity",
+        if(@active == @entry.id, do: "opacity-100", else: "opacity-60 group-hover:opacity-100")
+      ]} /> {@entry.label}
+    </.link>
+    """
+  end
+
+  defp nav_patch(%{href: _href}), do: nil
+  defp nav_patch(entry), do: nav_href(entry.id)
+
+  defp nav_href(id), do: ~p"/console/#{id}"
 
   @doc """
   Bordered table with a mono header row and an empty state that spans every
@@ -224,12 +244,10 @@ defmodule YouWeb.Components.ConsoleChrome do
   end
 
   @doc """
-  Tab strip that patches `?tab=`. Each tab is `{id, label}`.
+  Tab strip that patches to `path/id`. Each tab is `{id, label}`.
 
-  `path` may already carry its own query string (a page addressed by
-  `?view=`, for instance) — `tab=` is appended with `&` when it does and `?`
-  when it doesn't, so a tab never clobbers the query that got the visitor to
-  this page.
+  `path` is the tabbed page's own base path (`/console/settings`,
+  `/console/apps/solo`) — each tab appends its id as a further segment.
 
   Each tab gets `id="tab-\#{id}"` and `aria-controls="tabpanel-\#{id}"`; the
   page rendering the active panel is responsible for giving it a matching
@@ -241,16 +259,22 @@ defmodule YouWeb.Components.ConsoleChrome do
 
   def tab_strip(assigns) do
     ~H"""
-    <div class="flex gap-1 border-b border-border" role="tablist">
+    <%!-- Flex items shrink by default, which squeezes a long label like
+          "Erlang distribution" until it wraps and the tab becomes two lines
+          tall. The labels never wrap; the strip scrolls instead. --%>
+    <div class="flex gap-1 overflow-x-auto border-b border-border" role="tablist">
+      <%!-- Not ~p: @path is a runtime value (the caller's own base path),
+            and ~p requires a literal prefix to verify against the router at
+            compile time — it cannot start from a variable. --%>
       <.link
         :for={{id, label} <- @tabs}
         id={"tab-#{id}"}
-        patch={tab_href(@path, id)}
+        patch={"#{@path}/#{id}"}
         role="tab"
         aria-selected={to_string(@active == id)}
         aria-controls={@active == id && "tabpanel-#{id}"}
         class={[
-          "-mb-px border-b-2 px-3 py-2 text-sm transition-colors",
+          "-mb-px shrink-0 whitespace-nowrap border-b-2 px-3 py-2 text-sm transition-colors",
           if(@active == id,
             do: "border-primary text-foreground",
             else: "border-transparent text-muted-foreground hover:text-foreground"
@@ -261,11 +285,6 @@ defmodule YouWeb.Components.ConsoleChrome do
       </.link>
     </div>
     """
-  end
-
-  defp tab_href(path, id) do
-    separator = if String.contains?(path, "?"), do: "&", else: "?"
-    "#{path}#{separator}tab=#{id}"
   end
 
   @doc "Section card with a title and free-form body."

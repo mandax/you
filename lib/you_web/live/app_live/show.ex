@@ -4,7 +4,8 @@ defmodule YouWeb.AppLive.Show do
 
   Splits what used to be a single edit dialog into tabs: identity and URLs,
   login branding, the app's `allowed_roles`, who holds them, and the client
-  credentials. The active tab lives in `?tab=` so a tab is linkable.
+  credentials. The active tab is a path segment
+  (`/console/apps/:slug/:tab`), so a tab is linkable.
   """
   use YouWeb, :live_view
 
@@ -388,7 +389,7 @@ defmodule YouWeb.AppLive.Show do
       <div class="space-y-5">
         <div>
           <.link
-            navigate={~p"/console?view=apps"}
+            navigate={~p"/console/apps"}
             class="font-mono text-xs text-muted-foreground transition-colors hover:text-foreground"
           >
             ← Apps

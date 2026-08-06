@@ -22,14 +22,26 @@ defmodule YouWeb.AppLive.ShowTest do
 
   test "every tab mounts", %{conn: conn, app: app} do
     for tab <- ~w(overview login roles members credentials) do
-      {:ok, _lv, html} = live(conn, ~p"/console/apps/#{app.slug}?tab=#{tab}")
+      {:ok, _lv, html} = live(conn, ~p"/console/apps/#{app.slug}/#{tab}")
       assert html =~ app.name
     end
   end
 
   test "an unknown tab falls back to overview", %{conn: conn, app: app} do
-    {:ok, _lv, html} = live(conn, ~p"/console/apps/#{app.slug}?tab=nonsense")
+    {:ok, _lv, html} = live(conn, ~p"/console/apps/#{app.slug}/nonsense")
     assert html =~ "Identity and URLs"
+  end
+
+  # A slug that happens to look like a two-segment path (`/console/apps/<x>`)
+  # must still reach the per-app page rather than being read by the router as
+  # the console's `apps` *view* with a tab literally named `<x>` — the trap
+  # `/apps/:slug` precedes `/:view/:tab` in `YouWeb.Router` to avoid.
+  test "reaches the per-app page rather than the apps view with a tab", %{conn: conn, app: app} do
+    {:ok, _lv, html} = live(conn, ~p"/console/apps/#{app.slug}")
+
+    assert html =~ "Identity and URLs"
+    assert html =~ app.slug
+    refute html =~ "Register app"
   end
 
   test "an unknown slug 404s", %{conn: conn} do
@@ -97,7 +109,7 @@ defmodule YouWeb.AppLive.ShowTest do
 
   describe "login branding" do
     test "sets and clears branding", %{conn: conn, app: app} do
-      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}?tab=login")
+      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}/login")
 
       html =
         lv
@@ -126,7 +138,7 @@ defmodule YouWeb.AppLive.ShowTest do
       conn: conn,
       app: app
     } do
-      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}?tab=login")
+      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}/login")
 
       html =
         lv
@@ -155,7 +167,7 @@ defmodule YouWeb.AppLive.ShowTest do
       conn: conn,
       app: app
     } do
-      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}?tab=login")
+      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}/login")
 
       html =
         lv
@@ -189,14 +201,14 @@ defmodule YouWeb.AppLive.ShowTest do
           "brand_color" => "#7c3aed"
         })
 
-      {:ok, _lv, html} = live(conn, ~p"/console/apps/#{app.slug}?tab=login")
+      {:ok, _lv, html} = live(conn, ~p"/console/apps/#{app.slug}/login")
 
       assert html =~ ~s(src="https://edit.example.com/logo.png")
       assert html =~ "color: #7c3aed"
     end
 
     test "tracks unsaved edits without persisting them", %{conn: conn, app: app} do
-      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}?tab=login")
+      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}/login")
 
       html =
         lv
@@ -215,7 +227,7 @@ defmodule YouWeb.AppLive.ShowTest do
     end
 
     test "a blank field previews as no value, not an empty attribute", %{conn: conn, app: app} do
-      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}?tab=login")
+      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}/login")
 
       html =
         lv
@@ -228,7 +240,7 @@ defmodule YouWeb.AppLive.ShowTest do
     end
 
     test "saving resets the draft to the stored values", %{conn: conn, app: app} do
-      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}?tab=login")
+      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}/login")
 
       lv
       |> form("#app-branding-form", %{"logo_url" => "", "brand_color" => "#0ea5e9"})
@@ -239,7 +251,7 @@ defmodule YouWeb.AppLive.ShowTest do
     end
 
     test "links out to the real login page for this app", %{conn: conn, app: app} do
-      {:ok, _lv, html} = live(conn, ~p"/console/apps/#{app.slug}?tab=login")
+      {:ok, _lv, html} = live(conn, ~p"/console/apps/#{app.slug}/login")
       assert html =~ "/users/log-in?app=#{app.slug}"
     end
 
@@ -247,7 +259,7 @@ defmodule YouWeb.AppLive.ShowTest do
       conn: conn,
       app: app
     } do
-      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}?tab=login")
+      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}/login")
 
       html =
         lv
@@ -269,7 +281,7 @@ defmodule YouWeb.AppLive.ShowTest do
       conn: conn,
       app: app
     } do
-      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}?tab=login")
+      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}/login")
 
       too_long = String.duplicate("a", 201)
 
@@ -287,7 +299,7 @@ defmodule YouWeb.AppLive.ShowTest do
 
   describe "preview theme toggle" do
     test "toggling flips the dark class on the preview container only", %{conn: conn, app: app} do
-      {:ok, lv, html} = live(conn, ~p"/console/apps/#{app.slug}?tab=login")
+      {:ok, lv, html} = live(conn, ~p"/console/apps/#{app.slug}/login")
 
       assert html =~ ~s(phx-click="toggle_preview_theme")
 
@@ -312,7 +324,7 @@ defmodule YouWeb.AppLive.ShowTest do
 
   describe "theme configuration" do
     test "dark colour variants persist and fall back when unset", %{conn: conn, app: app} do
-      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}?tab=login")
+      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}/login")
 
       lv
       |> form("#app-branding-form", %{
@@ -329,7 +341,7 @@ defmodule YouWeb.AppLive.ShowTest do
     end
 
     test "the preview renders both theme variants", %{conn: conn, app: app} do
-      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}?tab=login")
+      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}/login")
 
       html =
         lv
@@ -345,7 +357,7 @@ defmodule YouWeb.AppLive.ShowTest do
 
     test "an unset dark variant reuses the light colour in the dark span",
          %{conn: conn, app: app} do
-      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}?tab=login")
+      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}/login")
 
       html =
         lv
@@ -358,7 +370,7 @@ defmodule YouWeb.AppLive.ShowTest do
     end
 
     test "an invalid dark colour is dropped from the preview", %{conn: conn, app: app} do
-      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}?tab=login")
+      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}/login")
 
       html =
         lv
@@ -372,7 +384,7 @@ defmodule YouWeb.AppLive.ShowTest do
     end
 
     test "theme mode saves", %{conn: conn, app: app} do
-      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}?tab=login")
+      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}/login")
 
       html = lv |> form("#app-theme-form", %{"theme_mode" => "dark"}) |> render_submit()
 
@@ -406,14 +418,14 @@ defmodule YouWeb.AppLive.ShowTest do
     end
 
     test "all providers are ticked by default", %{conn: conn, app: app} do
-      {:ok, _lv, html} = live(conn, ~p"/console/apps/#{app.slug}?tab=login")
+      {:ok, _lv, html} = live(conn, ~p"/console/apps/#{app.slug}/login")
 
       assert html =~ ~s(phx-submit="update_providers")
       assert html =~ "Google"
     end
 
     test "unticking one stores the remaining subset", %{conn: conn, app: app} do
-      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}?tab=login")
+      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}/login")
 
       html =
         lv
@@ -433,7 +445,7 @@ defmodule YouWeb.AppLive.ShowTest do
     test "choosing to follow the instance stores nil", %{conn: conn, app: app} do
       {:ok, _app} = Admin.update_app(app, %{"enabled_providers" => []})
 
-      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}?tab=login")
+      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}/login")
 
       lv
       |> form("#app-providers-form", %{
@@ -447,7 +459,7 @@ defmodule YouWeb.AppLive.ShowTest do
 
     test "ticking every provider while restricting stores the explicit list",
          %{conn: conn, app: app} do
-      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}?tab=login")
+      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}/login")
 
       lv
       |> form("#app-providers-form", %{
@@ -462,7 +474,7 @@ defmodule YouWeb.AppLive.ShowTest do
 
   describe "accent colour" do
     test "previews unsaved values without persisting", %{conn: conn, app: app} do
-      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}?tab=login")
+      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}/login")
 
       html =
         lv
@@ -476,7 +488,7 @@ defmodule YouWeb.AppLive.ShowTest do
     # The preview never passes through App.changeset/2, so it needs its own
     # guards: HEEx escapes markup but not CSS-property injection.
     test "the preview drops an invalid accent color", %{conn: conn, app: app} do
-      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}?tab=login")
+      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}/login")
 
       html =
         lv
@@ -489,7 +501,7 @@ defmodule YouWeb.AppLive.ShowTest do
     end
 
     test "saving persists it", %{conn: conn, app: app} do
-      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}?tab=login")
+      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}/login")
 
       lv
       |> form("#app-branding-form", %{"accent_color" => "#0ea5e9"})
@@ -501,7 +513,7 @@ defmodule YouWeb.AppLive.ShowTest do
     # The brand colour lands on the submit button on the real page, so the
     # preview has to show it there too, with the label colour derived.
     test "the preview button carries the brand colour", %{conn: conn, app: app} do
-      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}?tab=login")
+      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}/login")
 
       html =
         lv
@@ -515,14 +527,14 @@ defmodule YouWeb.AppLive.ShowTest do
 
   describe "sign-in methods" do
     test "every method is ticked by default", %{conn: conn, app: app} do
-      {:ok, _lv, html} = live(conn, ~p"/console/apps/#{app.slug}?tab=login")
+      {:ok, _lv, html} = live(conn, ~p"/console/apps/#{app.slug}/login")
 
       assert html =~ ~s(phx-submit="update_methods")
       assert html =~ "Magic link"
     end
 
     test "unticking one stores the remaining subset", %{conn: conn, app: app} do
-      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}?tab=login")
+      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}/login")
 
       html =
         lv
@@ -547,7 +559,7 @@ defmodule YouWeb.AppLive.ShowTest do
     test "choosing to follow the instance stores nil", %{conn: conn, app: app} do
       {:ok, _app} = Admin.update_app(app, %{"enabled_methods" => ["passkey"]})
 
-      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}?tab=login")
+      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}/login")
 
       all = Map.new(You.Admin.App.auth_methods(), &{&1, "true"})
 
@@ -560,7 +572,7 @@ defmodule YouWeb.AppLive.ShowTest do
 
     test "ticking every method while restricting keeps the explicit list",
          %{conn: conn, app: app} do
-      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}?tab=login")
+      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}/login")
 
       all = Map.new(You.Admin.App.auth_methods(), &{&1, "true"})
 
@@ -574,7 +586,7 @@ defmodule YouWeb.AppLive.ShowTest do
 
   describe "roles" do
     test "adds a role to allowed_roles", %{conn: conn, app: app} do
-      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}?tab=roles")
+      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}/roles")
 
       html = lv |> form("#app-add-role-form", %{"role" => "auditor"}) |> render_submit()
 
@@ -583,7 +595,7 @@ defmodule YouWeb.AppLive.ShowTest do
     end
 
     test "removes an unassigned role", %{conn: conn, app: app} do
-      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}?tab=roles")
+      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}/roles")
 
       html = render_click(lv, "remove_role", %{"role" => "admin"})
 
@@ -595,7 +607,7 @@ defmodule YouWeb.AppLive.ShowTest do
       user = You.AccountsFixtures.user_fixture()
       {:ok, _} = Roles.set_role(app, user, "admin")
 
-      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}?tab=roles")
+      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}/roles")
 
       html = render_click(lv, "remove_role", %{"role" => "admin"})
 
@@ -607,7 +619,7 @@ defmodule YouWeb.AppLive.ShowTest do
       user = You.AccountsFixtures.user_fixture()
       {:ok, _} = Roles.set_role(app, user, "admin")
 
-      {:ok, _lv, html} = live(conn, ~p"/console/apps/#{app.slug}?tab=roles")
+      {:ok, _lv, html} = live(conn, ~p"/console/apps/#{app.slug}/roles")
 
       assert html =~ "1 user"
       assert html =~ "unassigned"
@@ -653,7 +665,7 @@ defmodule YouWeb.AppLive.ShowTest do
     # The select renders a hidden input, which LiveViewTest treats as fixed, so
     # `form/3` cannot change it. Assert the wiring, then push the submit.
     test "changing it from the roles tab", %{conn: conn, app: app} do
-      {:ok, lv, html} = live(conn, ~p"/console/apps/#{app.slug}?tab=roles")
+      {:ok, lv, html} = live(conn, ~p"/console/apps/#{app.slug}/roles")
 
       assert html =~ ~s(phx-submit="set_default_role")
       assert html =~ "data-confirm"
@@ -691,7 +703,7 @@ defmodule YouWeb.AppLive.ShowTest do
     test "selecting users then applying a role from the members tab", %{conn: conn, app: app} do
       user = You.AccountsFixtures.user_fixture()
 
-      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}?tab=members")
+      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}/members")
 
       refute render(lv) =~ "1 selected"
       html = render_click(lv, "toggle_member", %{"user_id" => to_string(user.id)})
@@ -710,7 +722,7 @@ defmodule YouWeb.AppLive.ShowTest do
     end
 
     test "rejects a selection carrying a non-numeric id", %{conn: conn, app: app} do
-      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}?tab=members")
+      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}/members")
 
       # A client can push any payload it likes over the socket.
       render_click(lv, "toggle_member", %{"user_id" => "not-an-id"})
@@ -722,7 +734,7 @@ defmodule YouWeb.AppLive.ShowTest do
     test "select-all toggles every row on and off", %{conn: conn, app: app} do
       for _ <- 1..2, do: You.AccountsFixtures.user_fixture()
 
-      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}?tab=members")
+      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}/members")
 
       assert render_click(lv, "toggle_all_members", %{}) =~ "3 selected"
       refute render_click(lv, "toggle_all_members", %{}) =~ "3 selected"
@@ -736,7 +748,7 @@ defmodule YouWeb.AppLive.ShowTest do
     test "the row select is wired to set_member_role", %{conn: conn, app: app} do
       user = You.AccountsFixtures.user_fixture()
 
-      {:ok, _lv, html} = live(conn, ~p"/console/apps/#{app.slug}?tab=members")
+      {:ok, _lv, html} = live(conn, ~p"/console/apps/#{app.slug}/members")
 
       assert html =~ ~s(data-on-change="set_member_role")
       assert html =~ ~s(data-params="{&quot;user_id&quot;:#{user.id}}")
@@ -745,7 +757,7 @@ defmodule YouWeb.AppLive.ShowTest do
     test "assigns a role to a user", %{conn: conn, app: app} do
       user = You.AccountsFixtures.user_fixture()
 
-      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}?tab=members")
+      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}/members")
 
       render_change(lv, "set_member_role", %{"user_id" => user.id, "value" => "admin"})
 
@@ -755,7 +767,7 @@ defmodule YouWeb.AppLive.ShowTest do
     test "rejects a role the app does not allow", %{conn: conn, app: app} do
       user = You.AccountsFixtures.user_fixture()
 
-      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}?tab=members")
+      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}/members")
 
       html = render_change(lv, "set_member_role", %{"user_id" => user.id, "value" => "wizard"})
 
@@ -769,7 +781,7 @@ defmodule YouWeb.AppLive.ShowTest do
       alice = You.AccountsFixtures.user_fixture(%{email: "alice@search.test"})
       _bob = You.AccountsFixtures.user_fixture(%{email: "bob@search.test"})
 
-      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}?tab=members")
+      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}/members")
 
       render_click(lv, "toggle_member", %{"user_id" => to_string(alice.id)})
 
@@ -786,7 +798,7 @@ defmodule YouWeb.AppLive.ShowTest do
     end
 
     test "the search box is rendered and wired", %{conn: conn, app: app} do
-      {:ok, _lv, html} = live(conn, ~p"/console/apps/#{app.slug}?tab=members")
+      {:ok, _lv, html} = live(conn, ~p"/console/apps/#{app.slug}/members")
       assert html =~ ~s(phx-change="filter_members")
     end
   end
@@ -795,7 +807,7 @@ defmodule YouWeb.AppLive.ShowTest do
     # Choosing a value must not raise the confirmation: a click inside a
     # data-confirm form prompts before the dropdown even opens.
     test "selecting stages without saving, and the form confirms", %{conn: conn, app: app} do
-      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}?tab=roles")
+      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}/roles")
 
       html = render_change(lv, "stage_default_role", %{"value" => "admin"})
 
@@ -812,7 +824,7 @@ defmodule YouWeb.AppLive.ShowTest do
 
   describe "credentials" do
     test "rotating the secret reveals it once", %{conn: conn, app: app} do
-      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}?tab=credentials")
+      {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}/credentials")
 
       html = render_click(lv, "rotate_secret", %{})
       assert html =~ "Client secret"
@@ -824,7 +836,7 @@ defmodule YouWeb.AppLive.ShowTest do
       conn: conn,
       app: app
     } do
-      {:ok, _lv, html} = live(conn, ~p"/console/apps/#{app.slug}?tab=credentials")
+      {:ok, _lv, html} = live(conn, ~p"/console/apps/#{app.slug}/credentials")
 
       assert html =~ "OIDC snippet"
       assert html =~ "#{YouWeb.Endpoint.url()}/.well-known/openid-configuration"

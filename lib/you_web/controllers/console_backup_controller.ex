@@ -41,14 +41,14 @@ defmodule YouWeb.ConsoleBackupController do
         |> send_resp(200, payload)
 
       {:error, message} ->
-        conn |> put_flash(:error, message) |> redirect(to: ~p"/console?view=backup")
+        conn |> put_flash(:error, message) |> redirect(to: ~p"/console/backup")
     end
   end
 
   def export(conn, _params) do
     conn
     |> put_flash(:error, "A password is required to export a bundle.")
-    |> redirect(to: ~p"/console?view=backup")
+    |> redirect(to: ~p"/console/backup")
   end
 
   defp filename(conn), do: "#{conn.host}-#{Date.utc_today()}.you-bundle"

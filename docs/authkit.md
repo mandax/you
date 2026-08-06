@@ -237,7 +237,7 @@ has already been sent; re-submit with it in `email_2fa_code`.
 
 ### Guest accounts
 
-Off by default. Switch **Guest accounts** on at `/console?view=features` first;
+Off by default. Switch **Guest accounts** on at `/console/features` first;
 it mints user rows on request, so it is an operator's decision.
 
 ```
@@ -317,7 +317,7 @@ switch of their own; the console gates them behind admin access.
 ## 4. Making an app first-party
 
 An app must be flagged first-party before it can use the headless flow. In the
-admin console at `/console?view=apps`:
+admin console at `/console/apps`:
 
 1. Find your app in the table and click **Edit**.
 2. Tick the **First-party app** checkbox.

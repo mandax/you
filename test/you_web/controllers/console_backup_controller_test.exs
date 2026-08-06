@@ -36,7 +36,7 @@ defmodule YouWeb.ConsoleBackupControllerTest do
   test "a missing password is rejected without downloading anything", %{conn: conn} do
     conn = post(conn, ~p"/console/backup/export", %{})
 
-    assert redirected_to(conn) == ~p"/console?view=backup"
+    assert redirected_to(conn) == ~p"/console/backup"
   end
 
   test "a password shorter than the minimum is rejected without downloading anything", %{
@@ -44,7 +44,7 @@ defmodule YouWeb.ConsoleBackupControllerTest do
   } do
     conn = post(conn, ~p"/console/backup/export", %{"password" => "short"})
 
-    assert redirected_to(conn) == ~p"/console?view=backup"
+    assert redirected_to(conn) == ~p"/console/backup"
     assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "at least"
   end
 
