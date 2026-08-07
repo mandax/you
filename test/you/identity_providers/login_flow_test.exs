@@ -181,10 +181,20 @@ defmodule You.IdentityProviders.LoginFlowTest do
       assert ctx == @ctx
     end
 
+    # Tamper in the middle, not at the end. `Phoenix.Token` emits unpadded
+    # base64url, so the final character can carry as few as two significant
+    # bits — several distinct final characters decode to identical bytes, and
+    # replacing that one character therefore fails to tamper at all about 7%
+    # of the time (measured over 3000 signings). A middle character always
+    # contributes a full six bits, so changing it always changes the payload.
     test "a tampered ctx is refused" do
       signed = IdentityProviders.sign_ctx(@ctx)
-      tampered = binary_part(signed, 0, byte_size(signed) - 1) <> "x"
+      midpoint = div(byte_size(signed), 2)
 
+      <<head::binary-size(midpoint), char::binary-size(1), tail::binary>> = signed
+      tampered = head <> if(char == "A", do: "B", else: "A") <> tail
+
+      refute tampered == signed
       assert :error = IdentityProviders.verify_ctx(tampered)
     end
 
