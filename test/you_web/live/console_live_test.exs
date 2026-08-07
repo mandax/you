@@ -119,11 +119,20 @@ defmodule YouWeb.ConsoleLiveTest do
     end
 
     test "an app whose label has become colliding with canonical is surfaced", %{conn: conn} do
-      Application.put_env(:you, :app_hostname_template, "{label}")
+      # `config/test.exs` pins the canonical host to `www.example.com`
+      # (`Phoenix.ConnTest`'s own default) precisely so a test like this one
+      # can build a real, ordinary template — `{label}.example.com` — and
+      # reach a genuine collision with the label `www`, rather than reaching
+      # for a degenerate bare `{label}` template that only collides because
+      # it renders no domain at all (a shape `You.Hosting.template_valid?/0`
+      # now refuses to call well-formed, see #127).
+      Application.put_env(:you, :app_hostname_template, "{label}.example.com")
 
       You.AdminFixtures.insert_legacy_app!("legacy-collider")
-      |> Ecto.Changeset.change(hostname_label: You.Hosting.canonical_host())
+      |> Ecto.Changeset.change(hostname_label: "www")
       |> You.Repo.update!()
+
+      assert You.Hosting.canonical_host() == "www.example.com"
 
       {:ok, _lv, html} = live(conn, ~p"/console/features")
 
@@ -164,11 +173,137 @@ defmodule YouWeb.ConsoleLiveTest do
 
       # The click returns immediately — the network call has not resolved
       # yet — and the button reads as busy rather than the page hanging.
+      # This is the same render_click/1 result, not a fresh render/1 call:
+      # the DNS stub above resolves near-instantly, so a second round trip
+      # to the LiveView here would race the async completion rather than
+      # reliably observing the still-loading state (see the dedicated,
+      # deliberately slow stub used below for the disabled-button click
+      # assertion).
       assert html =~ "Checking…"
+      assert html =~ ~s(phx-value-label="#{app.hostname_label}" disabled)
 
       html = render_async(lv)
       assert html =~ "no DNS record"
       refute html =~ "Checking…"
+
+      # Once the check has finished, the button is interactive again. Not
+      # `=~ "disabled"` alone — the button's own `class` includes the
+      # Tailwind variant `disabled:opacity-50`, which contains that
+      # substring regardless of the boolean `disabled` attribute's state;
+      # matching the attribute's actual position (right after
+      # `phx-value-label`, per the component's own attribute order) is what
+      # distinguishes "attribute present" from "the word appears in a class
+      # name".
+      refute lv
+             |> element(~s(button[phx-value-label="#{app.hostname_label}"]))
+             |> render() =~ ~s(phx-value-label="#{app.hostname_label}" disabled)
+    end
+
+    # Every outcome `You.Hosting.Preflight.check/1` can actually produce
+    # through this LiveView gets its own plain-English copy, exercised end
+    # to end rather than merely asserted at the `Preflight` unit level —
+    # this is what would catch `preflight_outcome_copy/1`'s catch-all
+    # silently swallowing a real outcome into "unrecognised result" (a typo
+    # in an atom name, say) that a `Preflight`-only test could never see,
+    # since it never renders through `ConsoleLive` at all. `:invalid_label`
+    # is deliberately not exercised here: must-fix #1 means no LiveView
+    # interaction can reach it any more (the handler refuses an
+    # unrecognised label before `Preflight.check/1` ever runs) — it stays
+    # covered at the `Preflight` unit level in `preflight_test.exs`.
+    for {name, dns, http, expect, refute_raw} <- [
+          {"template_invalid", nil, nil, "template missing or malformed", "template_invalid"},
+          {"no_dns_record", {:error, :nxdomain}, nil, "no DNS record", nil},
+          {"certificate_mismatch", :ok,
+           {:error, %{reason: {:tls_alert, {:certificate_expired, ~c"x"}}}},
+           "certificate does not cover this name", "tls_alert"},
+          {"unreachable", :ok, {:error, %{reason: :timeout}}, "no response", nil},
+          {"wrong_traffic", :ok, {:ok, %{status: 404, body: "nope"}}, "reached something else",
+           nil},
+          {"ok", :ok, {:ok, %{status: 200, body: %{"issuer" => nil}}}, "reachable", nil}
+        ] do
+      test "outcome copy: #{name}", %{conn: conn} do
+        label = "app-#{unquote(name) |> String.replace("_", "-")}"
+
+        template =
+          case unquote(name) do
+            "template_invalid" -> nil
+            _ -> "{label}.example.com"
+          end
+
+        if template, do: Application.put_env(:you, :app_hostname_template, template)
+
+        {:ok, app, _secret} =
+          Admin.create_app(%{
+            "name" => "Test App",
+            "slug" => label,
+            "callback_url" => "https://#{label}.example.com/cb",
+            "hostname_label" => label
+          })
+
+        if dns = unquote(Macro.escape(dns)) do
+          Application.put_env(:you, :hosting_preflight_dns_resolver, fn _host -> dns end)
+        end
+
+        http =
+          case unquote(name) do
+            "ok" -> {:ok, %{status: 200, body: %{"issuer" => YouWeb.Endpoint.url()}}}
+            _ -> unquote(Macro.escape(http))
+          end
+
+        if http,
+          do: Application.put_env(:you, :hosting_preflight_http_client, fn _url -> http end)
+
+        {:ok, lv, _html} = live(conn, ~p"/console/features")
+
+        lv
+        |> element(~s(button[phx-click="run_preflight"][phx-value-label="#{app.hostname_label}"]))
+        |> render_click()
+
+        html = render_async(lv)
+
+        assert html =~ unquote(expect)
+
+        if refute = unquote(refute_raw) do
+          refute html =~ refute
+        end
+      end
+    end
+
+    # SSRF guard: `render_hostname/1` string-splices `label` into the
+    # template, so a label carrying `/`, `@`, or `:` relocates the outbound
+    # request's host, port, userinfo or path entirely — this is a real
+    # instance of "an Admin's authority is a row in the database, not shell
+    # access to the host network" being used to make the server reach
+    # somewhere the Operator never pointed DNS at (a cloud metadata
+    # endpoint, an internal admin port, ...). The event handler only ever
+    # renders buttons for a real, stored app's label, so a label naming no
+    # such app must be refused before any network call — not merely
+    # produce a confusing result.
+    test "a label naming no real app is refused before any DNS lookup (SSRF guard)", %{
+      conn: conn
+    } do
+      Application.put_env(:you, :app_hostname_template, "{label}.example.com")
+
+      test_pid = self()
+
+      Application.put_env(:you, :hosting_preflight_dns_resolver, fn host ->
+        send(test_pid, {:dns_called, host})
+        :ok
+      end)
+
+      {:ok, lv, _html} = live(conn, ~p"/console/features")
+
+      for crafted <- [
+            "localhost:4000/admin/",
+            "[::1]:22/",
+            "169.254.169.254/latest/meta-data/",
+            "user@attacker.example/"
+          ] do
+        html = render_click(lv, "run_preflight", %{"label" => crafted})
+        refute html =~ "Checking…"
+      end
+
+      refute_receive {:dns_called, _}, 200
     end
 
     # Guards the outbound-request amplification concern directly: a stub
@@ -228,6 +363,18 @@ defmodule YouWeb.ConsoleLiveTest do
       refute lv
              |> element(~s(button[phx-value-label="beta"]))
              |> render() =~ "Checking…"
+
+      # The HTML-level guard, exercised for real: a genuine click on either
+      # button while acme's check is still in flight (the 200ms sleep in
+      # the stub above holds this window open) is refused by LiveViewTest
+      # itself, the same way a browser would refuse to click a disabled
+      # element — proving `disabled={@preflight_loading}` does something,
+      # not just that the substring "disabled" appears in the markup.
+      assert_raise ArgumentError, fn ->
+        lv
+        |> element(~s(button[phx-click="run_preflight"][phx-value-label="beta"]))
+        |> render_click()
+      end
 
       assert_receive {:dns_called, "acme.example.com"}, 500
       refute_receive {:dns_called, "beta.example.com"}, 250

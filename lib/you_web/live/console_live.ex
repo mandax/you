@@ -10,6 +10,8 @@ defmodule YouWeb.ConsoleLive do
   """
   use YouWeb, :live_view
 
+  require Logger
+
   import YouWeb.Components.ConsoleChrome
 
   alias You.{Admin, Accounts, Settings, Webhooks, Roles, IdentityProviders}
@@ -312,7 +314,10 @@ defmodule YouWeb.ConsoleLive do
       import_ciphertext: nil,
       import_payload: nil,
       import_preview: nil,
-      import_error: nil
+      import_error: nil,
+      preflight_loading: false,
+      preflight_label: nil,
+      preflight_result: nil
     )
   end
 
@@ -687,17 +692,39 @@ defmodule YouWeb.ConsoleLive do
   someone's DNS and TLS, not a cheap toggle, so a double-click must not
   become two of them in flight. It never gates `feature_app_hostnames`
   itself — only ever reports.
+
+  `label` is an event param, not something already proven to be one of the
+  panel's own buttons — a client can push any string. `render_hostname/1`
+  string-splices the label into the template and the result becomes the
+  authority of an outbound HTTPS request, so a label carrying `/`, `@`, or
+  `:` would relocate that request's host, port, userinfo or path entirely
+  (`localhost:4000/admin/`, `169.254.169.254/latest/meta-data/`, `user@
+  attacker.example/`) — server-side request forgery reachable by an Admin,
+  whose authority is a row in this database, not shell access to the
+  Operator's host network. Resolving against a real, stored app closes
+  that: only a label some app actually has ever reaches `Preflight.check/1`
+  at all, and the panel never renders a button for anything else.
   """
-  def handle_event("run_preflight", %{"label" => label}, socket) do
-    if socket.assigns.preflight_loading do
-      {:noreply, socket}
-    else
-      {:noreply,
-       socket
-       |> assign(preflight_loading: true, preflight_label: label, preflight_result: nil)
-       |> start_async(:hostname_preflight, fn -> You.Hosting.Preflight.check(label) end)}
+  def handle_event("run_preflight", %{"label" => label}, socket) when is_binary(label) do
+    cond do
+      socket.assigns.preflight_loading ->
+        {:noreply, socket}
+
+      is_nil(Admin.get_app_by_hostname_label(label)) ->
+        {:noreply, socket}
+
+      true ->
+        {:noreply,
+         socket
+         |> assign(preflight_loading: true, preflight_label: label, preflight_result: nil)
+         |> start_async(:hostname_preflight, fn -> You.Hosting.Preflight.check(label) end)}
     end
   end
+
+  # A non-binary "label" (a client can push any shape) names no app either
+  # way — same refusal as an unrecognised binary label, just without a
+  # `get_app_by_hostname_label/1` call that only accepts a binary.
+  def handle_event("run_preflight", %{"label" => _label}, socket), do: {:noreply, socket}
 
   # ── emails ────────────────────────────────────────────────────
   def handle_event("save_email_template", %{"key" => key} = params, socket) do
@@ -868,10 +895,12 @@ defmodule YouWeb.ConsoleLive do
   end
 
   def handle_async(:hostname_preflight, {:exit, reason}, socket) do
+    Logger.error("[ConsoleLive] preflight task crashed: #{inspect(reason)}")
+
     {:noreply,
      socket
      |> assign(preflight_loading: false, preflight_result: nil)
-     |> put_flash(:error, "Preflight check crashed: #{inspect(reason)}")}
+     |> put_flash(:error, "Preflight check failed unexpectedly. Try again.")}
   end
 
   # Consumes the file as soon as the upload itself completes, rather than
@@ -2459,9 +2488,9 @@ defmodule YouWeb.ConsoleLive do
         </span>
         <span :if={@hostname_template && not @hostname_template_valid}>
           — set to <code class="rounded bg-muted px-1 py-0.5 font-mono">{@hostname_template}</code>,
-          but not well-formed (needs exactly one <code>{"{label}"}</code> placeholder). Resolution
-          stays off until the Operator fixes it — nothing breaks, app hostnames just do not
-          resolve.
+          but not well-formed (needs exactly one <code>{"{label}"}</code> placeholder, and a real
+          domain around it — not the placeholder alone). Resolution stays off until the Operator
+          fixes it — nothing breaks, app hostnames just do not resolve.
         </span>
         <p class="mt-1">
           Set via <code class="font-mono">APP_HOSTNAME_TEMPLATE</code>,
@@ -2473,7 +2502,13 @@ defmodule YouWeb.ConsoleLive do
           >
             docs/ops/app-hostnames.md
           </.link>
-          for the DNS record, certificate, and pattern tradeoffs this needs from the Operator.
+          for the certificate depth trap and pattern tradeoffs this needs from the Operator.
+        </p>
+        <p :if={@hostname_template && @hostname_template_valid} class="mt-1">
+          DNS record this needs:
+          <code class="rounded bg-muted px-1 py-0.5 font-mono">
+            {You.Hosting.render_hostname("*")} CNAME {You.Hosting.canonical_host()}
+          </code>
         </p>
       </div>
 
@@ -2596,6 +2631,16 @@ defmodule YouWeb.ConsoleLive do
       {"template missing or malformed",
        "APP_HOSTNAME_TEMPLATE is not set, or isn't exactly one {label} placeholder. Ask the " <>
          "Operator to set it.", :warn}
+
+  defp preflight_outcome_copy(:invalid_label),
+    do: {"not a valid hostname label", "Refused before any network call.", :warn}
+
+  # Catch-all: an outcome atom with no clause above must never crash the
+  # render — that is a worse failure than the one `handle_async/3`'s
+  # `:exit` clause exists to guard, since it would take the whole LiveView
+  # down instead of just failing to show one result.
+  defp preflight_outcome_copy(other),
+    do: {"unrecognised result", "Preflight returned #{inspect(other)}.", :warn}
 
   # ── section: settings ─────────────────────────────────────────
   attr :settings, :map, required: true

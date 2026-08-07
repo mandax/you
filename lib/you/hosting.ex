@@ -105,15 +105,28 @@ defmodule You.Hosting do
   end
 
   @doc """
-  Whether a template is configured *and* syntactically valid (exactly one
-  `{label}` placeholder).
+  Whether a template is configured *and* well-formed enough to be worth
+  showing an Admin as ready: exactly one `{label}` placeholder
+  (`split_template/0` succeeding), and its static part actually names a
+  domain rather than being blank — a bare `"{label}"` template is
+  syntactically fine for `enabled?/0`'s parsing purposes (see that
+  function's own moduledoc on what "malformed" means there) but would
+  render an app's hostname as the label alone, with no domain at all, which
+  is not a configuration any real Operator would deploy. Requiring a dot
+  keeps this stricter, console-facing signal from reading "well-formed" on
+  a template that is really only valid in the narrow, parser sense.
 
-  `false` covers both "no template" and "a template, but malformed" — the
-  console (#127) needs to tell those two apart for an Admin (nothing set,
-  vs something set that needs the Operator's attention), so pair this with
-  `template/0` rather than reading this alone as "is it set".
+  `false` covers "no template", "a template, but malformed", and this
+  degenerate case alike — the console (#127) needs to tell "nothing set"
+  apart from "something set that needs the Operator's attention", so pair
+  this with `template/0` rather than reading this alone as "is it set".
   """
-  def template_valid?, do: match?({_prefix, _suffix}, split_template())
+  def template_valid? do
+    case split_template() do
+      {prefix, suffix} -> String.contains?(prefix <> suffix, ".")
+      nil -> false
+    end
+  end
 
   @doc "The canonical host: `YouWeb.Endpoint.host/0`, i.e. `PHX_HOST`."
   def canonical_host, do: YouWeb.Endpoint.host()

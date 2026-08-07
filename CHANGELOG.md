@@ -223,7 +223,12 @@ of them at once.
   `hostname_label` has become colliding with the canonical host since it was
   saved — the same check `mix you.audit_hostname_labels` (#121) makes,
   read live here so an Admin sees it without a shell. Links to
-  `docs/ops/app-hostnames.md` (#128) rather than restating it.
+  `docs/ops/app-hostnames.md` (#128) rather than restating it. The preflight
+  only ever checks a real, stored app's own hostname label — never an
+  arbitrary string an event could carry — and does not follow redirects, so
+  a hostname that merely 302s toward this instance's real discovery
+  document (a parked domain, a catch-all vhost) reports as traffic reaching
+  something else rather than a false "reachable".
 
 ## 0.4.0 — Per-app context, invitations, guests, and auth hardening
 

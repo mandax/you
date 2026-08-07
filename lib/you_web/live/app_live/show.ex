@@ -479,8 +479,10 @@ defmodule YouWeb.AppLive.Show do
               <p>
                 Hostname label <span class="font-mono text-foreground">{label}</span>
                 is saved, but per-app hostnames are not active on this instance yet — that
-                needs the "Per-app hostnames" feature and a hostname template, both set under
-                Settings → Deployment. Until then this app stays on the canonical host.
+                needs the "Per-app hostnames" feature switched on in Features, and a
+                hostname template, which only the Operator can set (environment-only). See
+                Features for the template's current status. Until then this app stays on the
+                canonical host.
               </p>
             <% :blank -> %>
               <p>
