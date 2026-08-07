@@ -9,7 +9,7 @@ the source, including into an air-gapped checkout.
 one you are moving to — not only the newest. `docker compose pull` crosses all
 of them at once.
 
-## Unreleased
+## 0.4.1 — Per-app hostnames, console navigation, and auth-boundary hardening
 
 ### Requires your attention
 
