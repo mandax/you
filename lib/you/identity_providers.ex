@@ -205,18 +205,27 @@ defmodule You.IdentityProviders do
   end
 
   @doc """
-  Signs `attrs` (a map) into a short-lived opaque blob suitable for the `ctx`
-  query param on `/auth/:provider` — the carrier #121 uses to hand a login
-  flow from an app host's session to canonical without one being able to read
-  or forge the other's session.
+  Signs `attrs` (a map, atom or string keys) into a short-lived opaque blob
+  suitable for the `ctx` query param on `/auth/:provider` — the carrier #121
+  uses to hand a login flow from an app host's session to canonical without
+  one being able to read or forge the other's session.
+
+  Keys are normalised to strings on the way in: `verify_ctx/1`, `resolve_ctx/2`
+  and `LoginFlow.ctx/1` all read string keys (`ctx["callback_url"]`, …), same
+  as everywhere else a `ctx` map is read. A caller minting one with atom keys
+  would otherwise round-trip through `Jason` and come back with the wrong
+  keys — every read misses, `ctx["callback_url"]` is `nil`, and the flow
+  fails closed with no error to point at why.
 
   Not yet linked from anywhere a user can reach: today `/auth/:provider`
   always has a same-host session to read `ctx` from instead, so no caller
   mints one. Kept here, and consumed by `verify_ctx/1` when present, so #121
   only has to change where the social button links.
   """
-  def sign_ctx(attrs) when is_map(attrs),
-    do: Phoenix.Token.sign(YouWeb.Endpoint, @ctx_salt, attrs)
+  def sign_ctx(attrs) when is_map(attrs) do
+    normalized = Map.new(attrs, fn {key, value} -> {to_string(key), value} end)
+    Phoenix.Token.sign(YouWeb.Endpoint, @ctx_salt, normalized)
+  end
 
   @doc """
   Verifies a `ctx` blob minted by `sign_ctx/1`. Returns `{:ok, attrs}` or

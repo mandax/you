@@ -23,7 +23,7 @@ defmodule YouWeb.AuthMethods do
   """
   def enabled_methods(%Plug.Conn{} = conn), do: enabled_methods(app_for(conn))
 
-  def enabled_methods(app) do
+  def enabled_methods(app) when is_nil(app) or is_struct(app, App) do
     App.auth_methods()
     |> Enum.filter(&instance_offers?/1)
     |> then(&App.resolved_methods(app, &1))
@@ -36,7 +36,9 @@ defmodule YouWeb.AuthMethods do
   a signed `ctx` that named a different app than the session does (#132).
   """
   def enabled?(%Plug.Conn{} = conn, method), do: method in enabled_methods(conn)
-  def enabled?(app, method), do: method in enabled_methods(app)
+
+  def enabled?(app, method) when is_nil(app) or is_struct(app, App),
+    do: method in enabled_methods(app)
 
   @doc """
   The registered app the in-flight OAuth handoff is for, or `nil` for a plain

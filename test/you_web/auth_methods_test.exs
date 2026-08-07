@@ -75,5 +75,19 @@ defmodule YouWeb.AuthMethodsTest do
       refute AuthMethods.enabled?(app, "social")
       You.Settings.set(:feature_social_login, true)
     end
+
+    # Anything that isn't a conn, an %App{}, or nil is a caller bug — a
+    # future #121 minter passing the wrong thing (a slug string, a map that
+    # isn't a `ctx`) should get an immediate crash at the call site, not a
+    # `FunctionClauseError` several frames deep inside `App.resolved_methods/2`.
+    test "a value that is neither a conn, an App, nor nil raises immediately, at this boundary" do
+      assert_raise FunctionClauseError, ~r/AuthMethods\.enabled\?\/2/, fn ->
+        AuthMethods.enabled?("not-an-app", "social")
+      end
+
+      assert_raise FunctionClauseError, ~r/AuthMethods\.enabled_methods\/1/, fn ->
+        AuthMethods.enabled_methods("not-an-app")
+      end
+    end
   end
 end

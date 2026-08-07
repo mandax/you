@@ -118,11 +118,13 @@ defmodule YouWeb.FederatedAuthController do
 
       {:error, :transaction_aborted} ->
         conn
+        |> clear_login_flow_nonce_cookie()
         |> put_flash(:error, "Authentication failed. Please try again.")
         |> redirect(to: ~p"/users/log-in")
 
       {:error, :provider_misconfigured} ->
         conn
+        |> clear_login_flow_nonce_cookie()
         |> put_flash(:error, "That provider is misconfigured.")
         |> redirect(to: ~p"/users/log-in")
 
@@ -138,6 +140,7 @@ defmodule YouWeb.FederatedAuthController do
         })
 
         conn
+        |> clear_login_flow_nonce_cookie()
         |> put_flash(
           :error,
           "That #{provider} account's email isn't verified. Sign in with your existing method, then link #{provider} from settings."
@@ -153,11 +156,13 @@ defmodule YouWeb.FederatedAuthController do
         })
 
         conn
+        |> clear_login_flow_nonce_cookie()
         |> put_flash(:error, "Authentication failed: #{reason}")
         |> redirect(to: ~p"/users/log-in")
 
       :error ->
         conn
+        |> clear_login_flow_nonce_cookie()
         |> put_flash(:error, "Authentication failed.")
         |> redirect(to: ~p"/users/log-in")
     end

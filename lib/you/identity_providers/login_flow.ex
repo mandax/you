@@ -22,6 +22,27 @@ defmodule You.IdentityProviders.LoginFlow do
   Modelled on `You.Accounts.UserToken`'s authorization-code pattern: hashed
   at rest, single-use (deleted the moment it is looked up), short expiry —
   rather than a second token pattern.
+
+  ## What the binding assumes
+
+  The nonce cookie is compared, not the browser. Anything able to set
+  `_you_login_flow_nonce` for this host can toss its own value in and defeat
+  the comparison — the same assumption `WEBAUTHN_RP_ID`'s suffix check
+  rests on. A cookie is scoped to a host, never a request, so a sibling
+  host under a shared parent domain (`Domain=.<domain>`) could set one too.
+  Under the dedicated-domain pattern (`CONTEXT.md`), every host in the zone
+  is You's own, so this holds; it would not hold if an app's own domain
+  ever shared a cookie-writable parent with You's.
+
+  ## What it does not defend against
+
+  One nonce cookie per browser: two social logins started in two tabs of
+  the same browser share the jar, so the second `/auth/:provider` overwrites
+  the first tab's cookie. Whichever tab's callback runs first succeeds and
+  spends the underlying flow; the other tab's callback is then refused as an
+  ordinary `:state_mismatch` — indistinguishable from a stale link. Not a
+  regression: the single-valued `oidc_state` session key this replaced had
+  exactly the same limit, one value per browser, not per tab.
   """
 
   use Ecto.Schema

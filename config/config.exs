@@ -51,7 +51,13 @@ config :you, YouWeb.RateLimit, %{
   headless_register: {5, 60_000},
   oauth_token: {10, 60_000},
   api_mgmt: {120, 60_000},
-  social_login: {20, 60_000}
+  # Unlike every limit above, `/auth/:provider` verifies no credential — the
+  # goal here is only to bound how fast an anonymous GET can write flow rows,
+  # not to slow down guessing. A NAT'd office shares one bucket (the client
+  # IP trust problem is #141's, not re-solved here), so this is set high
+  # enough that a shared IP doing ordinary sign-ins doesn't get a bare 429 on
+  # a browser navigation, while still bounding a sustained anonymous flood.
+  social_login: {60, 60_000}
 }
 
 # Configure the mailer

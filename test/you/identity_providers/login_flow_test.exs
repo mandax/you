@@ -71,6 +71,12 @@ defmodule You.IdentityProviders.LoginFlowTest do
       # once. Only one may complete the login; the other must get the same
       # clean `:state_mismatch` refusal an ordinary replay gets — not a
       # crash from the two-step find-then-delete racing itself.
+      #
+      # `Sandbox.allow/3` puts both tasks on the same pooled connection, so
+      # this pins the code *shape* — one atomic statement, no read-then-write
+      # gap for two callers to land in — rather than proving atomicity at the
+      # database/connection-pool level, which would need two genuinely
+      # separate connections racing a real `DELETE`.
       assert Enum.count(results, &match?({:ok, _ctx}, &1)) == 1
       assert Enum.count(results, &match?({:error, :state_mismatch}, &1)) == 1
     end
@@ -184,6 +190,26 @@ defmodule You.IdentityProviders.LoginFlowTest do
 
     test "garbage input is refused, not raised" do
       assert :error = IdentityProviders.verify_ctx("not-a-signed-token")
+    end
+
+    # Every reader of a `ctx` map (the gate in FederatedAuthController, this
+    # module's own `LoginFlow.ctx/1` after its Jason round trip) uses string
+    # keys. A minter that passes atom keys — an easy mistake for a future
+    # #121 caller building `ctx` from `conn` assigns — must not come back out
+    # of `verify_ctx/1` still atom-keyed: every `ctx["callback_url"]` read
+    # against that would silently return `nil` instead of raising.
+    test "atom keys in, string keys out" do
+      signed =
+        IdentityProviders.sign_ctx(%{
+          callback_url: "https://app.example.com/cb",
+          scopes: ["email", "profile"],
+          code_challenge: "abc123",
+          branding_app_slug: "acme",
+          state: "consumer-app-state-xyz"
+        })
+
+      assert {:ok, ctx} = IdentityProviders.verify_ctx(signed)
+      assert ctx == @ctx
     end
   end
 end

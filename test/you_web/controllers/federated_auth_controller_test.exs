@@ -37,6 +37,60 @@ defmodule YouWeb.FederatedAuthControllerTest do
     location |> URI.parse() |> Map.fetch!(:query) |> URI.decode_query() |> Map.fetch!("state")
   end
 
+  # Stands up a local Bandit server as a stand-in for GitHub and registers a
+  # github-kind provider pointed at it, so a full authorize→callback round
+  # trip completes with no real network access — the only way this suite can
+  # exercise what happens *after* `verify_state/3` succeeds. `email` becomes
+  # the account's email, so callers minting more than one from the same test
+  # get distinct users.
+  defp github_mock!(port, email) do
+    test_pid = self()
+
+    plug = fn c, _opts ->
+      send(test_pid, {:hit, c.request_path})
+
+      body =
+        case c.request_path do
+          "/login/oauth/access_token" ->
+            Jason.encode!(%{"access_token" => "gho_x"})
+
+          "/user" ->
+            Jason.encode!(%{"id" => port, "login" => "octo#{port}"})
+
+          "/user/emails" ->
+            Jason.encode!([%{"email" => email, "primary" => true, "verified" => true}])
+        end
+
+      c
+      |> Plug.Conn.put_resp_content_type("application/json")
+      |> Plug.Conn.send_resp(200, body)
+    end
+
+    server = start_supervised!({Bandit, plug: plug, port: port, ip: :loopback}, id: make_ref())
+    on_exit(fn -> Process.unlink(server) end)
+    base = "http://localhost:#{port}"
+
+    original = Application.get_env(:you, :github_api_base_url)
+    Application.put_env(:you, :github_api_base_url, base)
+    on_exit(fn -> Application.put_env(:you, :github_api_base_url, original) end)
+
+    {:ok, _provider} =
+      IdentityProviders.create_provider(%{
+        "slug" => "github",
+        "display_name" => "GitHub",
+        "kind" => "github",
+        "client_id" => "cid",
+        "client_secret" => "secret",
+        "authorize_url" => base <> "/login/oauth/authorize",
+        "token_url" => base <> "/login/oauth/access_token",
+        "userinfo_url" => "",
+        "scopes" => "read:user user:email",
+        "enabled" => true
+      })
+
+    :ok
+  end
+
   defp attach_and_await_audit(fun) do
     test_pid = self()
     handler_id = "federated-audit-#{System.unique_integer([:positive])}"
@@ -76,6 +130,9 @@ defmodule YouWeb.FederatedAuthControllerTest do
       assert cookie.http_only
       assert cookie.path == "/auth"
       assert is_binary(cookie.value) and cookie.value != ""
+      # Pinned to the flow record's own expiry, not a second literal that
+      # could drift from it — see `nonce_cookie_max_age_seconds/0`.
+      assert cookie.max_age == LoginFlow.validity_in_minutes() * 60
     end
 
     # `Lax`, specifically: the callback arrives as a top-level cross-site GET
@@ -309,6 +366,12 @@ defmodule YouWeb.FederatedAuthControllerTest do
 
       assert redirected_to(conn) == ~p"/users/log-in"
       assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "Authentication failed."
+
+      # The nonce cookie is cleared on every failure branch, not only
+      # state_mismatch: the flow it bound to is already spent (verify_state
+      # consumed it single-use before this rejection), so the cookie is
+      # stale regardless of which check downstream refused the login.
+      assert conn.resp_cookies["_you_login_flow_nonce"].max_age == 0
     end
   end
 
@@ -535,12 +598,6 @@ defmodule YouWeb.FederatedAuthControllerTest do
   end
 
   describe "github provider dispatch" do
-    setup do
-      original = Application.get_env(:you, :github_api_base_url)
-      on_exit(fn -> Application.put_env(:you, :github_api_base_url, original) end)
-      :ok
-    end
-
     # GitHub has no userinfo endpoint and no `sub` claim, so a github-kind
     # provider must go through the adapter rather than the generic OIDC fetch.
     # The adapter's own behaviour is covered in identity_providers/github_test.
@@ -549,49 +606,7 @@ defmodule YouWeb.FederatedAuthControllerTest do
     # actual nonce cookie the first request set.
     test "a github-kind provider routes through the adapter, not the OIDC userinfo fetch",
          %{conn: conn} do
-      test_pid = self()
-      port = 45_961
-
-      plug = fn c, _opts ->
-        send(test_pid, {:hit, c.request_path})
-
-        body =
-          case c.request_path do
-            "/login/oauth/access_token" ->
-              Jason.encode!(%{"access_token" => "gho_x"})
-
-            "/user" ->
-              Jason.encode!(%{"id" => 4242, "login" => "octo"})
-
-            "/user/emails" ->
-              Jason.encode!([
-                %{"email" => "octo@example.com", "primary" => true, "verified" => true}
-              ])
-          end
-
-        c
-        |> Plug.Conn.put_resp_content_type("application/json")
-        |> Plug.Conn.send_resp(200, body)
-      end
-
-      server = start_supervised!({Bandit, plug: plug, port: port, ip: :loopback}, id: make_ref())
-      on_exit(fn -> Process.unlink(server) end)
-      base = "http://localhost:#{port}"
-      Application.put_env(:you, :github_api_base_url, base)
-
-      {:ok, _provider} =
-        You.IdentityProviders.create_provider(%{
-          "slug" => "github",
-          "display_name" => "GitHub",
-          "kind" => "github",
-          "client_id" => "cid",
-          "client_secret" => "secret",
-          "authorize_url" => base <> "/login/oauth/authorize",
-          "token_url" => base <> "/login/oauth/access_token",
-          "userinfo_url" => "",
-          "scopes" => "read:user user:email",
-          "enabled" => true
-        })
+      github_mock!(45_961, "octo@example.com")
 
       {conn, state} = start_flow(conn, "github")
 
@@ -607,6 +622,95 @@ defmodule YouWeb.FederatedAuthControllerTest do
       user = You.Repo.get_by(You.Accounts.User, email: "octo@example.com")
       assert user
       assert redirected_to(conn)
+    end
+  end
+
+  describe "restore_flow_session/2 (#132 review): ctx is the sole carrier of the handoff back to the consumer app" do
+    # `redirect_with_code/4` reads `callback_url`/`scopes`/`code_challenge`/
+    # `state` from the *session* — `restore_flow_session/2` is what puts them
+    # there from the flow's `ctx` right before that runs. On canonical today
+    # the incoming session already has the same values, so a no-op
+    # `restore_flow_session/2` would still pass every other test in this
+    # file. Proving it actually does something means starving the callback
+    # request of session on purpose: recycling without re-seeding it, so the
+    # only way this redirect can carry `callback_url` and `state` is through
+    # `ctx`.
+    test "a session-started flow: the consumer app gets its code and its own state back", %{
+      conn: conn
+    } do
+      github_mock!(45_966, "session-ctx@example.com")
+
+      {:ok, _app, _secret} =
+        You.Admin.create_app(%{
+          slug: "session-consumer",
+          name: "Session Consumer",
+          callback_url: "https://session-consumer.example.com/cb"
+        })
+
+      conn =
+        init_test_session(conn,
+          callback_url: "https://session-consumer.example.com/cb",
+          state: "consumer-state-session",
+          scopes: ["email"]
+        )
+
+      {conn, state} = start_flow(conn, "github")
+
+      # `recycle/1` alone would still carry the original session forward
+      # (Plug re-signs the session cookie on every response once it's been
+      # written to, callback response included), which would make this pass
+      # even with a no-op `restore_flow_session/2` — exactly the false
+      # positive under review. Poison the session on the recycled conn before
+      # the callback so the only way to reach the right consumer/state is
+      # through `restore_flow_session/2` overwriting it from `ctx`.
+      conn =
+        conn
+        |> recycle()
+        |> init_test_session(callback_url: nil, state: "WRONG-STATE", scopes: nil)
+        |> get(~p"/auth/github/callback", %{"code" => "c", "state" => state})
+
+      location = redirected_to(conn, 302)
+      assert location =~ "https://session-consumer.example.com/cb"
+
+      query = location |> URI.parse() |> Map.get(:query) |> URI.decode_query()
+      assert query["state"] == "consumer-state-session"
+      assert is_binary(query["code"]) and query["code"] != ""
+    end
+
+    test "a ctx-started flow, no session at all: the consumer app still gets its code and state",
+         %{conn: conn} do
+      github_mock!(45_967, "ctx-handoff@example.com")
+
+      {:ok, _app, _secret} =
+        You.Admin.create_app(%{
+          slug: "ctx-consumer",
+          name: "Ctx Consumer",
+          callback_url: "https://ctx-consumer.example.com/cb"
+        })
+
+      signed =
+        IdentityProviders.sign_ctx(%{
+          "callback_url" => "https://ctx-consumer.example.com/cb",
+          "scopes" => ["email"],
+          "code_challenge" => nil,
+          "branding_app_slug" => nil,
+          "state" => "consumer-state-ctx"
+        })
+
+      conn = get(conn, ~p"/auth/github?ctx=#{signed}")
+      state = conn |> redirected_to(302) |> state_param()
+
+      conn =
+        conn
+        |> recycle()
+        |> get(~p"/auth/github/callback", %{"code" => "c", "state" => state})
+
+      location = redirected_to(conn, 302)
+      assert location =~ "https://ctx-consumer.example.com/cb"
+
+      query = location |> URI.parse() |> Map.get(:query) |> URI.decode_query()
+      assert query["state"] == "consumer-state-ctx"
+      assert is_binary(query["code"]) and query["code"] != ""
     end
   end
 end
