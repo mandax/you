@@ -82,9 +82,17 @@ defmodule YouWeb.ConsoleLiveTest do
     test "the New app button navigates to the registration page", %{conn: conn} do
       {:ok, lv, _html} = live(conn, "/console/apps")
 
-      assert lv
-             |> element(~s(a[href="/console/apps/new"]))
-             |> render() =~ "New app"
+      html =
+        lv
+        |> element(~s(a[href="/console/apps/new"]))
+        |> render()
+
+      assert html =~ "New app"
+
+      # `data-phx-link="redirect"` is what `navigate=` renders; `patch=`
+      # would emit `"patch"` with an identical `href`, which would be wrong
+      # here since the target is a different LiveView module.
+      assert html =~ ~s(data-phx-link="redirect")
     end
 
     test "delete removes the app", %{conn: conn} do

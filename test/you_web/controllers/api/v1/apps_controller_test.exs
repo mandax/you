@@ -101,6 +101,22 @@ defmodule YouWeb.API.V1.AppsControllerTest do
       assert %{"error" => "validation_failed", "details" => %{"slug" => [_ | _]}} =
                json_response(conn, 422)
     end
+
+    # The reservation lives in `App.changeset/2`, so it applies here too, not
+    # only behind the console form at `/console/apps/new`.
+    test "slug new is reserved and rejected", %{conn: conn} do
+      conn =
+        post(conn, ~p"/api/v1/apps", %{
+          "slug" => "new",
+          "name" => "New",
+          "callback_url" => "https://new.example.com/cb"
+        })
+
+      assert %{"error" => "validation_failed", "details" => %{"slug" => [reason | _]}} =
+               json_response(conn, 422)
+
+      assert reason =~ "reserved"
+    end
   end
 
   describe "PATCH /api/v1/apps/:id" do
@@ -132,6 +148,18 @@ defmodule YouWeb.API.V1.AppsControllerTest do
 
       assert %{"error" => "validation_failed", "details" => %{"name" => [_ | _]}} =
                json_response(conn, 422)
+    end
+
+    test "renaming the slug to new is rejected, not silently ignored", %{conn: conn} do
+      {app, _secret} = app_fixture()
+
+      conn = patch(conn, ~p"/api/v1/apps/#{app.id}", %{"slug" => "new"})
+
+      assert %{"error" => "validation_failed", "details" => %{"slug" => [reason | _]}} =
+               json_response(conn, 422)
+
+      assert reason =~ "reserved"
+      assert Admin.get_app!(app.id).slug == app.slug
     end
   end
 

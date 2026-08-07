@@ -16,10 +16,10 @@ defmodule YouWeb.AppLive.NewTest do
     assert html =~ "Register app"
   end
 
-  test "registers an app and lands on its page with the secret shown once", %{conn: conn} do
+  test "registers an app and reveals the secret on this page, once", %{conn: conn} do
     {:ok, lv, _html} = live(conn, ~p"/console/apps/new")
 
-    {:ok, show_lv, html} =
+    html =
       lv
       |> form("#new-app-form", %{
         "app" => %{
@@ -29,29 +29,33 @@ defmodule YouWeb.AppLive.NewTest do
         }
       })
       |> render_submit()
-      |> follow_redirect(conn)
 
     assert [app] = Admin.list_apps()
     assert app.slug == "billing"
 
-    # Landed on the app's own page, on the credentials tab, with the secret
-    # open in the dialog that marks it as shown once and unrepeatable.
+    # The secret is revealed in place, on the same page just submitted —
+    # no navigation happens, so there is nothing to carry a credential
+    # across in the first place.
     assert html =~ "Client secret"
     assert html =~ "never shown again"
     assert html =~ app.slug
+    refute html =~ ~s(id="new-app-form")
 
-    [dialog] = Regex.run(~r/<div id="app-secret"[^>]*>/, html)
-    assert dialog =~ ~s(data-open="")
+    # The form is gone, so resubmitting (double-click, back-button replay)
+    # cannot register a second app from the same page.
+    refute lv |> has_element?("#new-app-form")
 
-    # A fresh visit does not repeat it: the flash carrying it across the
-    # redirect is one-shot, so a plain reload of the app page never has a
-    # secret to show — the dialog renders present-but-closed, same as it
-    # does for an app that was never just created.
-    {:ok, _lv, html} = live(conn, ~p"/console/apps/#{app.slug}/credentials")
-    [dialog] = Regex.run(~r/<div id="app-secret"[^>]*>/, html)
+    # A link on to the app, not another copy of the secret anywhere else.
+    assert lv |> has_element?(~s(a[href="/console/apps/#{app.slug}"]))
+
+    # A fresh visit to the app's own page never has a secret to show — this
+    # page never sends it anywhere for `AppLive.Show` to pick up. The
+    # secret dialog's title/description render regardless of open state
+    # (it is only ever hidden by the native <dialog>, not left out of the
+    # DOM), so the thing to check is `data-open`, not the copy.
+    {:ok, _lv, show_html} = live(conn, ~p"/console/apps/#{app.slug}/credentials")
+    [dialog] = Regex.run(~r/<div id="app-secret"[^>]*>/, show_html)
     refute dialog =~ ~s(data-open="")
-
-    show_lv
   end
 
   test "validation errors render on the page with entered values preserved", %{conn: conn} do
@@ -76,6 +80,29 @@ defmodule YouWeb.AppLive.NewTest do
     assert html =~ "missing-callback"
   end
 
+  # `color_input/1` renders a swatch alongside the hex field rather than a
+  # plain `<.input>`, so it needs its own wiring to a form field to surface a
+  # changeset error instead of silently reappearing with the value dropped.
+  test "a rejected brand color renders its error and preserves the value", %{conn: conn} do
+    {:ok, lv, _html} = live(conn, ~p"/console/apps/new")
+
+    html =
+      lv
+      |> form("#new-app-form", %{
+        "app" => %{
+          "name" => "Bad Brand",
+          "slug" => "bad-brand",
+          "callback_url" => "https://bad-brand.example.com/cb",
+          "brand_color" => "nope"
+        }
+      })
+      |> render_submit()
+
+    assert Admin.list_apps() == []
+    assert html =~ "has invalid format"
+    assert html =~ "nope"
+  end
+
   describe "the new-as-a-slug collision" do
     test "new is reserved and cannot be registered as a slug", %{conn: conn} do
       {:ok, lv, _html} = live(conn, ~p"/console/apps/new")
@@ -91,7 +118,7 @@ defmodule YouWeb.AppLive.NewTest do
         })
         |> render_submit()
 
-      assert html =~ "is reserved and cannot be used"
+      assert html =~ "is reserved"
       assert Admin.list_apps() == []
     end
 

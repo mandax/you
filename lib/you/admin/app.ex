@@ -358,7 +358,9 @@ defmodule You.Admin.App do
       message: "must contain only lowercase letters, digits, hyphens, or underscores"
     )
     |> validate_length(:slug, max: @max_slug_length)
-    |> validate_exclusion(:slug, @reserved_slugs, message: "is reserved and cannot be used")
+    |> validate_exclusion(:slug, @reserved_slugs,
+      message: "is reserved for a console page (/console/apps/new) and cannot be used as a slug"
+    )
   end
 
   defp validate_http_url(field, url) do

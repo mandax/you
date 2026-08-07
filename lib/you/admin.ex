@@ -274,18 +274,27 @@ defmodule You.Admin do
   def count_apps, do: Repo.aggregate(App, :count)
 
   @doc """
-  Apps whose slug does not satisfy the format `App.changeset/2` now enforces.
+  Apps whose slug does not satisfy every rule `App.changeset/2` now enforces
+  on `:slug` — the format, the length bound, and reservation (`new`, #130).
 
-  A legacy row keeps its non-conforming slug until something touches the
-  slug itself — an unrelated field update still succeeds, since changesets
-  only validate a field that is actually changing. What breaks on such a
-  row: renaming it fails validation, importing a configuration bundle that
-  carries it from a pre-validation instance silently skips the app rather than
-  failing, and the non-conforming value is already live everywhere a slug is
-  used — the `client_id` a consumer configures,
-  authorize URLs, and the role-resolution key. `mix you.audit_slugs` and
-  `You.Release.audit_slugs/0` report these before whoever runs this instance
-  hits one of those.
+  A legacy row keeps a slug that violates any of these until something
+  touches the slug itself — an unrelated field update still succeeds, since
+  changesets only validate a field that is actually changing. That covers a
+  row written before the format rule existed as much as one written before
+  `new` was reserved: both fail this the same way, via `App.invalid_slug?/1`
+  running the whole `validate_slug/1` pipeline unconditionally rather than
+  only the piece that shipped when the row was created.
+
+  What breaks on such a row: renaming it fails validation, importing a
+  configuration bundle that carries it from a pre-validation instance
+  silently skips the app rather than failing, and the non-conforming value
+  is already live everywhere a slug is used — the `client_id` a consumer
+  configures, authorize URLs, and the role-resolution key. A reserved slug
+  adds one more: `/console/apps/<that slug>` resolves to whatever page now
+  claims the reserved name instead of the app's own, so it becomes
+  unreachable from the console specifically. `mix you.audit_slugs` and
+  `You.Release.audit_slugs/0` report these before whoever runs this
+  instance hits one of those.
   """
   def apps_with_invalid_slug do
     Enum.filter(list_apps(), &App.invalid_slug?(&1.slug))
