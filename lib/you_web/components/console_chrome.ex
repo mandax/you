@@ -244,7 +244,11 @@ defmodule YouWeb.Components.ConsoleChrome do
   end
 
   @doc """
-  Tab strip that patches to `path/id`. Each tab is `{id, label}`.
+  Tab strip that patches to `path/id`. Each tab is `{id, label}`, or
+  `{id, label, marked?}` when the caller has a fact worth surfacing without
+  opening the tab — the Emails section uses this for "has this template been
+  customised?" (#131). Two-tuples are the common case and render with no dot;
+  callers that don't need the marker never see the third element.
 
   `path` is the tabbed page's own base path (`/console/settings`,
   `/console/apps/solo`) — each tab appends its id as a further segment.
@@ -258,6 +262,8 @@ defmodule YouWeb.Components.ConsoleChrome do
   attr :path, :string, required: true
 
   def tab_strip(assigns) do
+    assigns = assign(assigns, :tabs, Enum.map(assigns.tabs, &normalize_tab/1))
+
     ~H"""
     <%!-- Flex items shrink by default, which squeezes a long label like
           "Erlang distribution" until it wraps and the tab becomes two lines
@@ -267,14 +273,14 @@ defmodule YouWeb.Components.ConsoleChrome do
             and ~p requires a literal prefix to verify against the router at
             compile time — it cannot start from a variable. --%>
       <.link
-        :for={{id, label} <- @tabs}
+        :for={{id, label, marked?} <- @tabs}
         id={"tab-#{id}"}
         patch={"#{@path}/#{id}"}
         role="tab"
         aria-selected={to_string(@active == id)}
         aria-controls={@active == id && "tabpanel-#{id}"}
         class={[
-          "-mb-px shrink-0 whitespace-nowrap border-b-2 px-3 py-2 text-sm transition-colors",
+          "-mb-px flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2 text-sm transition-colors",
           if(@active == id,
             do: "border-primary text-foreground",
             else: "border-transparent text-muted-foreground hover:text-foreground"
@@ -282,10 +288,18 @@ defmodule YouWeb.Components.ConsoleChrome do
         ]}
       >
         {label}
+        <span
+          :if={marked?}
+          class="size-1.5 shrink-0 rounded-full bg-primary"
+          title="Customised"
+        />
       </.link>
     </div>
     """
   end
+
+  defp normalize_tab({id, label}), do: {id, label, false}
+  defp normalize_tab({id, label, marked?}), do: {id, label, marked?}
 
   @doc "Section card with a title and free-form body."
   attr :title, :string, required: true

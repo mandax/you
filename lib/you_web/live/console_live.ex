@@ -142,6 +142,7 @@ defmodule YouWeb.ConsoleLive do
        page: 1,
        settings_tabs: @settings_tabs,
        settings_tab: elem(hd(@settings_tabs), 0),
+       email_tab: hd(You.EmailTemplates.keys()),
        node_name: Node.self(),
        audit_filter: "",
        audit_app_filter: "",
@@ -173,8 +174,8 @@ defmodule YouWeb.ConsoleLive do
   end
 
   @doc """
-  Resolves the section and Settings tab from the path and loads exactly the
-  data that section renders.
+  Resolves the section and its tab (Settings, Emails) from the path and loads
+  exactly the data that section renders.
 
   `handle_params/3` runs after `mount/3` on every render — disconnected and
   connected alike — so this is the one place a view's dataset needs loading;
@@ -236,6 +237,7 @@ defmodule YouWeb.ConsoleLive do
      |> assign(
        view: view,
        settings_tab: settings_tab(tab),
+       email_tab: email_tab(tab),
        saved: false,
        page: parse_page(params),
        user_filters: Map.take(params, @user_filter_keys),
@@ -310,6 +312,12 @@ defmodule YouWeb.ConsoleLive do
 
   defp settings_tab(tab) do
     if List.keymember?(@settings_tabs, tab, 0), do: tab, else: elem(hd(@settings_tabs), 0)
+  end
+
+  # Same convention as settings_tab/1, against EmailTemplates.keys/0 instead.
+  defp email_tab(tab) do
+    keys = You.EmailTemplates.keys()
+    if tab in keys, do: tab, else: hd(keys)
   end
 
   @doc """
@@ -1133,7 +1141,7 @@ defmodule YouWeb.ConsoleLive do
             webhook_endpoint={@webhook_endpoint}
           />
         <% "emails" -> %>
-          <.emails_view overrides={@email_overrides} />
+          <.emails_view overrides={@email_overrides} tab={@email_tab} />
         <% "features" -> %>
           <.features_view features={@features} onboarding={@onboarding} />
         <% "settings" -> %>
@@ -1922,38 +1930,56 @@ defmodule YouWeb.ConsoleLive do
 
   # ── section: emails ───────────────────────────────────────────
   #
-  # One form per template, each showing the current copy — the override if
-  # there is one, otherwise the default. Saving stores an override; "Reset to
-  # default" deletes it, so the template goes back to tracking You's wording
-  # rather than freezing today's.
+  # One tab per template (#131), each its own form showing the current copy —
+  # the override if there is one, otherwise the default. Saving stores an
+  # override; "Reset to default" deletes it, so the template goes back to
+  # tracking You's wording rather than freezing today's. Tab labels and order
+  # come straight from `EmailTemplates.definitions/0` rather than a second
+  # list that could drift from it.
   attr :overrides, :map, required: true
+  attr :tab, :string, required: true
 
   defp emails_view(assigns) do
+    definition = You.EmailTemplates.definition(assigns.tab)
+
+    tabs =
+      Enum.map(
+        You.EmailTemplates.definitions(),
+        &{&1.key, &1.label, Map.has_key?(assigns.overrides, &1.key)}
+      )
+
+    assigns = assign(assigns, definition: definition, tabs: tabs)
+
     ~H"""
-    <div class="space-y-6">
+    <div class="space-y-4">
+      <.tab_strip tabs={@tabs} active={@tab} path={~p"/console/emails"} />
+
       <div
-        :for={definition <- You.EmailTemplates.definitions()}
+        id={"tabpanel-#{@tab}"}
+        role="tabpanel"
+        tabindex="0"
+        aria-labelledby={"tab-#{@tab}"}
         class="rounded-lg border border-border"
       >
         <div class="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-muted/30 px-4 py-3">
           <div>
             <div class="flex items-center gap-2">
-              <span class="text-sm font-medium">{definition.label}</span>
+              <span class="text-sm font-medium">{@definition.label}</span>
               <span
-                :if={!Map.has_key?(@overrides, definition.key)}
+                :if={!Map.has_key?(@overrides, @definition.key)}
                 class="rounded-full bg-muted px-2 py-0.5 font-mono text-[11px] text-muted-foreground"
               >
                 default
               </span>
             </div>
-            <p class="mt-0.5 text-xs text-muted-foreground">{definition.description}</p>
+            <p class="mt-0.5 text-xs text-muted-foreground">{@definition.description}</p>
           </div>
           <button
-            :if={Map.has_key?(@overrides, definition.key)}
+            :if={Map.has_key?(@overrides, @definition.key)}
             type="button"
             phx-click="reset_email_template"
-            phx-value-key={definition.key}
-            data-confirm={"Reset the #{definition.label} email to You's default copy?"}
+            phx-value-key={@definition.key}
+            data-confirm={"Reset the #{@definition.label} email to You's default copy?"}
             class="text-xs text-muted-foreground hover:text-destructive"
           >
             Reset to default
@@ -1961,29 +1987,29 @@ defmodule YouWeb.ConsoleLive do
         </div>
 
         <form
-          id={"email-template-#{definition.key}"}
+          id={"email-template-#{@definition.key}"}
           phx-submit="save_email_template"
           class="space-y-4 px-4 py-4"
         >
-          <input type="hidden" name="key" value={definition.key} />
+          <input type="hidden" name="key" value={@definition.key} />
           <.input
             type="text"
             name="subject"
             label="Subject"
-            value={template_value(@overrides, definition, :subject)}
+            value={template_value(@overrides, @definition, :subject)}
           />
           <.input
             type="textarea"
             name="body"
             label="Body"
             rows="12"
-            value={template_value(@overrides, definition, :body)}
+            value={template_value(@overrides, @definition, :body)}
           />
           <div class="flex flex-wrap items-center justify-between gap-3">
             <p class="font-mono text-xs text-muted-foreground">
-              {Enum.map_join(definition.variables, " ", &"{{#{&1}}}")}
-              <span :if={definition.required != []} class="text-foreground/70">
-                — {Enum.map_join(definition.required, ", ", &"{{#{&1}}}")} required
+              {Enum.map_join(@definition.variables, " ", &"{{#{&1}}}")}
+              <span :if={@definition.required != []} class="text-foreground/70">
+                — {Enum.map_join(@definition.required, ", ", &"{{#{&1}}}")} required
               </span>
             </p>
             <.button type="submit">Save</.button>
