@@ -8,17 +8,45 @@ defmodule YouWeb.Components.Base.ColorPicker do
   """
   use Phoenix.Component
 
+  import YouWeb.CoreComponents, only: [error: 1, translate_error: 1]
+
   @doc """
   Renders a swatch plus a hex input.
 
   `value` is a 6-digit hex string or nil. Nil shows the placeholder swatch
   rather than defaulting to black, so "unset" and "black" stay distinguishable.
+
+  Accepts a `field` the same way `YouWeb.CoreComponents.input/1` does — pass
+  `field={@form[:brand_color]}` and `name`, `value` and changeset errors are
+  all derived from it. Passing `name`/`value` directly still works for a
+  caller with no form behind it (`app_live/show.ex`'s live-preview form,
+  which posts straight from params rather than through a changeset).
   """
+  # `input/1` derives `id` from `field.id` when omitted; this stays required
+  # instead, since every caller already supplies one for `phx-hook` on the
+  # wrapping `<div>` — deriving it too would need a second, redundant path.
   attr :id, :string, required: true
-  attr :name, :string, required: true
-  attr :value, :any, default: nil
+  # No `default:` on `name`/`value`: a default would pre-populate the key in
+  # `assigns` before the field-based clause below runs, and `assign_new/3`
+  # only fills a key that is genuinely absent — the same reason
+  # `CoreComponents.input/1` leaves its own `name`/`value` attrs without one.
+  attr :name, :string
+  attr :value, :any
+  attr :field, Phoenix.HTML.FormField, default: nil, doc: "a form field, e.g. @form[:brand_color]"
   attr :label, :string, default: nil
   attr :placeholder, :string, default: "#7c3aed"
+  attr :errors, :list, default: []
+
+  def color_input(%{field: %Phoenix.HTML.FormField{} = field} = assigns) do
+    errors = if Phoenix.Component.used_input?(field), do: field.errors, else: []
+
+    assigns
+    |> assign(field: nil)
+    |> assign_new(:name, fn -> field.name end)
+    |> assign_new(:value, fn -> field.value end)
+    |> assign(:errors, Enum.map(errors, &translate_error/1))
+    |> color_input()
+  end
 
   def color_input(assigns) do
     ~H"""
@@ -61,7 +89,10 @@ defmodule YouWeb.Components.Base.ColorPicker do
           placeholder={@placeholder}
           spellcheck="false"
           autocomplete="off"
-          class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          class={[
+            "flex h-10 w-full rounded-md border bg-background px-3 py-2 font-mono text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+            if(@errors != [], do: "border-destructive", else: "border-input")
+          ]}
         />
 
         <button
@@ -74,6 +105,7 @@ defmodule YouWeb.Components.Base.ColorPicker do
           <span class="lucide-x size-4 block" />
         </button>
       </div>
+      <.error :for={msg <- @errors}>{msg}</.error>
     </div>
 
     <script :type={Phoenix.LiveView.ColocatedHook} name=".ColorPicker">

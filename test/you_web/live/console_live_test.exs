@@ -77,20 +77,33 @@ defmodule YouWeb.ConsoleLiveTest do
   end
 
   describe "apps" do
-    test "create reveals a one-time secret; delete removes", %{conn: conn} do
-      {:ok, lv, _} = live(conn, "/console/apps")
+    # Creation lives at its own page now (`AppLive.New`, #130) — see
+    # `test/you_web/live/app_live/new_test.exs`.
+    test "the New app button navigates to the registration page", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, "/console/apps")
 
       html =
         lv
-        |> form("#new-app form", %{
+        |> element(~s(a[href="/console/apps/new"]))
+        |> render()
+
+      assert html =~ "New app"
+
+      # `data-phx-link="redirect"` is what `navigate=` renders; `patch=`
+      # would emit `"patch"` with an identical `href`, which would be wrong
+      # here since the target is a different LiveView module.
+      assert html =~ ~s(data-phx-link="redirect")
+    end
+
+    test "delete removes the app", %{conn: conn} do
+      {:ok, app, _secret} =
+        Admin.create_app(%{
           "name" => "Billing",
           "slug" => "billing",
           "callback_url" => "https://billing.example.com/cb"
         })
-        |> render_submit()
 
-      assert html =~ "Client secret"
-      assert [app] = Admin.list_apps()
+      {:ok, lv, _} = live(conn, "/console/apps")
 
       # Through the rendered button, not a hand-built push: the binding and its
       # confirmation are part of what makes the delete safe.
@@ -159,22 +172,6 @@ defmodule YouWeb.ConsoleLiveTest do
 
       assert html =~
                "permanently deletes 0 consents and 0 role assignments. This cannot be undone."
-    end
-
-    test "create app with first_party true", %{conn: conn} do
-      {:ok, lv, _} = live(conn, "/console/apps")
-
-      lv
-      |> form("#new-app form", %{
-        "name" => "Firsty",
-        "slug" => "firsty",
-        "callback_url" => "https://firsty.example.com/cb",
-        "first_party" => "true"
-      })
-      |> render_submit()
-
-      assert [app] = Admin.list_apps()
-      assert app.first_party
     end
   end
 

@@ -283,8 +283,14 @@ defmodule YouWeb.CoreComponents do
     """
   end
 
-  # Helper used by inputs to generate form errors
-  defp error(assigns) do
+  @doc """
+  Renders one form error line. Used by `input/1` for every field it supports,
+  and public so a component outside this module — `color_input/1` in
+  `YouWeb.Components.Base.ColorPicker`, which cannot reuse `input/1` itself
+  since it renders a swatch alongside the hex field — can show a changeset
+  error the same way instead of inventing its own error markup.
+  """
+  def error(assigns) do
     ~H"""
     <p class="mt-1.5 flex gap-2 items-center text-sm text-destructive">
       <.icon name="danger-circle" class="size-5 text-destructive" />

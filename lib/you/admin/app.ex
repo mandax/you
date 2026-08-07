@@ -9,9 +9,11 @@ defmodule You.Admin.App do
   `client_id` ambiguous against hostname-shaped values, and a slash would
   break path construction. See `validate_slug/1`.
 
-  No reserved-name or DNS-label rule lives here — that constrains a separate
+  No DNS-label reservation lives here — that constrains a separate
   `hostname_label` column (#121), kept apart precisely so hostname concerns
-  do not reach into the client_id namespace.
+  do not reach into the client_id namespace. The one name this module does
+  reserve, `new`, is reserved for a routing reason of its own: see
+  `@reserved_slugs`.
   """
 
   use Ecto.Schema
@@ -66,6 +68,12 @@ defmodule You.Admin.App do
   # No spec bounds client_id length. 64 is comfortably above any real one
   # and well under the column's default 255-character bound.
   @max_slug_length 64
+
+  # Not a DNS reservation — #119 deliberately keeps those off the slug and
+  # onto `hostname_label` instead. This is narrower: `new` is where
+  # `/console/apps/new` (#130) resolves, ahead of `/console/apps/:slug` in
+  # the router, so a slug of `new` would have no address of its own.
+  @reserved_slugs ~w(new)
 
   # Claims You itself issues, plus the registered JWT claims. An app that could
   # set these could rewrite its own token: `sub` is the identity the consumer
@@ -350,6 +358,9 @@ defmodule You.Admin.App do
       message: "must contain only lowercase letters, digits, hyphens, or underscores"
     )
     |> validate_length(:slug, max: @max_slug_length)
+    |> validate_exclusion(:slug, @reserved_slugs,
+      message: "is reserved for a console page (/console/apps/new) and cannot be used as a slug"
+    )
   end
 
   defp validate_http_url(field, url) do

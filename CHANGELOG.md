@@ -13,18 +13,30 @@ of them at once.
 
 ### Requires your attention
 
-- **App slugs are now validated.** `slug` doubles as the OAuth `client_id`,
-  a segment of every authorize URL, and half of the role-resolution key, but
-  was checked for uniqueness only — `foo.bar`, `My App!` and `Slug With
-  Spaces` were all legal. It is now held to lowercase letters, digits, hyphens and
-  underscores, at most 64 characters. A row written before this validation
-  existed keeps its non-conforming slug until something touches the slug
-  itself, but from here on: renaming that app fails validation, and **a
-  configuration bundle exported from a pre-validation instance silently skips
-  such an app on import** — the import reports success with an app count one
-  short rather than raising, so check the count against what you exported. Run `mix you.audit_slugs`
-  (`bin/you eval 'You.Release.audit_slugs()'` in a release) right after
-  upgrading, before renaming anything, to find out which apps are affected.
+- **App slugs are now validated, and `new` is reserved.** `slug` doubles as
+  the OAuth `client_id`, a segment of every authorize URL, and half of the
+  role-resolution key, but was checked for uniqueness only — `foo.bar`, `My
+  App!` and `Slug With Spaces` were all legal. It is now held to lowercase
+  letters, digits, hyphens and underscores, at most 64 characters, and `new`
+  is refused outright — `/console/apps/new` (below) claims that address for
+  app registration ahead of `/console/apps/:slug`. A row written before
+  either rule existed keeps its slug until something touches the slug
+  itself, but from here on: renaming that app fails validation, **a
+  configuration bundle exported from a pre-validation instance silently
+  skips such an app on import** — the import reports success with an app
+  count one short rather than raising, so check the count against what you
+  exported — and, specifically for a legacy app slugged `new`,
+  `/console/apps/new` now resolves to the registration page instead of it,
+  so it becomes unreachable from the console until renamed. Run `mix
+  you.audit_slugs` (`bin/you eval 'You.Release.audit_slugs()'` in a
+  release) right after upgrading, before renaming anything, to find out
+  which apps are affected.
+- **Registering an app moved off the apps list into its own page,**
+  `/console/apps/new`. The old dialog minted a client secret shown exactly
+  once, and a dialog that closes on a stray click was a bad place for the
+  only copy of a credential. Nothing about the fields collected changed;
+  only where you go to fill them in — the apps list's "New app" button
+  still starts it, it just navigates now instead of opening a dialog.
 - **Console sections and tabs are now addressed by path, not query string.**
   `/console?view=settings&tab=mail` is now `/console/settings/mail`, and
   `/console/apps/solo?tab=members` is now `/console/apps/solo/members`. Old

@@ -1,8 +1,9 @@
 defmodule Mix.Tasks.You.AuditSlugs do
   @moduledoc """
-  Reports apps whose slug violates the format `You.Admin.App.changeset/2`
-  enforces: lowercase letters, digits, hyphens and underscores only, bounded
-  in length.
+  Reports apps whose slug violates a rule `You.Admin.App.changeset/2`
+  enforces: the format (lowercase letters, digits, hyphens and underscores
+  only), the length bound, or reservation — `new`, which `/console/apps/new`
+  (#130) claims ahead of the per-app page.
 
   ## Usage
 
@@ -36,7 +37,7 @@ defmodule Mix.Tasks.You.AuditSlugs do
 
   alias You.Admin
 
-  @shortdoc "Report apps whose slug violates the client_id format rule"
+  @shortdoc "Report apps whose slug violates the client_id format or reservation rules"
 
   @impl Mix.Task
   def run(_args) do
@@ -45,12 +46,12 @@ defmodule Mix.Tasks.You.AuditSlugs do
   end
 
   defp report([]) do
-    Mix.shell().info([:green, "All app slugs satisfy the client_id format rule."])
+    Mix.shell().info([:green, "All app slugs satisfy the client_id rules."])
   end
 
   defp report(apps) do
     Mix.shell().error(
-      "#{length(apps)} app(s) have a slug that fails the client_id format rule:\n"
+      "#{length(apps)} app(s) have a slug that fails a client_id rule (format, length, or reservation):\n"
     )
 
     Enum.each(apps, fn app ->
@@ -62,7 +63,10 @@ defmodule Mix.Tasks.You.AuditSlugs do
       :yellow,
       "Renaming a slug changes that app's client_id and breaks every consumer ",
       "configured against it — PATCH /api/v1/apps/:id is the only way to change ",
-      "it. Coordinate with whoever runs each consumer app before renaming."
+      "it. Coordinate with whoever runs each consumer app before renaming. ",
+      "If a listed slug is a reserved name (`new`), it is also unreachable at ",
+      "/console/apps/<slug> specifically — that path now resolves to the page ",
+      "the reservation protects, not this app."
     ])
 
     exit({:shutdown, 1})

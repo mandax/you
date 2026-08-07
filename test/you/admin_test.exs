@@ -142,6 +142,31 @@ defmodule You.AdminTest do
     end
   end
 
+  # `new` is reserved so `/console/apps/new` (#130) always resolves to app
+  # registration rather than being read as a slug — `/console/apps/:slug`
+  # sits right below it in the router. The rule is enforced in
+  # `App.changeset/2` itself, so it applies wherever a slug is written:
+  # console, `create_app/1`, `update_app/2`, and the management API's
+  # `PATCH /api/v1/apps/:id` alike, not just the console form.
+  describe "reserved slug" do
+    @valid_attrs %{slug: "myapp", name: "Myapp", callback_url: "https://myapp.example.com/cb"}
+
+    test "create_app rejects new as a slug" do
+      assert {:error, changeset} = Admin.create_app(Map.put(@valid_attrs, :slug, "new"))
+      assert "is reserved" <> _ = hd(errors_on(changeset).slug)
+    end
+
+    test "update_app rejects renaming an existing app's slug to new" do
+      {:ok, app, _secret} = Admin.create_app(@valid_attrs)
+
+      assert {:error, changeset} = Admin.update_app(app, %{slug: "new"})
+      assert "is reserved" <> _ = hd(errors_on(changeset).slug)
+
+      # Rejected, not silently ignored: the app keeps its original slug.
+      assert Admin.get_app!(app.id).slug == "myapp"
+    end
+  end
+
   describe "apps_with_invalid_slug/0" do
     alias You.Admin.App
 

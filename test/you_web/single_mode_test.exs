@@ -224,6 +224,17 @@ defmodule YouWeb.SingleModeTest do
       assert_raise YouWeb.NotFoundError, fn -> live(conn, ~p"/console/apps") end
     end
 
+    # The old dialog lived inside the apps registry view, so it was
+    # unreachable in single mode by construction — there was no list to open
+    # it from. `AppLive.New` is a top-level route with no mode check of its
+    # own, so without this it would register a second app that no registry,
+    # nav entry, or filter could ever show again.
+    test "the app creation page 404s rather than rendering a second app into existence",
+         %{conn: conn} do
+      assert_raise YouWeb.NotFoundError, fn -> live(conn, ~p"/console/apps/new") end
+      assert Admin.count_apps() == 1
+    end
+
     test "the single-app nav entry's own id is not a real section", %{conn: conn} do
       assert_raise YouWeb.NotFoundError, fn -> live(conn, ~p"/console/app") end
     end
@@ -296,7 +307,7 @@ defmodule YouWeb.SingleModeTest do
       {:ok, _lv, apps_html} = live(conn, ~p"/console/apps")
       {:ok, _lv, users_html} = live(conn, ~p"/console/users")
 
-      assert apps_html =~ "Register app"
+      assert apps_html =~ ~s(href="/console/apps/new")
       assert users_html =~ "all apps"
     end
   end

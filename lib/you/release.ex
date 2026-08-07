@@ -93,8 +93,8 @@ defmodule You.Release do
   end
 
   @doc """
-  Reports apps whose slug violates the format `You.Admin.App.changeset/2`
-  enforces. Run via:
+  Reports apps whose slug violates a rule `You.Admin.App.changeset/2`
+  enforces: the format, the length bound, or reservation. Run via:
 
       bin/you eval 'You.Release.audit_slugs()'
 
@@ -107,11 +107,14 @@ defmodule You.Release do
   end
 
   defp report_slugs([]) do
-    IO.puts("All app slugs satisfy the client_id format rule.")
+    IO.puts("All app slugs satisfy the client_id rules.")
   end
 
   defp report_slugs(apps) do
-    IO.puts(:stderr, "#{length(apps)} app(s) have a slug that fails the client_id format rule:\n")
+    IO.puts(
+      :stderr,
+      "#{length(apps)} app(s) have a slug that fails a client_id rule (format, length, or reservation):\n"
+    )
 
     Enum.each(apps, fn app ->
       IO.puts("  - #{app.slug} (#{app.name}, id #{app.id})")
@@ -120,7 +123,9 @@ defmodule You.Release do
     IO.puts(
       "\nRenaming a slug changes that app's client_id and breaks every consumer " <>
         "configured against it — PATCH /api/v1/apps/:id is the only way to change it. " <>
-        "Coordinate with whoever runs each consumer app before renaming."
+        "Coordinate with whoever runs each consumer app before renaming. If a listed " <>
+        "slug is a reserved name (`new`), it is also unreachable at /console/apps/<slug> " <>
+        "specifically — that path now resolves to the page the reservation protects."
     )
 
     System.halt(1)

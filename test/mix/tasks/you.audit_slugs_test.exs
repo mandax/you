@@ -44,4 +44,23 @@ defmodule Mix.Tasks.You.AuditSlugsTest do
     assert warning =~ "breaks every consumer"
     assert warning =~ "PATCH /api/v1/apps/:id"
   end
+
+  # `new` was reserved after slug validation shipped (#130), so a row already
+  # slugged `new` — written when that was still a legal slug — is exactly the
+  # class of legacy row this task exists to surface: nothing about updating
+  # its other fields would ever fail and point whoever runs this instance at it.
+  test "reports a legacy app slugged with a name reserved after it was created" do
+    app = AdminFixtures.insert_legacy_app!("new")
+
+    assert catch_exit(Mix.Tasks.You.AuditSlugs.run([])) == {:shutdown, 1}
+
+    assert_received {:mix_shell, :error, [_summary]}
+
+    assert_received {:mix_shell, :info, [listing]}
+    assert listing =~ app.slug
+
+    assert_received {:mix_shell, :info, [warning]}
+    assert warning =~ "reserved"
+    assert warning =~ "/console/apps/<slug>"
+  end
 end
