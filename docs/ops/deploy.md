@@ -28,6 +28,11 @@ Set `PHX_HOST` to the hostname users actually reach You on. It is used to build
 the OIDC issuer URL and the WebAuthn origin (`https://<PHX_HOST>`), so a wrong
 value breaks magic-link emails, discovery documents, and passkeys.
 
+Planning to give apps their own login hostnames rather than one shared
+`PHX_HOST`? Read [app-hostnames.md](app-hostnames.md) first — the pattern you
+pick fixes what `PHX_HOST` and `WEBAUTHN_RP_ID` have to be, and it is far
+cheaper to decide before either is live.
+
 ## Mail (SMTP)
 
 You sends transactional email (magic links, confirmation) via Swoosh. In

@@ -13,7 +13,7 @@ You ──── auth, users, roles, 2FA, billing (future)
 
 Apps never touch You's database. Communication goes through:
 - **OIDC over HTTP**: standard authorization-code + PKCE flow, JWKS, userinfo, introspection, revocation (`/.well-known/*`, `/oauth/*`). Works with any OIDC client library, any language
-- **Login UI**: You serves its own LiveView for login, 2FA, magic link
+- **Login UI**: You serves its own LiveView for login, 2FA, magic link, invitation acceptance, and (behind `feature_guest_login`) guest accounts a first-party app can create for a user before they sign up
 - **Erlang distribution** (expert option, trusted nodes only): the same flows with no HTTP hop, via `You.IAM.Server`
 - **`You.SDK`**: a small library that wraps the distribution calls for in-cluster BEAM apps
 - **GraphQL** (future): user profile, settings, teams
@@ -131,6 +131,7 @@ headlessly at `/api/auth/*` (client_id + client_secret).
 - [Management REST API](docs/api.md): `/api/v1` for automating users and apps
 - [Webhooks](docs/webhooks.md): signed outbound events (Stripe recipe included)
 - [Deployment](docs/ops/deploy.md): production deployment guide
+- [App hostnames](docs/ops/app-hostnames.md): why per-app login hostnames exist, and which decisions are the Operator's versus the Admin's
 - [Changelog](CHANGELOG.md): what changed per release — **read this before upgrading**, some releases need operator action
 
 ## Domain Language
