@@ -18,6 +18,7 @@ This is a web application written using the Phoenix web framework.
   - `handle_params/3` resolves the tab path segment against the known tab ids and falls back to the first tab on anything unknown or missing — never a blank page. See `app_live/show.ex`'s `handle_params/3`.
   - Tabs group by *context*, not to even out field counts per tab. The natural boundary is usually already visible as separate groups/sections in the pre-tab layout — consolidate two only when they are plainly one concern.
   - Give each tab its own `<form>` rather than one form spanning every tab, so a save only touches what the admin is looking at. This is safe by construction wherever a save handler reads only the params present in the submit (skips absent keys).
+- **Pagination, filters, and sort belong in the query string, never the path** — `?page=2`, not `/console/users/2`. `/console/:view/:tab` already claims a plain segment after a section as a tab id, so a page number there would resolve as a tab named "2" instead of a page. The rule: the path is where you are (section, tab, resource); the query is what you're looking at within it (page, filter, sort). See `pager/1` in `ConsoleChrome` and its use in `console_live.ex`'s users and audit views.
 
 ### Phoenix v1.8 guidelines
 

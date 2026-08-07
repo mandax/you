@@ -77,9 +77,29 @@ defmodule You.Roles do
   rendering per-user role matrices.
   """
   def all_assignments do
-    query = from a in Assignment, select: {a.user_id, a.app_id, a.role}
+    from(a in Assignment, select: {a.user_id, a.app_id, a.role}) |> Repo.all() |> assignment_map()
+  end
 
-    Enum.reduce(Repo.all(query), %{}, fn {user_id, app_id, role}, acc ->
+  @doc """
+  Same shape as `all_assignments/0`, scoped to `user_ids`.
+
+  For a console page that only ever needs the access column for the
+  screenful of users it is rendering — `all_assignments/0` keeps every
+  existing caller reading the whole table underneath it.
+  """
+  def assignments_for_users([]), do: %{}
+
+  def assignments_for_users(user_ids) when is_list(user_ids) do
+    from(a in Assignment,
+      where: a.user_id in ^user_ids,
+      select: {a.user_id, a.app_id, a.role}
+    )
+    |> Repo.all()
+    |> assignment_map()
+  end
+
+  defp assignment_map(rows) do
+    Enum.reduce(rows, %{}, fn {user_id, app_id, role}, acc ->
       Map.update(acc, user_id, %{app_id => role}, &Map.put(&1, app_id, role))
     end)
   end
