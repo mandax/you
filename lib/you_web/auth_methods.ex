@@ -70,7 +70,14 @@ defmodule YouWeb.AuthMethods do
 
   **The app-resolution precedence, stated once** — there are three ways a
   request can name an app, and this is the only place their order is
-  decided:
+  decided. All three are gated on one prior question: is `conn.host` a host
+  You recognises at all (`You.Hosting.own_host?/1` — the canonical host, or
+  a host that resolves to a configured app)? An unrecognised host names no
+  app, full stop, regardless of what the session or query string claim —
+  see below for why that overrides one of #121's own stated acceptance
+  criteria.
+
+  On a recognised host:
 
   1. `callback_url` (the session's, from an in-flight OAuth handoff via
      `lookup_app_by_callback/1`). Exact-match validated at write time
@@ -85,10 +92,31 @@ defmodule YouWeb.AuthMethods do
      kept as a fallback for a host with no label of its own.
 
   Naming none of the three gives You's own page, in every deployment mode.
+
+  ## Why an unrecognised host overrides "`?app=` still works, on any host"
+
+  #121 states both that acceptance criterion and, separately, that "an
+  unrecognised host serves unbranded canonical pages, selects no app" — the
+  two cannot both hold, since `?app=`/`branding_app_slug` do not themselves
+  check the host at all. Without this gate, an arbitrary `Host` header plus
+  `?app=<slug>` (or a `callback_url` naming a real app) serves that app's
+  branded login page, complete with its enabled sign-in methods — under
+  #125's dedicated-domain pattern, potentially including a passkey button
+  that can actually complete a ceremony, since `You.WebAuthn.
+  available_for_host?/1` and `origin_matches?/2` accept any host under the
+  configured RP ID's zone regardless of app resolution. That is the
+  impersonation primitive #121's "Why unknown hosts must not brand" section
+  argues an unrecognised host must never grant, so that argument wins: the
+  legitimate use of `?app=` — an app with no hostname label, reached on the
+  canonical host — is unaffected, because canonical is always recognised;
+  only a host nothing resolves to loses the ability to brand via the
+  fallback carriers.
   """
   def app_for(%Plug.Conn{} = conn) do
-    callback_app(get_session(conn, :callback_url)) || host_app(conn) ||
-      branding_app(get_session(conn, :branding_app_slug))
+    if You.Hosting.own_host?(conn.host) do
+      callback_app(get_session(conn, :callback_url)) || host_app(conn) ||
+        branding_app(get_session(conn, :branding_app_slug))
+    end
   end
 
   defp callback_app(callback_url) do

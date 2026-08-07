@@ -156,7 +156,8 @@ defmodule You.ConfigBundleTest do
           name: "Portable App",
           callback_url: "https://portable.example.com/cb",
           brand_color: "#7c3aed",
-          allowed_roles: ["user", "admin"]
+          allowed_roles: ["user", "admin"],
+          hostname_label: "portable"
         })
 
       {:ok, _provider} =
@@ -188,7 +189,9 @@ defmodule You.ConfigBundleTest do
       {:ok, payload} = Vault.open(sealed, @password)
 
       assert payload["settings"]["jwt_expiry_hours"] == 6
-      assert [%{"slug" => "portable", "brand_color" => "#7c3aed"}] = payload["apps"]
+
+      assert [%{"slug" => "portable", "brand_color" => "#7c3aed", "hostname_label" => "portable"}] =
+               payload["apps"]
 
       assert [%{"slug" => "acme", "client_secret" => "s3cret-from-source"}] =
                payload["identity_providers"]
@@ -215,6 +218,11 @@ defmodule You.ConfigBundleTest do
 
       assert {:ok, "s3cret-from-source"} =
                You.IdentityProviders.Crypto.fetch(provider.client_secret)
+
+      # Was silently dropped by export before hostname_label joined
+      # @app_fields — the documented migration path (export/import) must
+      # not be the one place an app's hostname doesn't survive.
+      assert Repo.get_by!(You.Admin.App, slug: "portable").hostname_label == "portable"
     end
 
     test "import upserts and never deletes" do

@@ -445,6 +445,8 @@ defmodule YouWeb.AppLive.Show do
   attr :app, :map, required: true
 
   defp overview_tab(assigns) do
+    assigns = assign(assigns, :hostname_preview, hostname_preview(assigns.app))
+
     ~H"""
     <.panel title="Identity and URLs" description="How the app is registered with You.">
       <form id="app-overview-form" phx-submit="update_app" class="max-w-xl space-y-4">
@@ -464,10 +466,10 @@ defmodule YouWeb.AppLive.Show do
           value={@app.hostname_label}
           placeholder={@app.slug}
         />
-        <p :if={hostname_preview(@app)} class="text-xs text-muted-foreground">
-          Serves this app's login pages at <span class="font-mono">{hostname_preview(@app)}</span>.
+        <p :if={@hostname_preview} class="text-xs text-muted-foreground">
+          Serves this app's login pages at <span class="font-mono">{@hostname_preview}</span>.
         </p>
-        <p :if={!hostname_preview(@app)} class="text-xs text-muted-foreground">
+        <p :if={!@hostname_preview} class="text-xs text-muted-foreground">
           Blank keeps this app on the canonical host, exactly as today. Does not change the
           client_id — see Credentials.
         </p>

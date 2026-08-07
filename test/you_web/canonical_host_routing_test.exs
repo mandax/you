@@ -16,17 +16,45 @@ defmodule YouWeb.CanonicalHostRoutingTest do
 
   use YouWeb.ConnCase, async: false
 
+  # A host of this shape (`acme.example.com`) is only a *recognised* app
+  # host in describe blocks that actually register an app under it
+  # (`create_acme_app!/0`, called from `enable_hostnames!/1`). Elsewhere it
+  # is deliberately just "some non-canonical host, resolved or not" — the
+  # redirect/refuse rules under test don't consult app resolution at all,
+  # only `You.Hosting.canonical?/1`, so those tests are right not to bother.
+  # Review flagged this distinction as missing; the comments below call out
+  # which is which.
   @app_host "acme.example.com"
   @unknown_host "nobody-owns-this.example.net"
 
-  defp enable_hostnames! do
-    You.Settings.set(:hostname_template, "{label}.example.com")
+  defp enable_hostnames!(register_app? \\ false) do
+    Application.put_env(:you, :app_hostname_template, "{label}.example.com")
     You.Settings.set(:feature_app_hostnames, true)
 
     on_exit(fn ->
       You.Settings.set(:feature_app_hostnames, false)
-      You.Settings.set(:hostname_template, "")
+      Application.delete_env(:you, :app_hostname_template)
     end)
+
+    if register_app?, do: create_acme_app!()
+  end
+
+  # Registers the real app `@app_host` resolves to, so a test exercising
+  # "on an app host" is exercising `You.Hosting.resolve/1` returning
+  # `{:app, _}` — not merely a non-canonical host nothing recognises, which
+  # every redirect/refuse rule in this file treats identically to a
+  # recognised one (they gate on `canonical?/1`, not resolution) and so
+  # would not have caught the difference.
+  defp create_acme_app! do
+    {:ok, app, _secret} =
+      You.Admin.create_app(%{
+        slug: "acme-#{System.unique_integer([:positive])}",
+        name: "Acme Corp",
+        callback_url: "https://acme-#{System.unique_integer([:positive])}.example.com/cb",
+        hostname_label: "acme"
+      })
+
+    app
   end
 
   defp with_host(conn, host), do: %{conn | host: host}
@@ -145,6 +173,23 @@ defmodule YouWeb.CanonicalHostRoutingTest do
       assert URI.parse(redirected_to(conn, 302)).path == "/console/settings/mail"
     end
 
+    test "/console redirects even from a genuinely recognised app host, not only an unresolved one" do
+      create_acme_app!()
+      conn = build_conn() |> with_host(@app_host) |> get(~p"/console")
+
+      assert URI.parse(redirected_to(conn, 302)).host == YouWeb.Endpoint.host()
+    end
+
+    test "PUT /users/settings off canonical refuses with a 400, not a redirect that drops the body" do
+      user = You.AccountsFixtures.user_fixture()
+      conn = build_conn() |> YouWeb.ConnCase.log_in_user(user) |> with_host(@app_host)
+
+      conn = put(conn, ~p"/users/settings", %{"user" => %{"name" => "New Name"}})
+
+      assert conn.status == 400
+      refute conn.status in 300..399
+    end
+
     test "/users/settings redirects to canonical for a logged-in user", %{conn: conn} do
       user = You.AccountsFixtures.user_fixture()
       conn = conn |> YouWeb.ConnCase.log_in_user(user) |> with_host(@app_host)
@@ -164,20 +209,32 @@ defmodule YouWeb.CanonicalHostRoutingTest do
 
   describe "browser auth pages never redirect across hosts" do
     setup do
-      enable_hostnames!()
-      :ok
+      app = enable_hostnames!(true)
+      %{app: app}
     end
 
-    test "the login page renders on an app host instead of redirecting", %{conn: conn} do
-      conn = conn |> with_host(@app_host) |> get(~p"/users/log-in")
-      assert html_response(conn, 200)
-    end
-
-    test "the login page renders on an unrecognised host too — unbranded, but served", %{
-      conn: conn
+    # Neutering `resolve_app/1` to return an arbitrary app, or `@app_host`
+    # not actually being registered, would still leave a bare 200 here —
+    # review's point exactly. Assert the app's own branding renders, which
+    # only happens if `You.Hosting.resolve/1` genuinely returned *this* app.
+    test "the login page renders on an app host, branded for that app, instead of redirecting", %{
+      conn: conn,
+      app: app
     } do
+      conn = conn |> with_host(@app_host) |> get(~p"/users/log-in")
+      body = html_response(conn, 200)
+
+      assert body =~ app.name
+      refute body =~ "Welcome back"
+    end
+
+    test "the login page renders on an unrecognised host too — unbranded, not the app's, but served",
+         %{conn: conn, app: app} do
       conn = conn |> with_host(@unknown_host) |> get(~p"/users/log-in")
-      assert html_response(conn, 200)
+      body = html_response(conn, 200)
+
+      refute body =~ app.name
+      assert body =~ "Welcome back"
     end
   end
 
@@ -196,7 +253,7 @@ defmodule YouWeb.CanonicalHostRoutingTest do
     }
 
     setup do
-      enable_hostnames!()
+      enable_hostnames!(true)
       {:ok, _provider} = You.IdentityProviders.create_provider(@google_attrs)
       :ok
     end

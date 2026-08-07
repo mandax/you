@@ -61,6 +61,17 @@ defmodule YouWeb.RequestURL do
   # its hash instead bounds the key to a fixed size regardless of input.
   @refused_host_log_window :timer.minutes(5)
 
+  # The per-host key bounds memory, not log *volume*: 5000 distinct forged
+  # hosts in one window still writes 5000 lines, one each. This second,
+  # single-key bucket caps how many refused-host lines this module emits in
+  # total per window, so a wide (not just fast) scripted probe can't turn
+  # the log itself into the flood — #121 asks for sampling that "is not
+  # enough to be a log-flooding vector itself", which the per-host key alone
+  # does not satisfy. Overridable so a test can shrink it to something it can
+  # actually exhaust in a handful of calls, rather than either not testing
+  # the cap at all or needing thousands of calls per test to prove it out.
+  @refused_host_log_default_global_cap 200
+
   # Longest a DNS hostname can legitimately be; anything past this in a log
   # line is padding an attacker is paying to have logged, not signal.
   @max_logged_host_length 253
@@ -142,17 +153,30 @@ defmodule YouWeb.RequestURL do
   defp log_refused_host(host) do
     key = :erlang.phash2(host)
 
-    case YouWeb.RateLimit.check({:refused_request_host, key}, 1, @refused_host_log_window) do
-      {:allow, 1} ->
-        Logger.warning(
-          "refused non-allowlisted request host for link building: " <>
-            "request_host=#{inspect(truncate(host))} canonical_host=#{inspect(YouWeb.Endpoint.host())}"
-        )
-
-      _ ->
-        :ok
+    with {:allow, 1} <-
+           YouWeb.RateLimit.check({:refused_request_host, key}, 1, @refused_host_log_window),
+         {:allow, _} <-
+           YouWeb.RateLimit.check(
+             :refused_request_host_global,
+             global_log_cap(),
+             @refused_host_log_window
+           ) do
+      Logger.warning(
+        "refused non-allowlisted request host for link building: " <>
+          "request_host=#{inspect(truncate(host))} canonical_host=#{inspect(YouWeb.Endpoint.host())}"
+      )
+    else
+      _ -> :ok
     end
   end
+
+  defp global_log_cap,
+    do:
+      Application.get_env(
+        :you,
+        :refused_host_log_global_cap,
+        @refused_host_log_default_global_cap
+      )
 
   defp truncate(nil), do: nil
 

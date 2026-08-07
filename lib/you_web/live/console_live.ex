@@ -123,8 +123,7 @@ defmodule YouWeb.ConsoleLive do
     %{key: :mail_from, label: "Mail from address"},
     %{key: :api_token, label: "Management API token"},
     %{key: :analytics_src, label: "Analytics script URL"},
-    %{key: :analytics_domain, label: "Analytics domain"},
-    %{key: :hostname_template, label: "App hostname template"}
+    %{key: :analytics_domain, label: "Analytics domain"}
   ]
 
   @impl true
@@ -2490,16 +2489,15 @@ defmodule YouWeb.ConsoleLive do
       </p>
     </.settings_card>
     <.settings_card>
-      <.setting_field
-        name="hostname_template"
-        label="App hostname template"
-        value={@settings[:hostname_template]}
-      />
+      <.kv k="App hostname template" v={You.Hosting.template() || "not set"} />
       <p class="pt-1 font-mono text-[11px] text-muted-foreground" phx-no-curly-interpolation>
-        One {label} placeholder, e.g. {label}.example.com. An app's hostname is this template
-        with its own Hostname label spliced in, set on the app's own page. Also requires the
-        "Per-app hostnames" feature switched on — see Features. Either half missing or off, and
-        every app keeps sharing this instance's canonical host, exactly as it does today.
+        Set via APP_HOSTNAME_TEMPLATE (one {label} placeholder, e.g. {label}.example.com) —
+        environment-only, like WEBAUTHN_RP_ID and PHX_HOST: it gates which hosts an emailed link
+        may point at and which origins a LiveView socket accepts, so it is the Operator's to set,
+        not the console's. An app's hostname is this template with its own Hostname label
+        spliced in, set on the app's own page. Also requires the "Per-app hostnames" feature
+        switched on — see Features. Either half missing or off, and every app keeps sharing
+        this instance's canonical host, exactly as it does today.
       </p>
     </.settings_card>
     """

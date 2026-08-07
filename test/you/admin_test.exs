@@ -280,21 +280,29 @@ defmodule You.AdminTest do
     # canonical host would let an app take over the instance's own front
     # door. Computed from the current template at write time, not a
     # hard-coded name.
+    # The canonical host itself (`www.example.com` in test config) is not a
+    # valid single DNS label — it has to be split into a label and a
+    # template that renders back to it, the same shape a real deployment's
+    # `{label}.example.com` template and canonical `PHX_HOST` would take.
+    defp label_and_template_for_canonical do
+      [label, suffix] = YouWeb.Endpoint.host() |> String.split(".", parts: 2)
+      {label, "{label}." <> suffix}
+    end
+
     test "rejects a label that would render to the canonical host" do
-      You.Settings.set(:hostname_template, "{label}")
-      on_exit(fn -> You.Settings.set(:hostname_template, "") end)
+      {label, template} = label_and_template_for_canonical()
+      Application.put_env(:you, :app_hostname_template, template)
+      on_exit(fn -> Application.delete_env(:you, :app_hostname_template) end)
 
-      canonical = YouWeb.Endpoint.host()
-
-      changeset = App.changeset(%App{}, Map.put(@valid_attrs, :hostname_label, canonical))
+      changeset = App.changeset(%App{}, Map.put(@valid_attrs, :hostname_label, label))
       refute changeset.valid?
 
       assert "would resolve to this instance's own canonical host" in errors_on(changeset).hostname_label
     end
 
     test "the same label is accepted with no template configured to collide against" do
-      canonical = YouWeb.Endpoint.host()
-      changeset = App.changeset(%App{}, Map.put(@valid_attrs, :hostname_label, canonical))
+      {label, _template} = label_and_template_for_canonical()
+      changeset = App.changeset(%App{}, Map.put(@valid_attrs, :hostname_label, label))
       assert changeset.valid?
     end
   end

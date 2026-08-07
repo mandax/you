@@ -23,6 +23,7 @@ All runtime configuration is read from environment variables in
 | `RELEASE_COOKIE` | No | random per boot | Erlang cookie bootstrap value: a random value when unset (fail closed), overridden at boot by the `erlang_cookie` setting in the database (see [erlang-distribution.md](erlang-distribution.md)) |
 | `DNS_CLUSTER_QUERY` | No | (none) | DNS cluster query for distributed Erlang |
 | `WEBAUTHN_RP_ID` | No | derived from `PHX_HOST` | The WebAuthn relying-party id passkeys are bound to. Environment-only — no console path can set it. Unset reproduces the value derived from `PHX_HOST` today, so a single-host deployment is unchanged, but from then on `PHX_HOST` and the RP ID can move independently: changing this value (or, while it stays unset, changing `PHX_HOST`) strands every passkey already registered, in both directions. A host offers passkeys only when it equals `WEBAUTHN_RP_ID` or is a subdomain of it |
+| `APP_HOSTNAME_TEMPLATE` | No | unset | The pattern app hostnames take, one `{label}` placeholder — e.g. `{label}.example.com`. Environment-only, same reasoning as `WEBAUTHN_RP_ID`: it gates which hosts an emailed link may point at and which origins a LiveView socket accepts, values a login depends on. A malformed value (not exactly one `{label}`) fails the boot with an error naming the mistake. Unset or missing the "Per-app hostnames" feature switch (console, Admin-owned): per-app hostnames are off, byte-identical to today. See [app-hostnames.md](app-hostnames.md) |
 
 Set `PHX_HOST` to the hostname users actually reach You on. It is used to build
 the OIDC issuer URL and the WebAuthn origin (`https://<PHX_HOST>`), so a wrong
@@ -30,8 +31,8 @@ value breaks magic-link emails, discovery documents, and passkeys.
 
 Planning to give apps their own login hostnames rather than one shared
 `PHX_HOST`? Read [app-hostnames.md](app-hostnames.md) first — the pattern you
-pick fixes what `PHX_HOST` and `WEBAUTHN_RP_ID` have to be, and it is far
-cheaper to decide before either is live.
+pick fixes what `PHX_HOST`, `WEBAUTHN_RP_ID`, and `APP_HOSTNAME_TEMPLATE` have
+to be, and it is far cheaper to decide before any of them is live.
 
 ## Mail (SMTP)
 

@@ -26,6 +26,13 @@ config :you,
   audit_webhook_url: nil,
   oidc_providers: %{}
 
+# Unset by default: no app hostname template until the Operator configures
+# `APP_HOSTNAME_TEMPLATE` (`config/runtime.exs`) — environment-only, like
+# `WEBAUTHN_RP_ID` and `PHX_HOST` (`You.Settings.forbidden_keys/0`), because
+# it gates which hosts an emailed link may point at and which origins a
+# LiveView socket accepts. See `You.Hosting`'s moduledoc.
+config :you, :app_hostname_template, nil
+
 # Configure the endpoint
 #
 # `check_origin` is an MFA rather than a static list: the WebSocket

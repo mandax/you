@@ -374,14 +374,13 @@ defmodule You.Admin.App do
     )
   end
 
-  # Blank stays nil (the "no hostname" state) rather than becoming an empty
-  # string that would then have to be special-cased everywhere else that
-  # reads the column. `validate_format`/`validate_change` below only run
-  # when the field is present in `changeset.changes` in the first place, so
-  # a change to `""` still reaches here and gets normalised.
+  # `cast/3` already normalises a blank `hostname_label` param to `nil` and
+  # leaves it out of `changeset.changes` entirely (`:empty_values` defaults
+  # to `[""]`), so `get_change/2` never actually returns `""` here — only a
+  # real, non-blank label reaches `validate_hostname_label_format/2`, and
+  # `nil` (no label at all, blank or omitted alike) is simply left alone.
   defp validate_hostname_label(changeset) do
     case get_change(changeset, :hostname_label) do
-      "" -> put_change(changeset, :hostname_label, nil)
       label when is_binary(label) -> validate_hostname_label_format(changeset, label)
       _ -> changeset
     end

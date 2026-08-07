@@ -301,6 +301,25 @@ defmodule You.Admin do
   end
 
   @doc """
+  Apps whose `hostname_label` would render, under the *currently configured*
+  `APP_HOSTNAME_TEMPLATE`, to this instance's own canonical host — a
+  takeover of the front door, not a naming collision.
+
+  `App.changeset/2` refuses this at write time (`You.Hosting.
+  label_collides_with_canonical?/1`), but only against the template and
+  `PHX_HOST` in force at that moment. A label accepted before a template
+  was configured, or before `PHX_HOST` was renamed to what the label now
+  matches, is never re-checked — this is the same gap `mix you.audit_slugs`
+  closes for `slug` (#119), for the same reason: the write-time guard
+  cannot see a collision that didn't exist yet when it ran.
+  """
+  def apps_with_colliding_hostname_label do
+    list_apps()
+    |> Enum.filter(& &1.hostname_label)
+    |> Enum.filter(&You.Hosting.label_collides_with_canonical?(&1.hostname_label))
+  end
+
+  @doc """
   Fetches a single app by id, raising if it does not exist.
   """
   def get_app!(id), do: Repo.get!(App, id)

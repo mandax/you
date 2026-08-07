@@ -13,12 +13,12 @@ defmodule You.HostingTest do
   alias You.Hosting
 
   defp enable_hostnames!(template \\ "{label}.example.com") do
-    You.Settings.set(:hostname_template, template)
+    Application.put_env(:you, :app_hostname_template, template)
     You.Settings.set(:feature_app_hostnames, true)
 
     on_exit(fn ->
       You.Settings.set(:feature_app_hostnames, false)
-      You.Settings.set(:hostname_template, "")
+      Application.delete_env(:you, :app_hostname_template)
     end)
   end
 
@@ -40,8 +40,8 @@ defmodule You.HostingTest do
 
   describe "enabled?/0" do
     test "false with the feature off, even with a template set" do
-      You.Settings.set(:hostname_template, "{label}.example.com")
-      on_exit(fn -> You.Settings.set(:hostname_template, "") end)
+      Application.put_env(:you, :app_hostname_template, "{label}.example.com")
+      on_exit(fn -> Application.delete_env(:you, :app_hostname_template) end)
 
       refute Hosting.enabled?()
     end
@@ -49,6 +49,30 @@ defmodule You.HostingTest do
     test "false with the feature on but no template" do
       You.Settings.set(:feature_app_hostnames, true)
       on_exit(fn -> You.Settings.set(:feature_app_hostnames, false) end)
+
+      refute Hosting.enabled?()
+    end
+
+    test "false with the feature on and a template missing the {label} placeholder" do
+      Application.put_env(:you, :app_hostname_template, "not-a-template.example.com")
+      You.Settings.set(:feature_app_hostnames, true)
+
+      on_exit(fn ->
+        You.Settings.set(:feature_app_hostnames, false)
+        Application.delete_env(:you, :app_hostname_template)
+      end)
+
+      refute Hosting.enabled?()
+    end
+
+    test "false with the feature on and a template naming {label} twice" do
+      Application.put_env(:you, :app_hostname_template, "{label}.{label}.example.com")
+      You.Settings.set(:feature_app_hostnames, true)
+
+      on_exit(fn ->
+        You.Settings.set(:feature_app_hostnames, false)
+        Application.delete_env(:you, :app_hostname_template)
+      end)
 
       refute Hosting.enabled?()
     end
@@ -102,8 +126,26 @@ defmodule You.HostingTest do
       assert Hosting.resolve("acme.evil.example.com") == :unknown
     end
 
-    test "canonical wins even if a label happened to render to it (should never exist, but resolve is fail-closed)" do
-      enable_hostnames!()
+    # Real coverage of the ordering, not a restatement of the "feature off"
+    # case above: a label is inserted *past* `App.changeset/2`'s write-time
+    # collision guard (`AdminFixtures.insert_legacy_app!/1`, simulating a
+    # label that became colliding after being accepted — a template set
+    # later, or `PHX_HOST` renamed, per `label_collides_with_canonical?/1`'s
+    # own moduledoc caveat that it is write-time only), then resolved
+    # against a template that actually makes it collide. If `resolve/1`
+    # checked app resolution before canonical, this would return
+    # `{:app, _}` for the instance's own front door.
+    test "canonical wins even when a real, stored label would otherwise collide" do
+      # Empty prefix/suffix so the label can equal the canonical host
+      # exactly, regardless of what `YouWeb.Endpoint.host/0` is here.
+      enable_hostnames!("{label}")
+
+      colliding_app =
+        You.AdminFixtures.insert_legacy_app!("legacy-collider")
+        |> Ecto.Changeset.change(hostname_label: Hosting.canonical_host())
+        |> You.Repo.update!()
+
+      assert Hosting.render_hostname(colliding_app.hostname_label) == Hosting.canonical_host()
       assert Hosting.resolve(Hosting.canonical_host()) == :canonical
     end
   end
@@ -143,6 +185,22 @@ defmodule You.HostingTest do
       assert "acme.example.com" in hosts
       assert "beta.example.com" in hosts
       assert length(hosts) == 3
+    end
+
+    # Must-fix: `RequestURL.allowed_hosts/0` and `resolve/1` have to agree
+    # even when the template itself is typed with uppercase — `hosts/0`
+    # renders through `render_hostname/1`, `resolve/1` matches through
+    # `extract_label/3`, and both go through the same normalized
+    # `split_template/0` now, so a mixed-case template can't make one
+    # accept a host the other refuses.
+    test "an uppercase template still agrees with resolve/1 and check_origin?/1" do
+      enable_hostnames!("{label}.Example.COM")
+      app = create_app!(%{hostname_label: "acme"})
+
+      assert Hosting.hosts() == [Hosting.canonical_host(), "acme.example.com"]
+      assert {:app, resolved} = Hosting.resolve("acme.example.com")
+      assert resolved.id == app.id
+      assert Hosting.check_origin?(URI.parse("http://acme.example.com"))
     end
   end
 
@@ -185,7 +243,17 @@ defmodule You.HostingTest do
       assert Hosting.render_hostname("acme") == "acme.example.com"
     end
 
+    test "render_hostname downcases a template typed with uppercase" do
+      enable_hostnames!("{label}.Example.COM")
+      assert Hosting.render_hostname("acme") == "acme.example.com"
+    end
+
     test "render_hostname is nil with no template configured" do
+      refute Hosting.render_hostname("acme")
+    end
+
+    test "render_hostname is nil with a malformed template (no placeholder)" do
+      enable_hostnames!("not-a-template.example.com")
       refute Hosting.render_hostname("acme")
     end
 
@@ -198,6 +266,12 @@ defmodule You.HostingTest do
 
       assert Hosting.label_collides_with_canonical?(Hosting.canonical_host())
       refute Hosting.label_collides_with_canonical?("definitely-not-canonical")
+    end
+
+    test "the collision check is case-insensitive on both the label and the template" do
+      enable_hostnames!("{label}")
+
+      assert Hosting.label_collides_with_canonical?(String.upcase(Hosting.canonical_host()))
     end
 
     test "no template configured: nothing collides" do

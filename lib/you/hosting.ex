@@ -28,23 +28,41 @@ defmodule You.Hosting do
 
   ## One gate for resolution and #123's routing rules
 
-  `enabled?/0` — `feature_app_hostnames` on *and* `hostname_template` set —
-  is the single switch both this module's resolution and the router's
-  canonical-only redirects (`YouWeb.Plugs.RequireCanonicalHost`,
-  `YouWeb.Plugs.CanonicalHostRedirect`) are driven by. #121's security
-  review flagged the risk of resolution going live before #123's routing
-  rules do — a recognised app host would then also serve discovery, JWKS and
-  `/oauth/*`, an alternate issuer with a real app's name on it. Driving both
-  off this one function makes that ordering impossible to get wrong by
-  configuration: there is no environment or console state that turns on
-  resolution without also turning on the redirects, because they read the
-  same flag through the same code path. A separate boot-time assertion would
-  only be guarding against two independently-wired mechanisms drifting apart
-  — they are not independently wired.
+  `enabled?/0` — `feature_app_hostnames` on *and* a syntactically valid
+  template configured — is the single switch both this module's resolution
+  and the router's canonical-only redirects (`YouWeb.Plugs.
+  RequireCanonicalHost`, `YouWeb.Plugs.CanonicalHostRedirect`) are driven
+  by. #121's security review flagged the risk of resolution going live
+  before #123's routing rules do — a recognised app host would then also
+  serve discovery, JWKS and `/oauth/*`, an alternate issuer with a real
+  app's name on it. Driving both off this one function makes that ordering
+  impossible to get wrong by configuration: there is no environment or
+  console state that turns on resolution without also turning on the
+  redirects, because they read the same flag through the same code path. A
+  separate boot-time assertion would only be guarding against two
+  independently-wired mechanisms drifting apart — they are not
+  independently wired. "Syntactically valid" is `split_template/0`
+  succeeding (exactly one `{label}` placeholder) — a template present but
+  malformed does not leave resolution permanently dead while the redirects
+  fire anyway; both stay off together.
 
-  Feature off, or template unset: `resolve/1` never returns `{:app, _}`,
+  Feature off, or no valid template: `resolve/1` never returns `{:app, _}`,
   `hosts/0` is exactly `[canonical]`, and `check_origin?/1` accepts only the
   canonical origin — byte-identical to today.
+
+  ## Who sets the template
+
+  `APP_HOSTNAME_TEMPLATE` is environment-only, like `WEBAUTHN_RP_ID` and
+  `PHX_HOST` (`You.Settings.forbidden_keys/0`) — set by the Operator, not
+  the console. It gates which hosts an emailed link is allowed to point at
+  and which origins a LiveView socket accepts, the same class of value
+  those two are: something a login depends on, which must not sit behind
+  that login. `feature_app_hostnames` (whether to use the template at all)
+  stays a console/Admin-owned switch, same as every other feature flag —
+  the Admin decides whether to turn per-app hostnames on for apps they
+  manage; the Operator decides what pattern those hostnames take, because
+  only the Operator controls the DNS and certificates the pattern has to
+  match.
   """
 
   alias You.Admin
@@ -54,18 +72,35 @@ defmodule You.Hosting do
   Whether per-app hostname resolution is live on this instance.
 
   Both halves are required: a template with the feature off, or a feature on
-  with no template, resolve nothing — there would be no rule to turn a
-  request host into a label.
+  with a missing or malformed template, resolve nothing — there would be no
+  rule to turn a request host into a label. Malformed (not exactly one
+  `{label}` placeholder) counts as absent here, not merely at the point
+  resolution is attempted — otherwise a bad template leaves resolution
+  permanently dead while `feature_app_hostnames` still trips #123's
+  canonical-only redirects on, which is the drift #121's review named.
   """
   def enabled? do
-    You.Settings.enabled?(:feature_app_hostnames) and template() not in [nil, ""]
+    You.Settings.enabled?(:feature_app_hostnames) and not is_nil(split_template())
   end
 
-  @doc "The configured hostname template (`{label}.example.com`), or nil."
+  @doc """
+  The configured hostname template (`{label}.example.com`), or nil.
+
+  Set via `APP_HOSTNAME_TEMPLATE` — environment-only, see this module's
+  moduledoc. Not normalized here: `split_template/0` is what every other
+  function in this module actually resolves and renders against, and it
+  downcases — call that instead of comparing against this raw value.
+  """
   def template do
-    case You.Settings.get(:hostname_template) do
-      "" -> nil
-      value -> value
+    case Application.get_env(:you, :app_hostname_template) do
+      value when is_binary(value) ->
+        case String.trim(value) do
+          "" -> nil
+          trimmed -> trimmed
+        end
+
+      _ ->
+        nil
     end
   end
 
@@ -76,10 +111,15 @@ defmodule You.Hosting do
   Resolves `host` to `:canonical`, `{:app, app}`, or `:unknown`.
 
   Checked in that order: a host equal to the canonical host is always
-  `:canonical`, even with the feature on — an operator cannot accidentally
-  shadow their own front door by registering a colliding label, and
-  `App.changeset/2` refuses that label at write time regardless (see
-  `label_collides_with_canonical?/1`).
+  `:canonical`, even with the feature on — an Admin cannot accidentally
+  shadow the instance's own front door by giving an app a colliding label,
+  and `App.changeset/2` refuses that label at write time regardless (see
+  `label_collides_with_canonical?/1`). Checking canonical first here is not
+  cosmetic: it is the only defence left against a label that *became*
+  colliding after being accepted — a template set later, or `PHX_HOST`
+  itself renamed, can't have been checked against at write time, since
+  `label_collides_with_canonical?/1` only ever runs then, against whatever
+  the template was at that moment.
   """
   def resolve(host) when is_binary(host) do
     normalized = normalize(host)
@@ -129,12 +169,17 @@ defmodule You.Hosting do
   canonical host.
 
   Checked at write time (`App.changeset/2`) rather than only at resolution
-  time: an operator setting `hostname_label = "id"` while the canonical host
-  is `id.example.com` would otherwise mint an app whose hostname *is* the
+  time: an Admin setting `hostname_label = "id"` while the canonical host is
+  `id.example.com` would otherwise mint an app whose hostname *is* the
   instance's own front door — a takeover of canonical, not a naming
   collision. Computed from the *current* template rather than a hard-coded
-  name, so a later template or `PHX_HOST` change cannot silently reopen the
-  hole a stale list would leave.
+  name, so a later template change cannot silently reopen the hole a stale
+  list would leave.
+
+  This is write-time only, though: a label accepted while no template was
+  configured, or while `PHX_HOST` named a different host, is never
+  re-checked. `resolve/1` checking canonical ahead of app resolution is
+  what keeps that gap from becoming a live takeover — see its moduledoc.
   """
   def label_collides_with_canonical?(label) when is_binary(label) do
     case render_hostname(label) do
@@ -186,14 +231,33 @@ defmodule You.Hosting do
     end
   end
 
-  # Exactly one `{label}` placeholder. Anything else (none, or more than one)
-  # is a misconfigured template that cannot resolve or render — `enabled?/0`
-  # still reports true (the value is present), but resolution and rendering
-  # both fail closed to `:unknown`/`nil` rather than guessing.
+  # Exactly one `{label}` placeholder, and downcased before it's split —
+  # `resolve/1` and `hosts/0` both compare or emit against a request host
+  # that `normalize/1` has already downcased, so a template typed with any
+  # uppercase (`{label}.Example.COM`) would otherwise agree with
+  # `render_hostname/1` (used to build the emailed-link allowlist) while
+  # disagreeing with `resolve/1` (used to decide whether the same host may
+  # actually be branded) — exactly the split between "allowed to receive a
+  # link" and "recognised for branding" this module exists to prevent.
+  # Boot validates the raw `APP_HOSTNAME_TEMPLATE` too (`config/runtime.exs`)
+  # so a malformed value is caught early with a real error message, but this
+  # is what every caller here actually resolves and renders against, so it
+  # normalizes and fails closed on its own rather than trusting that boot
+  # check ran — `template/0` can also be set directly (tests do), bypassing
+  # it entirely.
   defp split_template do
-    case template() && String.split(template(), "{label}", parts: 2) do
-      [prefix, suffix] -> if String.contains?(suffix, "{label}"), do: nil, else: {prefix, suffix}
-      _ -> nil
+    case template() do
+      nil ->
+        nil
+
+      raw ->
+        case raw |> String.downcase() |> String.split("{label}", parts: 2) do
+          [prefix, suffix] ->
+            if String.contains?(suffix, "{label}"), do: nil, else: {prefix, suffix}
+
+          _ ->
+            nil
+        end
     end
   end
 

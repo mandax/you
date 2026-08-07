@@ -9,14 +9,15 @@ short version is that the Operator has shell access to the host and sets the
 values a login depends on, and the Admin manages users and apps from inside
 the product.
 
-**Status:** the hostname pattern is decided (below) and the pieces it
-depends on — a pinned `WEBAUTHN_RP_ID` and a host-local session cookie — have
-shipped. Resolving which app a request belongs to from the `Host` header,
-and the redirect rules between an app host and the canonical one, have not
-merged yet. Nothing in this page describes a feature you can turn on today;
-it describes the decision an Operator needs to make before it lands, because
-the pattern is far cheaper to pick before any app, passkey, or consumer has
-anything pinned to a hostname.
+**Status:** live, behind two switches that are both required — see
+[What this needs from you as Operator](#what-this-needs-from-you-as-operator)
+below. Resolving which app a request belongs to from the `Host` header, and
+the redirect rules between an app host and the canonical one (discovery and
+JWKS to canonical, the OAuth machine endpoints refusing rather than
+redirecting, `/console` and `/users/settings/*` staying canonical-only),
+shipped together — the redirect rules are what keep a recognised app host
+from also answering as an alternate issuer, so resolution was never live
+without them.
 
 ## What `?app=<slug>` cannot do
 
@@ -139,16 +140,24 @@ it — not something to edit while chasing a passkey bug.
 
 ## Unrecognised hosts
 
-Once `Host`-based resolution lands, a request whose host matches no app's
-label will serve You's own unbranded canonical pages, select no app, and be
-logged. It will not fall back to guessing or to the most-recently-seen app.
+A request whose host matches no app's label serves You's own unbranded
+canonical pages, selects no app, and is logged (sampled, so a scripted probe
+against many forged hosts can't flood the log). It does not fall back to
+guessing or to the most-recently-seen app — and, as of the milestone
+re-review that closed this out, it does not fall back to `?app=<slug>` or a
+consumer's `callback_url` either, even though both of those still work
+perfectly well on a host You *does* recognise (the canonical host, or
+another app's own host). An unrecognised `Host` names no app by any route.
 
 The reason is the same one that makes DNS the Operator's decision and not a
-per-app free-for-all: if an unrecognised `Host` could select an app, then
-whoever controls that piece of DNS — not you, not the Admin who set the
-label — would get to choose which app's branding and sign-in methods a
-visitor sees. Resolution has to check against labels You actually holds,
-never trust the header on its own.
+per-app free-for-all: if an unrecognised `Host` could select an app by any
+carrier, then whoever controls that piece of DNS — not you, not the Admin
+who set the label — would get to choose which app's branding and sign-in
+methods a visitor sees, complete with a working passkey button under the
+dedicated-domain pattern this page recommends, since `WEBAUTHN_RP_ID`
+qualifies any host in its zone regardless of app resolution. Resolution has
+to check against labels You actually holds, never trust the header on its
+own, for every carrier that names an app — not only the hostname itself.
 
 ## What this needs from you as Operator
 
@@ -163,6 +172,18 @@ never trust the header on its own.
   serving more than one hostname, `WEBAUTHN_RP_ID` pinned explicitly to the
   domain rather than left to derive from `PHX_HOST` — see
   [deploy.md](deploy.md#environment-variables) for both.
+- `APP_HOSTNAME_TEMPLATE` set to the pattern itself — `{label}.example.com`
+  for the dedicated-domain pattern above — and a restart. Environment-only,
+  same reasoning as `WEBAUTHN_RP_ID`: see
+  [deploy.md](deploy.md#environment-variables).
+- After configuring or changing `APP_HOSTNAME_TEMPLATE`, or after renaming
+  `PHX_HOST`, run `mix you.audit_hostname_labels` (or, in a release,
+  `bin/you eval 'You.Release.audit_hostname_labels()'`). It reports any
+  existing app label that would now render to your own canonical host — a
+  write-time guard catches this when a label is first set, but not when the
+  template or `PHX_HOST` changes underneath a label already saved.
 
 Giving an individual app its hostname label, once the pattern is live, is an
-Admin action in the console and needs none of the above repeated per app.
+Admin action in the console and needs none of the above repeated per app —
+but the "Per-app hostnames" feature switch (Features, also Admin-owned) is
+what actually turns resolution on; `APP_HOSTNAME_TEMPLATE` alone does not.

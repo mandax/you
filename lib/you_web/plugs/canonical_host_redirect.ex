@@ -1,7 +1,7 @@
 defmodule YouWeb.Plugs.CanonicalHostRedirect do
   @moduledoc """
-  302s a GET request to the same path and query on the canonical host, when
-  the request did not arrive on it (#123).
+  302s a GET (or HEAD) request to the same path and query on the canonical
+  host, when the request did not arrive on it (#123).
 
   For the two classes of route that must never answer on an app host at
   all: discovery/JWKS (there is exactly one issuer — serving discovery on an
@@ -9,6 +9,16 @@ defmodule YouWeb.Plugs.CanonicalHostRedirect do
   configure the app host as its issuer and fail validation later) and
   `/console/*`/`/users/settings/*` (You's own admin and account surfaces,
   not an app's — reachable under a customer-branded hostname otherwise).
+
+  Any other method (`PUT`, `DELETE`, the console's `POST /backup/export`)
+  refuses with a 400 instead of redirecting — the same reasoning #123 gives
+  for the OAuth machine endpoints in `RequireCanonicalHost` applies here
+  too: a redirect silently drops the body of a non-GET request in most
+  clients, so a mutation would either vanish or, worse, replay as a GET
+  against a resource that doesn't expect one. `GET`/`HEAD` are the only
+  methods `/console/*` and `/users/settings/*` actually expose as plain
+  navigations; everything else on those paths is a form submission or an
+  API call that has to fail loudly if it lands on the wrong host.
 
   A no-op when `You.Hosting.enabled?/0` is false: with per-app hostnames off
   or unconfigured there is no non-canonical host this instance recognises as
@@ -25,15 +35,18 @@ defmodule YouWeb.Plugs.CanonicalHostRedirect do
 
   @behaviour Plug
 
+  @get_methods ["GET", "HEAD"]
+
   @impl true
   def init(opts), do: opts
 
   @impl true
   def call(conn, _opts) do
-    if You.Hosting.enabled?() and not You.Hosting.canonical?(conn.host) do
-      redirect_to_canonical(conn)
-    else
-      conn
+    cond do
+      not You.Hosting.enabled?() -> conn
+      You.Hosting.canonical?(conn.host) -> conn
+      conn.method in @get_methods -> redirect_to_canonical(conn)
+      true -> refuse_non_get(conn)
     end
   end
 
@@ -43,6 +56,16 @@ defmodule YouWeb.Plugs.CanonicalHostRedirect do
     conn
     |> put_resp_header("location", target)
     |> send_resp(302, "")
+    |> halt()
+  end
+
+  defp refuse_non_get(conn) do
+    conn
+    |> put_resp_content_type("text/plain")
+    |> send_resp(
+      400,
+      "This page is only served on the canonical host: #{You.Hosting.canonical_host()}"
+    )
     |> halt()
   end
 

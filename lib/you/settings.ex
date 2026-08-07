@@ -17,7 +17,6 @@ defmodule You.Settings do
   - `smtp_port`: 587
   - `api_token`: ""
   - `analytics_src`, `analytics_domain`: ""
-  - `hostname_template`: "" — `{label}.example.com`-shaped; see `You.Hosting`
 
   Every key here is reachable from `deploy environment` and the console alike:
   the environment seeds a key's row the first time an instance boots without
@@ -26,10 +25,15 @@ defmodule You.Settings do
 
   A handful of bootstrap and key-material values — `DATABASE_PATH`,
   `SECRET_KEY_BASE`, `JWT_SIGNING_KEY`, `JWT_KEY_ID`, `JWT_PREVIOUS_KEYS`,
-  `PHX_HOST`, `PHX_SCHEME`, `POOL_SIZE`, `BIND_IP`, `WEBAUTHN_RP_ID` — are
-  deliberately absent from `@defaults` and rejected by `set/2`: putting them
-  behind a console login is either circular (the login depends on them) or a
-  way to lock the operator out.
+  `PHX_HOST`, `PHX_SCHEME`, `POOL_SIZE`, `BIND_IP`, `WEBAUTHN_RP_ID`,
+  `APP_HOSTNAME_TEMPLATE` — are deliberately absent from `@defaults` and
+  rejected by `set/2`: putting them behind a console login is either
+  circular (the login depends on them) or a way to lock the Operator out.
+  `APP_HOSTNAME_TEMPLATE` in particular gates which hosts an emailed link
+  may point at and which origins a LiveView socket accepts — see
+  `You.Hosting`, which reads it straight from `Application.get_env/2`
+  rather than through this module at all, the same way `You.WebAuthn.rp_id/0`
+  reads `WEBAUTHN_RP_ID`.
   """
 
   alias You.Settings.Setting
@@ -53,7 +57,6 @@ defmodule You.Settings do
     feature_landing_page: true,
     feature_guest_login: false,
     feature_app_hostnames: false,
-    hostname_template: "",
     you_mode: "multi",
     smtp_host: "",
     smtp_port: 587,
@@ -71,17 +74,24 @@ defmodule You.Settings do
   Bootstrap or key material: `DATABASE_PATH` names the file the console runs
   against, `SECRET_KEY_BASE`/`JWT_*` sign the sessions and tokens a console
   login depends on, `PHX_HOST`/`PHX_SCHEME`/`POOL_SIZE`/`BIND_IP` shape how
-  the instance is reached at all, and `WEBAUTHN_RP_ID` is the value a login
+  the instance is reached at all, `WEBAUTHN_RP_ID` is the value a login
   depends on for the same reason `PHX_HOST` is: it names what a passkey was
   registered against, and changing it strands every credential already
   issued, in both directions — a deployment operation with a maintenance
-  window, not a console toggle. `set/2` rejects these atoms outright, so a
-  future key added under one of these names cannot become console-editable
-  by accident.
+  window, not a console toggle. `APP_HOSTNAME_TEMPLATE` is the same class of
+  value again: it gates which hosts an emailed link may point at and which
+  origins a LiveView socket accepts (`You.Hosting`, which reads it straight
+  from `Application.get_env/2` and never through this module). `set/2`
+  rejects these atoms outright, so a future key added under one of these
+  names cannot become console-editable by accident — `set/2` has no check
+  that a key is even a *known* one otherwise, so without this list a config
+  bundle or a direct call could still write a `hostname_template` row that
+  nothing reads, which is confusing rather than dangerous but worth closing
+  off explicitly.
   """
   @forbidden_keys ~w(
     database_path secret_key_base jwt_signing_key jwt_key_id jwt_previous_keys
-    phx_host phx_scheme pool_size bind_ip webauthn_rp_id
+    phx_host phx_scheme pool_size bind_ip webauthn_rp_id hostname_template
   )a
 
   def forbidden_keys, do: @forbidden_keys

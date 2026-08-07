@@ -13,31 +13,43 @@ of them at once.
 
 ### Requires your attention
 
-- **Per-app hostnames (#121, #123): off by default, and a two-step turn-on.**
-  Apps can now be served on their own hostname (`acme.example.com`) instead
-  of sharing the canonical host, gated by a new "Per-app hostnames" feature
-  switch (Features) plus an app hostname template (Settings → Deployment
-  mode, one `{label}` placeholder, e.g. `{label}.example.com`) — both off
-  and unset by default, and **both required together**: either one missing
-  and behaviour is byte-identical to today. Turning it on:
+- **Per-app hostnames (#121, #123): off by default, and a two-step turn-on
+  split across the Operator and the Admin.** Apps can now be served on their
+  own hostname (`acme.example.com`) instead of sharing the canonical host,
+  gated by a new environment variable, `APP_HOSTNAME_TEMPLATE` (one `{label}`
+  placeholder, e.g. `{label}.example.com`) — environment-only, like
+  `WEBAUTHN_RP_ID` and `PHX_HOST`, since it gates which hosts an emailed link
+  may point at and which origins a LiveView socket accepts, values a login
+  depends on. Console-editable settings can't hold it. Unset by default, and
+  a malformed value (not exactly one `{label}`) fails boot with an error
+  naming the mistake. Also requires a new "Per-app hostnames" feature switch
+  (Features, console/Admin-owned) — **both required together**: either one
+  missing and behaviour is byte-identical to today. Turning it on:
   1. Point DNS for every hostname you intend to use at this instance (and,
      if you terminate TLS yourself, get a certificate that covers them —
      a wildcard for the template's suffix is the simplest way).
-  2. Set the hostname template in the console.
+  2. Set `APP_HOSTNAME_TEMPLATE` and restart.
   3. Give the apps you want on their own host a "Hostname label" (their own
      console page — optional, blank by default, offered the app's slug as a
      placeholder only). An app with no label keeps sharing the canonical
-     host exactly as before.
-  4. Switch the feature on.
+     host exactly as before. Run `mix you.audit_hostname_labels` after
+     configuring or changing the template, or after renaming `PHX_HOST` —
+     it reports any existing label that would now resolve to your own
+     canonical host, the same class of check `mix you.audit_slugs` already
+     does for `slug`.
+  4. Switch the "Per-app hostnames" feature on in the console.
   An unrecognised `Host` — anything pointing DNS here that isn't a
-  configured app hostname — never brands: it serves You's own unbranded
-  pages and is logged (sampled) as a possible impersonation probe. Discovery,
-  JWKS, and the OAuth token/introspect/revoke endpoints stay canonical-only
-  once the feature is on: discovery and JWKS 302 to canonical, the POST
-  endpoints refuse with a 4xx instead, so there is exactly one issuer
-  regardless of how many hostnames are configured. `/console` and
-  `/users/settings/*` also redirect to canonical, so the admin console is
-  never reachable under an app's branded hostname.
+  configured app hostname — never brands, **including via `?app=` or a
+  `callback_url`**: it serves You's own unbranded pages and selects no app
+  at all, and is logged (sampled) as a possible impersonation probe.
+  Discovery, JWKS, and the OAuth token/introspect/revoke endpoints stay
+  canonical-only once the feature is on: discovery and JWKS 302 to
+  canonical, the POST endpoints refuse with a 4xx instead, so there is
+  exactly one issuer regardless of how many hostnames are configured.
+  `/console` and `/users/settings/*` also redirect to canonical (refusing
+  with a 4xx instead for anything but a GET/HEAD, rather than silently
+  dropping the body of a mutation), so the admin console is never reachable
+  under an app's branded hostname.
   `check_origin` (the LiveView WebSocket handshake check) now reads
   `You.Hosting`'s own-host predicate instead of defaulting to canonical-only
   or (in dev) being switched off outright — dev no longer accepts a
@@ -128,7 +140,22 @@ of them at once.
   defer to it, so they cannot drift apart into disagreeing about the same
   host. `YouWeb.AuthMethods.app_for/1`'s moduledoc states the full
   three-way precedence between an OAuth `callback_url`, a resolved host, and
-  `?app=`/`branding_app_slug` in one place.
+  `?app=`/`branding_app_slug` in one place — all three now share a
+  prerequisite the *request host itself* must satisfy first: `?app=` and a
+  `callback_url` only ever name an app on a host You recognises (canonical,
+  or a host that resolves to a configured app). #121's own acceptance
+  criteria stated both "`?app=` still works, on any host" and "an
+  unrecognised host ... selects no app" — those cannot both hold, and the
+  impersonation argument in #121's own "Why unknown hosts must not brand"
+  section is the one that wins.
+- **`mix you.audit_hostname_labels`** (and `You.Release.audit_hostname_labels/0`):
+  reports an app whose `hostname_label` would now render, under the
+  currently configured `APP_HOSTNAME_TEMPLATE`, to this instance's own
+  canonical host — the write-time guard above only ever checks against the
+  template and `PHX_HOST` in force at the moment a label is saved, so a
+  label that becomes colliding later (the template configured afterward, or
+  `PHX_HOST` renamed) is never re-checked without this. Mirrors
+  `mix you.audit_slugs` (#119) for the same reason.
 - **The social sign-in button on an app host links to canonical carrying a
   signed `ctx`,** rather than `/auth/:provider` on that same host — the
   upstream provider's registered `redirect_uri` is canonical-only, so a

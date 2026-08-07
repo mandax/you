@@ -14,12 +14,12 @@ defmodule YouWeb.Plugs.ResolveAppHostTest do
   alias YouWeb.Plugs.ResolveAppHost
 
   defp enable_hostnames! do
-    You.Settings.set(:hostname_template, "{label}.example.com")
+    Application.put_env(:you, :app_hostname_template, "{label}.example.com")
     You.Settings.set(:feature_app_hostnames, true)
 
     on_exit(fn ->
       You.Settings.set(:feature_app_hostnames, false)
-      You.Settings.set(:hostname_template, "")
+      Application.delete_env(:you, :app_hostname_template)
     end)
   end
 
@@ -89,6 +89,29 @@ defmodule YouWeb.Plugs.ResolveAppHostTest do
         end)
 
       assert Enum.count(String.split(log, "unresolved app host")) - 1 == 1
+    end
+
+    # Worth-fixing from review: the per-host bucket bounds memory, not log
+    # *volume* — 5000 distinct forged hosts in one window would otherwise
+    # still be 5000 lines. There is a second, single-key bucket that caps
+    # the total; setting its cap to 0 makes the very first hit in this
+    # window exceed it regardless of what any other test already
+    # contributed to the same shared bucket (`count >= 1 > 0` is deny no
+    # matter the starting count), which is what makes this assertion
+    # deterministic rather than dependent on suite ordering.
+    test "a global cap suppresses logging even for a host whose own per-host bucket allows it" do
+      Application.put_env(:you, :unresolved_host_log_global_cap, 0)
+      on_exit(fn -> Application.delete_env(:you, :unresolved_host_log_global_cap) end)
+
+      host = "probe-capped-#{System.unique_integer([:positive])}.example.net"
+
+      log =
+        capture_log(fn ->
+          conn = call(%Plug.Conn{host: host})
+          assert conn.assigns.host_app == nil
+        end)
+
+      refute log =~ "unresolved app host"
     end
   end
 end

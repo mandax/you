@@ -19,10 +19,11 @@ defmodule YouWeb.FederatedAuthController do
   response and must be presented again at the callback: that comparison,
   not the `state` value itself, is the CSRF defence.
 
-  Reads `ctx` from the request when present (the carrier #121's app-host
-  social button will use to reach this canonical route), falling back to
-  today's session-carried values when it is not — which is always, until
-  #121 links to here from another host.
+  Reads `ctx` from the request when present — the carrier the social button
+  on an app host uses to reach this canonical route
+  (`UserSessionController.social_ctx/1`, #121) — falling back to the
+  session's own values when it is not, which is the ordinary case for a
+  request that reached this route directly on the canonical host.
 
   `ctx` is resolved *before* the per-app provider gate: the gate has to name
   the app `ctx` names, not whatever the session (if any) on this host
@@ -198,8 +199,9 @@ defmodule YouWeb.FederatedAuthController do
   # Resolves the app from `ctx`, not from `conn`'s session: the app this gate
   # checks against is the one `ctx` names (`callback_url`/`branding_app_slug`),
   # not whatever the session on the host handling this request happens to
-  # hold. Today those are the same thing (`ctx` falls back to session — see
-  # `resolve_ctx/2`); once #121 lands they will not be, and the session on
+  # hold. On the canonical host, reached directly, those are the same thing
+  # (`ctx` falls back to session — see `resolve_ctx/2`); arriving here from
+  # an app host's social button (#121) they are not, and the session on
   # canonical is simply absent.
   #
   # The host, though, does come from `conn` — a method has to work on the host
@@ -216,10 +218,10 @@ defmodule YouWeb.FederatedAuthController do
     end
   end
 
-  # `ctx` present and valid: this is (the future) cross-host arrival from an
-  # app host, per #121. Otherwise, fall back to the session values this
-  # request already carries — today's only path, since nothing mints a
-  # signed `ctx` yet.
+  # `ctx` present and valid: cross-host arrival from an app host's social
+  # button (#121, `UserSessionController.social_ctx/1`). Otherwise, fall
+  # back to the session values this request already carries — the
+  # canonical-host path, unchanged since before #121.
   defp resolve_ctx(_conn, %{"ctx" => signed}) when is_binary(signed) do
     case IdentityProviders.verify_ctx(signed) do
       {:ok, ctx} -> {:ok, ctx}
@@ -250,9 +252,9 @@ defmodule YouWeb.FederatedAuthController do
 
   # The values `authorize/2` captured into the flow record's `ctx`, restored
   # into the session so `YouWeb.OAuthFlow.complete_login/3` finds them exactly
-  # as it does for every other login method. On canonical today this is a
-  # round trip to the same values already in the session; once #121 lands, an
-  # app-host `ctx` arrives here for the first time.
+  # as it does for every other login method. Reached directly on canonical,
+  # this is a round trip to the same values already in the session; arriving
+  # via an app-host `ctx` (#121), it's the first time this session sees them.
   defp restore_flow_session(conn, ctx) do
     conn
     |> put_session(:callback_url, ctx["callback_url"])

@@ -28,8 +28,64 @@ defmodule YouWeb.RequestURLTest do
   defp unique_forged_host, do: "attacker-#{System.unique_integer([:positive])}.example.net"
 
   describe "allowed_hosts/0" do
-    test "is exactly the canonical host today" do
+    test "is exactly the canonical host with the feature off" do
       assert RequestURL.allowed_hosts() == [canonical()]
+    end
+  end
+
+  # Must-fix from review: `allowed_hosts/0`'s delegation to `You.Hosting`
+  # (#121) had zero coverage — neutering it back to a static
+  # `[YouWeb.Endpoint.host()]` passed every test in this file. These prove
+  # the delegation is real: an app's rendered hostname is in the allowlist,
+  # *and* a link built for that host actually lands there rather than
+  # falling back to canonical.
+  describe "allowed_hosts/0 and url/2 with a recognised app host (#121)" do
+    setup do
+      Application.put_env(:you, :app_hostname_template, "{label}.example.com")
+      You.Settings.set(:feature_app_hostnames, true)
+
+      on_exit(fn ->
+        You.Settings.set(:feature_app_hostnames, false)
+        Application.delete_env(:you, :app_hostname_template)
+      end)
+
+      {:ok, app, _secret} =
+        You.Admin.create_app(%{
+          slug: "requrl-#{System.unique_integer([:positive])}",
+          name: "App",
+          callback_url: "https://requrl-#{System.unique_integer([:positive])}.example.com/cb",
+          hostname_label: "requrl"
+        })
+
+      %{app_host: "requrl.example.com", app: app}
+    end
+
+    test "the app's rendered hostname is in allowed_hosts/0", %{app_host: app_host} do
+      assert app_host in RequestURL.allowed_hosts()
+    end
+
+    test "a link built on the app host actually lands there, not on canonical", %{
+      app_host: app_host
+    } do
+      conn = %Plug.Conn{host: app_host}
+
+      log =
+        capture_log(fn ->
+          assert URI.parse(RequestURL.url(conn, "/x")).host == app_host
+        end)
+
+      assert log == ""
+    end
+
+    test "a host that merely resembles the pattern but names no app still falls back", %{} do
+      conn = %Plug.Conn{host: "nobody.example.com"}
+
+      log =
+        capture_log(fn ->
+          assert URI.parse(RequestURL.url(conn, "/x")).host == canonical()
+        end)
+
+      assert log =~ "refused non-allowlisted request host"
     end
   end
 
@@ -172,6 +228,28 @@ defmodule YouWeb.RequestURLTest do
       # The logged host itself is capped rather than reproducing all 8 KB.
       refute log =~ long_host
       assert log =~ "(truncated)"
+    end
+
+    # Worth-fixing from review: the per-host bucket bounds memory, not log
+    # *volume* — 5000 distinct forged hosts in one window would otherwise
+    # still be 5000 lines. There is a second, single-key bucket that caps
+    # the total; setting its cap to 0 makes the very first hit in this
+    # window exceed it regardless of what any other test already
+    # contributed to the same shared bucket (`count >= 1 > 0` is deny no
+    # matter the starting count), which is what makes this assertion
+    # deterministic rather than dependent on suite ordering.
+    test "a global cap suppresses logging even for a host whose own per-host bucket allows it" do
+      Application.put_env(:you, :refused_host_log_global_cap, 0)
+      on_exit(fn -> Application.delete_env(:you, :refused_host_log_global_cap) end)
+
+      conn = %Plug.Conn{host: unique_forged_host()}
+
+      log =
+        capture_log(fn ->
+          assert URI.parse(RequestURL.url(conn, "/x")).host == canonical()
+        end)
+
+      refute log =~ "refused non-allowlisted request host"
     end
   end
 end
