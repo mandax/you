@@ -461,6 +461,27 @@ defmodule YouWeb.ConsoleLiveTest do
       refute next =~ "zother-01@example.com"
     end
 
+    # The filter means "explicitly granted" while the Access column shows the
+    # effective role, so an empty result needs to explain itself rather than
+    # looking like a bug.
+    test "an empty role filter explains that defaults are not grants", %{conn: conn} do
+      {:ok, _app, _} =
+        You.Admin.create_app(%{
+          slug: "gr",
+          name: "Gr",
+          callback_url: "https://gr.example.com/cb",
+          default_role: "admin",
+          allowed_roles: ["user", "admin"]
+        })
+
+      You.AccountsFixtures.user_fixture()
+
+      {:ok, _lv, html} = live(conn, "/console/users?role=admin")
+
+      assert html =~ "No user has been explicitly granted"
+      assert html =~ "are not grants"
+    end
+
     test "an unfiltered first page emits no query string", %{conn: conn} do
       seed_paginated_users("zzz-findme@example.com")
       {:ok, lv, _html} = live(conn, "/console/users?email=zzz")

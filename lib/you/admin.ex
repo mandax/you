@@ -144,9 +144,9 @@ defmodule You.Admin do
   identity belonging to a user outside the current page.
 
   `filters` (a map, all keys optional):
-    * `:email` — substring match. Case-insensitive for ASCII only, because
-      SQLite's `LIKE` folds nothing else: `JOSÉ` will not find `josé`.
-      `%` and `_` are escaped, so the box is a search and not a pattern.
+    * `:email` — literal substring match, with no pattern language: `%` and
+      `_` match themselves. Case-insensitive for ASCII only, so `JOSÉ` will
+      not find `josé`.
     * `:status` — `"confirmed"` or `"unconfirmed"`
     * `:app_id` — the user has an explicit role assignment in this app
     * `:role` — the user has an **explicit assignment** of this role, in some
@@ -187,14 +187,9 @@ defmodule You.Admin do
 
   defp filter_by_email(query, nil), do: query
 
-  # A literal substring search, not a pattern match. `LIKE` would make `%` and
-  # `_` typed into the filter box into wildcards — `a_b` matching `axb@`, a
-  # lone `%` matching everyone — and escaping them needs an ESCAPE clause that
-  # SQLite will not accept as a bound parameter. `instr` has no pattern
-  # language to escape in the first place.
-  #
-  # `lower/1` folds ASCII only, here and in SQLite generally, so `JOSÉ` will
-  # not find `josé`. Documented on the caller rather than silently accepted.
+  # Not `LIKE`: it would make `%` and `_` typed into the filter box into
+  # wildcards, and escaping them needs an ESCAPE clause SQLite will not accept
+  # as a bound parameter. `instr` has nothing to escape.
   defp filter_by_email(query, email) do
     from(u in query, where: fragment("instr(lower(?), lower(?)) > 0", u.email, ^email))
   end

@@ -347,8 +347,7 @@ defmodule YouWeb.ConsoleLive do
 
     {:noreply,
      socket
-     |> load_users()
-     |> load_assignments()
+     |> load_users_page()
      |> put_flash(:info, "All sessions revoked for #{user.email}.")}
   end
 
@@ -359,8 +358,7 @@ defmodule YouWeb.ConsoleLive do
 
     {:noreply,
      socket
-     |> load_users()
-     |> load_assignments()
+     |> load_users_page()
      |> put_flash(:info, "User anonymized.")}
   end
 
@@ -378,8 +376,7 @@ defmodule YouWeb.ConsoleLive do
 
     {:noreply,
      socket
-     |> load_users()
-     |> load_assignments()
+     |> load_users_page()
      |> refresh_editing_user(id)
      |> put_flash(:info, "Two-factor authentication reset for #{user.email}.")}
   end
@@ -545,12 +542,12 @@ defmodule YouWeb.ConsoleLive do
         role == "admin" and not user.is_admin ->
           Admin.promote_admin(user)
           audit_admin(socket, "promote_admin", user.email)
-          load_users(socket)
+          load_users_page(socket)
 
         role == "user" and user.is_admin ->
           Admin.demote_admin(user)
           audit_admin(socket, "demote_admin", user.email)
-          load_users(socket)
+          load_users_page(socket)
 
         true ->
           socket
@@ -577,8 +574,7 @@ defmodule YouWeb.ConsoleLive do
       {:ok, _} ->
         {:noreply,
          socket
-         |> load_users()
-         |> load_assignments()
+         |> load_users_page()
          |> refresh_editing_user(params["user_id"])}
 
       {:error, _} ->
@@ -940,7 +936,7 @@ defmodule YouWeb.ConsoleLive do
   defp load_view(socket, "overview"), do: socket |> load_counts() |> load_events()
 
   defp load_view(socket, "users"),
-    do: socket |> load_apps() |> load_users() |> load_assignments()
+    do: socket |> load_apps() |> load_users_page()
 
   defp load_view(socket, "apps"), do: load_apps(socket)
   defp load_view(socket, "providers"), do: load_providers(socket)
@@ -1007,7 +1003,13 @@ defmodule YouWeb.ConsoleLive do
 
   # Scoped to exactly the page `load_users/1` just fetched — never every
   # `app_user_roles` row on the instance.
-  defp load_assignments(socket) do
+  # The assignment map is scoped to the ids `load_users/1` just fetched, so the
+  # two are one operation: any mutation that can change the page's membership
+  # changes which assignments the page needs. Kept as a single function because
+  # the order is not interchangeable — this reads `assigns.users` — and a
+  # reversed pipeline would compile and silently render an empty Access column.
+  defp load_users_page(socket) do
+    socket = load_users(socket)
     ids = Enum.map(socket.assigns.users, & &1.user.id)
     assign(socket, assignments: Roles.assignments_for_users(ids))
   end
@@ -1297,7 +1299,7 @@ defmodule YouWeb.ConsoleLive do
           <.select
             id="filter-role"
             value={@filters["role"]}
-            placeholder="all roles"
+            placeholder="all granted roles"
             options={
               [%{value: "", label: "all roles"}] ++
                 Enum.map(all_roles(@apps), &%{value: &1, label: &1})
@@ -1307,6 +1309,18 @@ defmodule YouWeb.ConsoleLive do
           />
         </div>
       </div>
+
+      <%!-- The role filter matches an explicit grant, while the Access column
+            shows the effective role — which falls back to the app's default.
+            So "no users" can mean "nobody was granted this", and an admin
+            staring at Access badges saying otherwise deserves to be told. --%>
+      <p
+        :if={@users == [] and @filters["role"] not in [nil, ""]}
+        class="rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground"
+      >
+        No user has been explicitly granted <span class="text-foreground">{@filters["role"]}</span>.
+        Roles an app hands out by default are not grants, so they are not matched here.
+      </p>
 
       <.data_table cols={["Email", "Status", "You", "Access", ""]} empty={@users == []}>
         <%!-- The row opens the detail sheet, but the binding sits on the data

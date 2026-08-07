@@ -303,10 +303,12 @@ defmodule YouWeb.Components.ConsoleChrome do
   end
 
   @doc """
-  The highest page number `total` rows fill at `page_size`, never below 1.
+  The highest page number `total` rows fill at `page_size`. Never below 1, so
+  an empty list has a page 1 rather than a page 0 nothing can address.
 
-  Public because the caller clamps an out-of-range page against it; two copies
-  of this arithmetic would let Next point past where the clamp lands.
+  Public because a caller clamping an out-of-range page must land where this
+  says the last page is; a second copy of the arithmetic would let Next point
+  past the clamp.
   """
   def last_page(total, page_size), do: max(1, div(total + page_size - 1, page_size))
 

@@ -22,10 +22,14 @@ defmodule You.AdminTest do
           allowed_roles: ["user", "admin"]
         })
 
-      user = You.AccountsFixtures.user_fixture()
-      {:ok, _} = You.Roles.set_role(app, user, "admin")
+      granted = You.AccountsFixtures.user_fixture()
+      # A second, unassigned user, or `== 1` is also the count of every user
+      # and the assertion holds with the filter removed entirely.
+      _ungranted = You.AccountsFixtures.user_fixture()
+      {:ok, _} = You.Roles.set_role(app, granted, "admin")
 
       assert You.Admin.count_users_matching(%{role: "admin"}) == 1
+      assert You.Admin.count_users_matching(%{}) == 2
     end
 
     test "does not match a user who only holds the app's default_role" do
