@@ -10,6 +10,8 @@ defmodule YouWeb.ConsoleLive do
   """
   use YouWeb, :live_view
 
+  require Logger
+
   import YouWeb.Components.ConsoleChrome
 
   alias You.{Admin, Accounts, Settings, Webhooks, Roles, IdentityProviders}
@@ -63,7 +65,7 @@ defmodule YouWeb.ConsoleLive do
        "What visitors see at /. Switched off, / goes to the console for admins and to the login page for everyone else — the right shape when this instance is infrastructure for your own app rather than a product with a homepage."},
     feature_app_hostnames:
       {"Per-app hostnames",
-       "Serve each app's login page on its own hostname, set below under Deployment mode. Needs a hostname template configured there too — off, or with no template, nothing about today's behaviour changes."}
+       "Serve each app's login page on its own hostname (acme.example.com) instead of ?app=acme, so users see the app's own address while signing in. An app on its own hostname does not share sign-in state with others — a user signing in to two of them signs in twice — and passkeys are offered only where the hostname is under the passkey relying-party domain. Needs a DNS record and certificate only the Operator can provide — see the template status below."}
   }
 
   # Write-only in the console: never rendered into the DOM, blank on save
@@ -172,7 +174,10 @@ defmodule YouWeb.ConsoleLive do
        import_ciphertext: nil,
        import_payload: nil,
        import_preview: nil,
-       import_error: nil
+       import_error: nil,
+       preflight_loading: false,
+       preflight_label: nil,
+       preflight_result: nil
      )}
   end
 
@@ -309,7 +314,10 @@ defmodule YouWeb.ConsoleLive do
       import_ciphertext: nil,
       import_payload: nil,
       import_preview: nil,
-      import_error: nil
+      import_error: nil,
+      preflight_loading: false,
+      preflight_label: nil,
+      preflight_result: nil
     )
   end
 
@@ -674,6 +682,50 @@ defmodule YouWeb.ConsoleLive do
      |> put_flash(:info, "Features updated.")}
   end
 
+  @doc """
+  Runs `You.Hosting.Preflight.check/1` for one app's hostname label.
+
+  Off the mount path and off the request path — `You.Hosting.Preflight`
+  makes outbound DNS and HTTPS calls, so it runs in `start_async/3`, never
+  blocking the socket. `preflight_loading` guards against the click that
+  fires it again before the first finishes: this is a real request against
+  someone's DNS and TLS, not a cheap toggle, so a double-click must not
+  become two of them in flight. It never gates `feature_app_hostnames`
+  itself — only ever reports.
+
+  `label` is an event param, not something already proven to be one of the
+  panel's own buttons — a client can push any string. `render_hostname/1`
+  string-splices the label into the template and the result becomes the
+  authority of an outbound HTTPS request, so a label carrying `/`, `@`, or
+  `:` would relocate that request's host, port, userinfo or path entirely
+  (`localhost:4000/admin/`, `169.254.169.254/latest/meta-data/`, `user@
+  attacker.example/`) — server-side request forgery reachable by an Admin,
+  whose authority is a row in this database, not shell access to the
+  Operator's host network. Resolving against a real, stored app closes
+  that: only a label some app actually has ever reaches `Preflight.check/1`
+  at all, and the panel never renders a button for anything else.
+  """
+  def handle_event("run_preflight", %{"label" => label}, socket) when is_binary(label) do
+    cond do
+      socket.assigns.preflight_loading ->
+        {:noreply, socket}
+
+      is_nil(Admin.get_app_by_hostname_label(label)) ->
+        {:noreply, socket}
+
+      true ->
+        {:noreply,
+         socket
+         |> assign(preflight_loading: true, preflight_label: label, preflight_result: nil)
+         |> start_async(:hostname_preflight, fn -> You.Hosting.Preflight.check(label) end)}
+    end
+  end
+
+  # A non-binary "label" (a client can push any shape) names no app either
+  # way — same refusal as an unrecognised binary label, just without a
+  # `get_app_by_hostname_label/1` call that only accepts a binary.
+  def handle_event("run_preflight", %{"label" => _label}, socket), do: {:noreply, socket}
+
   # ── emails ────────────────────────────────────────────────────
   def handle_event("save_email_template", %{"key" => key} = params, socket) do
     case You.EmailTemplates.upsert(key, Map.take(params, ["subject", "body"])) do
@@ -829,6 +881,28 @@ defmodule YouWeb.ConsoleLive do
 
   def handle_event("cancel_import", _params, socket), do: {:noreply, reset_import(socket)}
 
+  @doc """
+  Receives the result of the `start_async/3` call `run_preflight` kicked
+  off. `You.Hosting.Preflight.check/1` itself never raises — DNS and HTTP
+  failures both come back as an `:outcome` on the result struct — so the
+  `:exit` clause only fires on something outside that contract (an
+  unexpected crash in the task itself), and even then the page keeps
+  rendering rather than going down with it.
+  """
+  @impl true
+  def handle_async(:hostname_preflight, {:ok, result}, socket) do
+    {:noreply, assign(socket, preflight_loading: false, preflight_result: result)}
+  end
+
+  def handle_async(:hostname_preflight, {:exit, reason}, socket) do
+    Logger.error("[ConsoleLive] preflight task crashed: #{inspect(reason)}")
+
+    {:noreply,
+     socket
+     |> assign(preflight_loading: false, preflight_result: nil)
+     |> put_flash(:error, "Preflight check failed unexpectedly. Try again.")}
+  end
+
   # Consumes the file as soon as the upload itself completes, rather than
   # later in `preview_import`: `allow_upload/3`'s `:progress` callback runs
   # synchronously in the same message that reports 100%, which is the
@@ -914,9 +988,11 @@ defmodule YouWeb.ConsoleLive do
   # (for its filter and the per-app role sheet) and the role-assignment map;
   # `apps`/`providers`/`webhooks` need only their own table; `overview` needs
   # counts, not rows, since it only ever prints a number; `audit` needs the
-  # live event feed plus the app list for its filter dropdown; `features` and
-  # `settings` carry their own state already (feature flags at mount,
-  # instance settings via `load_settings/1`) so there is nothing to fetch here.
+  # live event feed plus the app list for its filter dropdown; `features`
+  # carries its feature flags already (loaded at mount) but still needs the
+  # per-app hostnames status (#127: template state, apps with a label to
+  # preflight, any label that has become colliding) fetched fresh on every
+  # visit; `settings` carries its own state via `load_settings/1`.
   defp load_view(socket, "overview"), do: socket |> load_counts() |> load_events()
 
   defp load_view(socket, "users"),
@@ -927,7 +1003,7 @@ defmodule YouWeb.ConsoleLive do
   defp load_view(socket, "audit"), do: socket |> load_events() |> load_apps() |> paginate_audit()
   defp load_view(socket, "webhooks"), do: load_endpoints(socket)
   defp load_view(socket, "emails"), do: load_email_templates(socket)
-  defp load_view(socket, "features"), do: socket
+  defp load_view(socket, "features"), do: load_hostname_status(socket)
   # `oidc_providers` backs the Federation tab's reference material — loaded
   # here rather than only at `mount/3` so a provider created after the
   # socket connected shows up on a later visit to Settings rather than the
@@ -1001,6 +1077,29 @@ defmodule YouWeb.ConsoleLive do
   defp load_providers(socket), do: assign(socket, providers: IdentityProviders.list_providers())
   defp load_endpoints(socket), do: assign(socket, endpoints: Webhooks.list_endpoints())
   defp load_events(socket), do: assign(socket, events: Streamer.recent())
+
+  # Everything the Features panel's per-app-hostnames detail needs (#127):
+  # where the template stands (nothing an Admin can set, only read), which
+  # apps have a label an Admin could preflight, and whether any of those
+  # labels has become colliding with the canonical host since it was
+  # accepted — the write-time guard (`You.Hosting.
+  # label_collides_with_canonical?/1`) cannot see a template or `PHX_HOST`
+  # change that happens after a label is saved; this is the same read
+  # `mix you.audit_hostname_labels` (#121) makes, surfaced here so an Admin
+  # sees it without a shell.
+  defp load_hostname_status(socket) do
+    apps_with_labels =
+      Admin.list_apps()
+      |> Enum.filter(& &1.hostname_label)
+      |> Enum.map(&%{id: &1.id, name: &1.name, label: &1.hostname_label})
+
+    assign(socket,
+      hostname_template: You.Hosting.template(),
+      hostname_template_valid: You.Hosting.template_valid?(),
+      apps_with_hostname_labels: apps_with_labels,
+      colliding_hostname_apps: Admin.apps_with_colliding_hostname_label()
+    )
+  end
 
   # `Streamer.recent/0` is an in-memory ring already capped at 100 rows
   # (`streamer.ex`), so filtering and paging it in memory here is correct
@@ -1146,7 +1245,17 @@ defmodule YouWeb.ConsoleLive do
         <% "emails" -> %>
           <.emails_view overrides={@email_overrides} tab={@email_tab} />
         <% "features" -> %>
-          <.features_view features={@features} onboarding={@onboarding} />
+          <.features_view
+            features={@features}
+            onboarding={@onboarding}
+            hostname_template={@hostname_template}
+            hostname_template_valid={@hostname_template_valid}
+            apps_with_hostname_labels={@apps_with_hostname_labels}
+            colliding_hostname_apps={@colliding_hostname_apps}
+            preflight_loading={@preflight_loading}
+            preflight_label={@preflight_label}
+            preflight_result={@preflight_result}
+          />
         <% "settings" -> %>
           <.settings_view
             settings={@settings}
@@ -2263,6 +2372,13 @@ defmodule YouWeb.ConsoleLive do
   # ── section: features ─────────────────────────────────────────
   attr :features, :map, required: true
   attr :onboarding, :boolean, required: true
+  attr :hostname_template, :string, required: true
+  attr :hostname_template_valid, :boolean, required: true
+  attr :apps_with_hostname_labels, :list, required: true
+  attr :colliding_hostname_apps, :list, required: true
+  attr :preflight_loading, :boolean, required: true
+  attr :preflight_label, :string, required: true
+  attr :preflight_result, :any, required: true
 
   defp features_view(assigns) do
     assigns = assign(assigns, copy: @feature_copy, mandatory: @mandatory_features)
@@ -2281,24 +2397,37 @@ defmodule YouWeb.ConsoleLive do
         <div class="rounded-lg border border-border bg-card p-5">
           <div class="mb-3 text-sm font-medium">Optional</div>
           <div class="space-y-3">
-            <label :for={{key, value} <- @features} class="flex items-start gap-3">
-              <%!-- Paired hidden input so an unticked box submits "false"
-                    rather than vanishing from the params. --%>
-              <input type="hidden" name={"features[#{key}]"} value="false" />
-              <input
-                type="checkbox"
-                name={"features[#{key}]"}
-                value="true"
-                checked={value}
-                class="mt-0.5 size-4 rounded border-border"
-              />
-              <span>
-                <span class="block text-sm">{elem(Map.fetch!(@copy, key), 0)}</span>
-                <span class="block text-xs text-muted-foreground">
-                  {elem(Map.fetch!(@copy, key), 1)}
+            <div :for={{key, value} <- @features}>
+              <label class="flex items-start gap-3">
+                <%!-- Paired hidden input so an unticked box submits "false"
+                      rather than vanishing from the params. --%>
+                <input type="hidden" name={"features[#{key}]"} value="false" />
+                <input
+                  type="checkbox"
+                  name={"features[#{key}]"}
+                  value="true"
+                  checked={value}
+                  class="mt-0.5 size-4 rounded border-border"
+                />
+                <span>
+                  <span class="block text-sm">{elem(Map.fetch!(@copy, key), 0)}</span>
+                  <span class="block text-xs text-muted-foreground">
+                    {elem(Map.fetch!(@copy, key), 1)}
+                  </span>
                 </span>
-              </span>
-            </label>
+              </label>
+
+              <.app_hostnames_detail
+                :if={key == :feature_app_hostnames}
+                hostname_template={@hostname_template}
+                hostname_template_valid={@hostname_template_valid}
+                apps_with_hostname_labels={@apps_with_hostname_labels}
+                colliding_hostname_apps={@colliding_hostname_apps}
+                preflight_loading={@preflight_loading}
+                preflight_label={@preflight_label}
+                preflight_result={@preflight_result}
+              />
+            </div>
           </div>
         </div>
 
@@ -2325,6 +2454,193 @@ defmodule YouWeb.ConsoleLive do
     </div>
     """
   end
+
+  # Renders under the "Per-app hostnames" toggle in Features (#127).
+  #
+  # The toggle is Admin-owned; `APP_HOSTNAME_TEMPLATE`, the other half the
+  # toggle depends on, is the Operator's, set only in the environment
+  # (`You.Settings.forbidden_keys/0`) — this panel shows it, it never offers
+  # a field to set it. Everything here is written for an Admin who may have
+  # no shell access at all: template status, a preflight that reports
+  # without ever gating the switch, and the write-time-only collision check
+  # `mix you.audit_hostname_labels` also runs, so an Admin can name exactly
+  # what to ask the Operator for instead of guessing.
+  attr :hostname_template, :string, required: true
+  attr :hostname_template_valid, :boolean, required: true
+  attr :apps_with_hostname_labels, :list, required: true
+  attr :colliding_hostname_apps, :list, required: true
+  attr :preflight_loading, :boolean, required: true
+  attr :preflight_label, :string, required: true
+  attr :preflight_result, :any, required: true
+
+  defp app_hostnames_detail(assigns) do
+    ~H"""
+    <div class="mt-3 ml-7 space-y-3 border-l-2 border-border pl-4 text-xs text-muted-foreground">
+      <div>
+        <span class="font-medium text-foreground">Hostname template</span>
+        <span :if={is_nil(@hostname_template)}>
+          — not set. Nothing about today's behaviour changes: every app keeps sharing this
+          instance's canonical host until the Operator sets one.
+        </span>
+        <span :if={@hostname_template && @hostname_template_valid}>
+          — <code class="rounded bg-muted px-1 py-0.5 font-mono">{@hostname_template}</code>,
+          well-formed.
+        </span>
+        <span :if={@hostname_template && not @hostname_template_valid}>
+          — set to <code class="rounded bg-muted px-1 py-0.5 font-mono">{@hostname_template}</code>,
+          but not well-formed (needs exactly one <code>{"{label}"}</code> placeholder, and a real
+          domain around it — not the placeholder alone). Resolution stays off until the Operator
+          fixes it — nothing breaks, app hostnames just do not resolve.
+        </span>
+        <p class="mt-1">
+          Set via <code class="font-mono">APP_HOSTNAME_TEMPLATE</code>,
+          environment-only and read-only here — see
+          <.link
+            href="https://github.com/mandax/you/blob/main/docs/ops/app-hostnames.md"
+            target="_blank"
+            class="underline underline-offset-2"
+          >
+            docs/ops/app-hostnames.md
+          </.link>
+          for the certificate depth trap and pattern tradeoffs this needs from the Operator.
+        </p>
+        <p :if={@hostname_template && @hostname_template_valid} class="mt-1">
+          DNS record this needs:
+          <code class="rounded bg-muted px-1 py-0.5 font-mono">
+            {You.Hosting.render_hostname("*")} CNAME {You.Hosting.canonical_host()}
+          </code>
+        </p>
+      </div>
+
+      <div
+        :if={@colliding_hostname_apps != []}
+        class="rounded-md border border-signal-warn/40 bg-signal-warn/10 px-3 py-2"
+      >
+        <span class="font-medium text-foreground">
+          {length(@colliding_hostname_apps)} app label(s) now collide with the canonical host:
+        </span>
+        <span>
+          {Enum.map_join(@colliding_hostname_apps, ", ", & &1.hostname_label)}. A label is only
+          checked against the template when it is saved — one of these became colliding after,
+          under a template or PHX_HOST change. Rename the label, or ask the Operator to run
+          <code class="font-mono">mix you.audit_hostname_labels</code>
+          for the full picture.
+        </span>
+      </div>
+
+      <div>
+        <span class="font-medium text-foreground">Preflight</span>
+        <span>
+          — reports whether an app's hostname resolves, has a certificate that covers it, and
+          reaches this instance. Every failure it can find is infrastructure only the Operator
+          can fix; this never blocks or gates the toggle above.
+        </span>
+
+        <p :if={@apps_with_hostname_labels == []} class="mt-1.5">
+          No app has a hostname label yet — give one a label on its own page, then check it
+          here.
+        </p>
+
+        <div :if={@apps_with_hostname_labels != []} class="mt-1.5 space-y-1.5">
+          <div :for={app <- @apps_with_hostname_labels} class="flex items-center gap-2">
+            <span class="font-mono text-foreground">{app.label}</span>
+            <span class="text-muted-foreground">({app.name})</span>
+            <button
+              type="button"
+              phx-click="run_preflight"
+              phx-value-label={app.label}
+              disabled={@preflight_loading}
+              class="rounded border border-border px-2 py-0.5 font-mono text-[11px] text-foreground hover:bg-muted disabled:opacity-50"
+            >
+              {if @preflight_loading and @preflight_label == app.label,
+                do: "Checking…",
+                else: "Check"}
+            </button>
+          </div>
+        </div>
+
+        <.preflight_result
+          :if={@preflight_result}
+          label={@preflight_label}
+          result={@preflight_result}
+        />
+      </div>
+    </div>
+    """
+  end
+
+  attr :label, :string, required: true
+  attr :result, :any, required: true
+
+  defp preflight_result(assigns) do
+    {title, explanation, tone} = preflight_outcome_copy(assigns.result.outcome)
+    assigns = assign(assigns, title: title, explanation: explanation, tone: tone)
+
+    ~H"""
+    <div class={[
+      "mt-2 rounded-md border px-3 py-2",
+      @tone == :ok && "border-signal-ok/40 bg-signal-ok/10",
+      @tone == :warn && "border-signal-warn/40 bg-signal-warn/10",
+      @tone == :info && "border-border bg-muted/40"
+    ]}>
+      <div class="font-medium text-foreground">{@label}: {@title}</div>
+      <div class="mt-0.5">{@explanation}</div>
+      <div :if={@result.detail} class="mt-1 font-mono text-[11px] opacity-70">{@result.detail}</div>
+    </div>
+    """
+  end
+
+  # Every branch names who fixes it. `:template_invalid` and every network
+  # failure are infrastructure only the Operator can act on; the copy says
+  # so explicitly rather than describing a symptom an Admin with no shell
+  # access would have no way to act on ("check your DNS" to someone who
+  # cannot is worse than no preflight at all). `:unreachable` in particular
+  # is not necessarily a problem: hairpin routing means a healthy instance
+  # can legitimately fail to reach itself by its own public name.
+  defp preflight_outcome_copy(:ok),
+    do: {"reachable", "Resolves, negotiates TLS, and reaches this instance.", :ok}
+
+  defp preflight_outcome_copy(:no_dns_record),
+    do:
+      {"no DNS record", "This hostname does not resolve. Ask the Operator to add the DNS record.",
+       :warn}
+
+  defp preflight_outcome_copy(:certificate_mismatch),
+    do:
+      {"certificate does not cover this name",
+       "DNS resolves, but the certificate presented does not cover it. Ask the Operator to " <>
+         "check what the certificate covers — a default wildcard usually covers one label only.",
+       :warn}
+
+  defp preflight_outcome_copy(:unreachable),
+    do:
+      {"no response",
+       "DNS resolves, but nothing answered in time. A healthy instance can legitimately fail " <>
+         "to reach itself by its own public name (hairpin routing) — this is not proof of a " <>
+         "real problem. If it matters, ask the Operator to check from outside the network.",
+       :info}
+
+  defp preflight_outcome_copy(:wrong_traffic),
+    do:
+      {"reached something else",
+       "Something answered, but it isn't this instance. Ask the Operator where this " <>
+         "hostname's DNS or reverse proxy actually points.", :warn}
+
+  defp preflight_outcome_copy(:template_invalid),
+    do:
+      {"template missing or malformed",
+       "APP_HOSTNAME_TEMPLATE is not set, or isn't exactly one {label} placeholder. Ask the " <>
+         "Operator to set it.", :warn}
+
+  defp preflight_outcome_copy(:invalid_label),
+    do: {"not a valid hostname label", "Refused before any network call.", :warn}
+
+  # Catch-all: an outcome atom with no clause above must never crash the
+  # render — that is a worse failure than the one `handle_async/3`'s
+  # `:exit` clause exists to guard, since it would take the whole LiveView
+  # down instead of just failing to show one result.
+  defp preflight_outcome_copy(other),
+    do: {"unrecognised result", "Preflight returned #{inspect(other)}.", :warn}
 
   # ── section: settings ─────────────────────────────────────────
   attr :settings, :map, required: true

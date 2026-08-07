@@ -204,6 +204,31 @@ of them at once.
   as before. Ground-laying for #121 — an app-host social button will link to
   canonical carrying a short-lived signed `ctx` instead of relying on a
   shared session, which `/auth/:provider` already accepts.
+- **The "Per-app hostnames" toggle in Features now shows its own
+  prerequisite and can check it** (#127). `APP_HOSTNAME_TEMPLATE` is
+  environment-only (#121) — the Admin who flips this switch cannot set the
+  template and may have no way to see whether the Operator has set one, so
+  the toggle now shows the template read-only: where it comes from, whether
+  it is set, and whether it is well-formed (`You.Hosting.template_valid?/0`,
+  new). A "Check" button next to any app with a hostname label runs a
+  preflight (`You.Hosting.Preflight`, timed-out DNS lookup plus an HTTPS
+  request to the app's own `/.well-known/openid-configuration`) and reports
+  one of: no DNS record, certificate does not cover the name, traffic
+  reaching something else, or reachable — worded for an Admin to hand
+  straight to the Operator, since every failure it can find is
+  infrastructure only the Operator can act on. It only ever reports, never
+  gates the toggle, and explicitly does not treat "no response" as proof of
+  a problem: a healthy instance can legitimately fail to reach itself by its
+  own public name (hairpin routing). The panel also surfaces any app whose
+  `hostname_label` has become colliding with the canonical host since it was
+  saved — the same check `mix you.audit_hostname_labels` (#121) makes,
+  read live here so an Admin sees it without a shell. Links to
+  `docs/ops/app-hostnames.md` (#128) rather than restating it. The preflight
+  only ever checks a real, stored app's own hostname label — never an
+  arbitrary string an event could carry — and does not follow redirects, so
+  a hostname that merely 302s toward this instance's real discovery
+  document (a parked domain, a catch-all vhost) reports as traffic reaching
+  something else rather than a false "reachable".
 
 ## 0.4.0 — Per-app context, invitations, guests, and auth hardening
 

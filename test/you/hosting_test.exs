@@ -83,6 +83,34 @@ defmodule You.HostingTest do
     end
   end
 
+  describe "template_valid?/0" do
+    test "false with no template configured" do
+      refute Hosting.template_valid?()
+    end
+
+    test "false with a template missing the {label} placeholder" do
+      Application.put_env(:you, :app_hostname_template, "not-a-template.example.com")
+      on_exit(fn -> Application.delete_env(:you, :app_hostname_template) end)
+
+      refute Hosting.template_valid?()
+    end
+
+    test "false with a template naming {label} twice" do
+      Application.put_env(:you, :app_hostname_template, "{label}.{label}.example.com")
+      on_exit(fn -> Application.delete_env(:you, :app_hostname_template) end)
+
+      refute Hosting.template_valid?()
+    end
+
+    test "true with a well-formed template, independent of feature_app_hostnames" do
+      Application.put_env(:you, :app_hostname_template, "{label}.example.com")
+      on_exit(fn -> Application.delete_env(:you, :app_hostname_template) end)
+
+      refute You.Settings.enabled?(:feature_app_hostnames)
+      assert Hosting.template_valid?()
+    end
+  end
+
   describe "resolve/1" do
     test "the canonical host resolves to :canonical even with the feature off" do
       assert Hosting.resolve(Hosting.canonical_host()) == :canonical
