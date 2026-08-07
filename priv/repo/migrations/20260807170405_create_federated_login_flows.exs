@@ -6,7 +6,7 @@ defmodule You.Repo.Migrations.CreateFederatedLoginFlows do
       add :state_hash, :binary, null: false, size: 32
       add :nonce_hash, :binary, null: false, size: 32
       add :provider, :string, null: false
-      add :ctx, :string
+      add :ctx, :string, null: false
 
       timestamps(type: :utc_datetime, updated_at: false)
     end

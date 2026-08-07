@@ -12,12 +12,12 @@ defmodule You.IdentityProviders.LoginFlow do
   session-based `state` check was doing before per-app hostnames made the
   session unavailable at the callback.
 
-  `ctx` (the `callback_url`, `scopes`, `code_challenge` and
-  `branding_app_slug` the flow started with) travels through this record
-  rather than the session, so it survives the trip to an upstream IdP and
-  back regardless of which host the callback lands on — ready for #121's
-  cross-host handoff, and equivalent to today's session-carried values in
-  the meantime.
+  `ctx` (the `callback_url`, `scopes`, `code_challenge`, `branding_app_slug`,
+  and the consumer app's own OAuth `state` the flow started with) travels
+  through this record rather than the session, so it survives the trip to an
+  upstream IdP and back regardless of which host the callback lands on —
+  ready for #121's cross-host handoff, and equivalent to today's
+  session-carried values in the meantime.
 
   Modelled on `You.Accounts.UserToken`'s authorization-code pattern: hashed
   at rest, single-use (deleted the moment it is looked up), short expiry —

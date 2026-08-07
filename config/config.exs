@@ -50,7 +50,8 @@ config :you, YouWeb.RateLimit, %{
   headless_login: {5, 60_000},
   headless_register: {5, 60_000},
   oauth_token: {10, 60_000},
-  api_mgmt: {120, 60_000}
+  api_mgmt: {120, 60_000},
+  social_login: {20, 60_000}
 }
 
 # Configure the mailer

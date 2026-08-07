@@ -134,8 +134,9 @@ defmodule You.IdentityProviders do
 
   @doc """
   Starts a federated login flow for `provider`, persisting `ctx` (a
-  string-keyed map of `callback_url`, `scopes`, `code_challenge` and
-  `branding_app_slug`) behind an opaque `state`.
+  string-keyed map of `callback_url`, `scopes`, `code_challenge`,
+  `branding_app_slug`, and the consumer app's own OAuth `state` — distinct
+  from the `state` this function returns) behind that opaque `state`.
 
   Returns `{state, nonce}`: `state` goes upstream to the IdP as the OIDC
   `state` param, and `nonce` must be set as the binding cookie on the
@@ -170,10 +171,16 @@ defmodule You.IdentityProviders do
 
   def consume_login_flow(_provider, _state, _nonce), do: {:error, :state_mismatch}
 
+  # A double-click on the IdP return, a browser retry, or a link prefetch can
+  # present the same `state` twice at once. Find-then-delete would let both
+  # readers see the row before either deletes it, so the loser's `delete!`
+  # raises `Ecto.StaleEntryError` instead of getting a clean refusal — a
+  # single `DELETE … RETURNING` makes "found and deleted" atomic: at most one
+  # concurrent caller gets the row back.
   defp find_and_delete_flow(state, provider) do
     with {:ok, query} <- LoginFlow.verify_query(state, provider),
-         %LoginFlow{} = flow <- Repo.one(query) do
-      Repo.delete!(flow)
+         {1, [flow]} <- Repo.delete_all(from f in query, select: f) do
+      flow
     else
       _ -> nil
     end

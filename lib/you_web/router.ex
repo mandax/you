@@ -59,6 +59,10 @@ defmodule YouWeb.Router do
     plug YouWeb.Plugs.RateLimit, key: :oauth_token
   end
 
+  pipeline :rate_limit_social_login do
+    plug YouWeb.Plugs.RateLimit, key: :social_login
+  end
+
   pipeline :console_legacy_redirect do
     plug YouWeb.Plugs.ConsoleLegacyRedirect
   end
@@ -270,8 +274,16 @@ defmodule YouWeb.Router do
   scope "/", YouWeb do
     pipe_through [:browser]
 
-    get "/auth/:provider", FederatedAuthController, :authorize
     get "/auth/:provider/callback", FederatedAuthController, :callback
+
+    scope "/" do
+      pipe_through :rate_limit_social_login
+      # A flow record (and a nonce cookie) is minted per request here, unlike
+      # the callback right above — bounded by TTL and hourly cleanup either
+      # way, but there's no reason to let an anonymous GET write rows faster
+      # than a real login flow ever would.
+      get "/auth/:provider", FederatedAuthController, :authorize
+    end
 
     get "/users/log-in", UserSessionController, :new
     # Static /users/log-in/* sub-paths MUST precede the dynamic /:token

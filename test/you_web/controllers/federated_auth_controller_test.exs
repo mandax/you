@@ -78,6 +78,32 @@ defmodule YouWeb.FederatedAuthControllerTest do
       assert is_binary(cookie.value) and cookie.value != ""
     end
 
+    # `Lax`, specifically: the callback arrives as a top-level cross-site GET
+    # redirect *from the IdP*, so `Strict` would silently drop the cookie on
+    # every real social login while every test here — which never leaves
+    # this process — would still pass. Pin the value, not just its presence.
+    test "the binding cookie is SameSite=Lax, not Strict", %{conn: conn} do
+      create_provider!()
+
+      conn = get(conn, ~p"/auth/google")
+
+      assert conn.resp_cookies["_you_login_flow_nonce"].same_site == "Lax"
+    end
+
+    test "the binding cookie is Secure when the instance is, and not otherwise", %{conn: conn} do
+      create_provider!()
+
+      conn = get(conn, ~p"/auth/google")
+      refute conn.resp_cookies["_you_login_flow_nonce"][:secure]
+
+      original = Application.get_env(:you, :secure_cookies, false)
+      Application.put_env(:you, :secure_cookies, true)
+      on_exit(fn -> Application.put_env(:you, :secure_cookies, original) end)
+
+      conn = get(build_conn(), ~p"/auth/google")
+      assert conn.resp_cookies["_you_login_flow_nonce"][:secure]
+    end
+
     test "rejects an unknown provider slug without raising", %{conn: conn} do
       conn = get(conn, ~p"/auth/does-not-exist")
 
@@ -245,26 +271,41 @@ defmodule YouWeb.FederatedAuthControllerTest do
       assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "Authentication failed."
     end
 
-    test "an app with enabled_providers: [\"google\"] is rejected at the callback for github", %{
+    # The provider allow-list is checked twice: at `/auth/:provider` (so a
+    # disallowed provider is rejected before a flow record — and a network
+    # round trip to the IdP — is even created) and again at the callback,
+    # against the flow's own `ctx` rather than the session (#132 review).
+    # That second check is what this test is for: an app's config can change
+    # while the user is away at the IdP, and the callback has to catch it —
+    # a check that only ran once, before the flow started, would let a
+    # provider revoked mid-flight complete anyway.
+    test "if an app's provider allow-list changes mid-flight, the callback still enforces it", %{
       conn: conn
     } do
       create_provider!()
       create_provider!(%{@google_attrs | "slug" => "github", "display_name" => "GitHub"})
 
-      {:ok, _app, _secret} =
+      {:ok, app, _secret} =
         You.Admin.create_app(%{
           slug: "google-only",
           name: "Google Only",
           callback_url: "https://google-only.example.com/cb",
-          enabled_providers: ["google"]
+          # Unrestricted at mint time so the flow is legitimately started.
+          enabled_providers: nil
         })
 
-      # Rejected by the app's provider allow-list before the flow record is
-      # even looked up, so an arbitrary `state` is enough to prove it.
-      conn =
+      {conn, state} =
         conn
         |> init_test_session(callback_url: "https://google-only.example.com/cb")
-        |> get(~p"/auth/github/callback", %{"code" => "x", "state" => "st-123"})
+        |> start_flow("github")
+
+      {:ok, _app} = You.Admin.update_app(app, %{enabled_providers: ["google"]})
+
+      conn =
+        conn
+        |> recycle()
+        |> init_test_session(callback_url: "https://google-only.example.com/cb")
+        |> get(~p"/auth/github/callback", %{"code" => "x", "state" => state})
 
       assert redirected_to(conn) == ~p"/users/log-in"
       assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "Authentication failed."
@@ -341,7 +382,8 @@ defmodule YouWeb.FederatedAuthControllerTest do
           "callback_url" => nil,
           "scopes" => nil,
           "code_challenge" => nil,
-          "branding_app_slug" => nil
+          "branding_app_slug" => nil,
+          "state" => nil
         })
 
       conn = get(build_conn(), ~p"/auth/google/callback", %{"code" => "x", "state" => state})
@@ -396,7 +438,8 @@ defmodule YouWeb.FederatedAuthControllerTest do
           "callback_url" => nil,
           "scopes" => nil,
           "code_challenge" => nil,
-          "branding_app_slug" => nil
+          "branding_app_slug" => nil,
+          "state" => nil
         })
 
       metadata =
@@ -407,6 +450,87 @@ defmodule YouWeb.FederatedAuthControllerTest do
       assert metadata.method == "oidc:google"
       assert metadata.result == :failure
       assert metadata.reason == :state_mismatch
+    end
+  end
+
+  describe "?ctx= (groundwork for #121's cross-host handoff)" do
+    test "a valid signed ctx is used instead of the session", %{conn: conn} do
+      create_provider!()
+
+      {:ok, app, _secret} =
+        You.Admin.create_app(%{
+          slug: "ctx-app",
+          name: "Ctx App",
+          callback_url: "https://ctx-app.example.com/cb"
+        })
+
+      signed =
+        IdentityProviders.sign_ctx(%{
+          "callback_url" => "https://ctx-app.example.com/cb",
+          "scopes" => ["email"],
+          "code_challenge" => "chal123",
+          "branding_app_slug" => app.slug,
+          "state" => "consumer-state-abc"
+        })
+
+      # No session at all: nothing for `ctx` to fall back to, so this only
+      # passes if `ctx` itself is what's read.
+      conn = get(conn, ~p"/auth/google?ctx=#{signed}")
+
+      assert redirected_to(conn, 302) =~ "accounts.google.com"
+
+      flow = Repo.one!(LoginFlow)
+      assert LoginFlow.ctx(flow)["callback_url"] == "https://ctx-app.example.com/cb"
+      assert LoginFlow.ctx(flow)["state"] == "consumer-state-abc"
+    end
+
+    test "an invalid ctx is refused outright, not fallen back to the (empty) session", %{
+      conn: conn
+    } do
+      create_provider!()
+
+      conn = get(conn, ~p"/auth/google?ctx=garbage")
+
+      assert redirected_to(conn) == ~p"/users/log-in"
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "expired"
+
+      # The whole point of refusing outright rather than falling back: a
+      # bogus `ctx` must not be a way to reach the weaker (no-ctx) path.
+      # Nothing was minted and nothing was set for an attacker to work with.
+      refute Repo.exists?(LoginFlow)
+      refute conn.resp_cookies["_you_login_flow_nonce"]
+    end
+
+    test "a ctx naming an app that has disabled social is refused, not left to the session",
+         %{conn: conn} do
+      create_provider!()
+
+      {:ok, app, _secret} =
+        You.Admin.create_app(%{
+          slug: "no-social-ctx",
+          name: "No Social Ctx",
+          callback_url: "https://no-social-ctx.example.com/cb",
+          enabled_methods: ["password"]
+        })
+
+      signed =
+        IdentityProviders.sign_ctx(%{
+          "callback_url" => "https://no-social-ctx.example.com/cb",
+          "scopes" => nil,
+          "code_challenge" => nil,
+          "branding_app_slug" => app.slug,
+          "state" => nil
+        })
+
+      # No session naming any app — if the gate fell back to session-derived
+      # `app_for/1` instead of resolving from `ctx`, this app's own
+      # enabled_methods would never be consulted and the request would wrongly
+      # go through.
+      conn = get(conn, ~p"/auth/google?ctx=#{signed}")
+
+      assert redirected_to(conn) == ~p"/users/log-in"
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "Unknown authentication provider."
+      refute Repo.exists?(LoginFlow)
     end
   end
 

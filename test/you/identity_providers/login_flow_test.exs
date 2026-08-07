@@ -17,7 +17,8 @@ defmodule You.IdentityProviders.LoginFlowTest do
     "callback_url" => "https://app.example.com/cb",
     "scopes" => ["email", "profile"],
     "code_challenge" => "abc123",
-    "branding_app_slug" => "acme"
+    "branding_app_slug" => "acme",
+    "state" => "consumer-app-state-xyz"
   }
 
   describe "start_login_flow/2 and consume_login_flow/3" do
@@ -48,6 +49,30 @@ defmodule You.IdentityProviders.LoginFlowTest do
 
       assert {:error, :state_mismatch} =
                IdentityProviders.consume_login_flow("google", state, nonce)
+    end
+
+    test "consuming the same flow concurrently: exactly one succeeds, the loser gets a clean refusal" do
+      {state, nonce} = IdentityProviders.start_login_flow("google", @ctx)
+
+      parent_pid = self()
+
+      tasks =
+        for _ <- 1..2 do
+          Task.async(fn ->
+            Ecto.Adapters.SQL.Sandbox.allow(Repo, parent_pid, self())
+            IdentityProviders.consume_login_flow("google", state, nonce)
+          end)
+        end
+
+      results = Task.await_many(tasks)
+
+      # A double-click on the IdP return, a browser retry, or a link
+      # prefetch racing the real click all present the same `state` twice at
+      # once. Only one may complete the login; the other must get the same
+      # clean `:state_mismatch` refusal an ordinary replay gets — not a
+      # crash from the two-step find-then-delete racing itself.
+      assert Enum.count(results, &match?({:ok, _ctx}, &1)) == 1
+      assert Enum.count(results, &match?({:error, :state_mismatch}, &1)) == 1
     end
 
     test "the correct nonce for a different flow's state is refused" do
