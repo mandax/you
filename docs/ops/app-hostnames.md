@@ -19,6 +19,15 @@ shipped together — the redirect rules are what keep a recognised app host
 from also answering as an alternate issuer, so resolution was never live
 without them.
 
+## Running a single app? None of this applies
+
+`YOU_MODE=single` provisions exactly one app, and that app already gets the
+whole instance — there is no second app for a hostname, a label, or a
+`?app=` parameter to disambiguate from. Skip straight past this page:
+`hostname_label`, `APP_HOSTNAME_TEMPLATE`, and everything below only start
+to matter once more than one app can be reached through the same instance.
+See [quickstart.md](../quickstart.md) for single-app setup.
+
 ## What `?app=<slug>` cannot do
 
 Today, an app's identity during login is carried by a query parameter:
@@ -137,6 +146,26 @@ change it back, every credential registered under the interim value stops
 matching too. Treat it as a deployment operation with a maintenance window,
 the same way [deploy.md](deploy.md#environment-variables) already describes
 it — not something to edit while chasing a passkey bug.
+
+## The three ways a request names an app, and their precedence
+
+Once a request's host is one this instance recognises at all
+(`You.Hosting.own_host?/1` — the canonical host, or a host that resolves to
+a configured app's label), up to three carriers can say which app the
+request belongs to. `YouWeb.AuthMethods.app_for/1` is the one place that
+picks between them, in this order:
+
+1. **`callback_url`** — the callback URL of an in-flight OAuth redirect,
+   matched against a registered app's own callback URL. Wins even on an
+   app's own hostname: a consumer that started its flow from the canonical
+   host still names its app this way.
+2. **Hostname** — the request's own host, resolved against `hostname_label`
+   through the configured template.
+3. **`?app=<slug>`** — the query-parameter fallback described above, for an
+   app with no label of its own.
+
+None of the three is consulted on a host this instance doesn't recognise —
+see the next section.
 
 ## Unrecognised hosts
 
