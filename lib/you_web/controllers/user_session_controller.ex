@@ -4,6 +4,7 @@ defmodule YouWeb.UserSessionController do
   import YouWeb.AuthMethods, only: [app_for: 1, enabled_methods: 1, enabled?: 2]
 
   alias You.Accounts
+  alias YouWeb.RequestURL
   alias YouWeb.UserAuth
 
   def new(conn, params) do
@@ -181,7 +182,8 @@ defmodule YouWeb.UserSessionController do
         user_id: user.id,
         email: user.email,
         method: "password",
-        result: :success
+        result: :success,
+        host: conn.host
       })
 
       YouWeb.SecondFactor.complete_login(conn, user, "Welcome back!", user_params)
@@ -189,7 +191,8 @@ defmodule YouWeb.UserSessionController do
       :telemetry.execute([:you, :audit, :login, :attempt], %{}, %{
         email: email,
         method: "password",
-        result: :failure
+        result: :failure,
+        host: conn.host
       })
 
       form = Phoenix.Component.to_form(user_params, as: "user")
@@ -210,7 +213,7 @@ defmodule YouWeb.UserSessionController do
 
       Accounts.deliver_login_instructions(
         user,
-        &url(~p"/users/log-in/#{&1}?#{link_params}"),
+        &RequestURL.url(conn, ~p"/users/log-in/#{&1}?#{link_params}"),
         app_from_name(conn)
       )
     end
@@ -283,14 +286,14 @@ defmodule YouWeb.UserSessionController do
       user = Accounts.get_user!(user_id)
 
       if Accounts.verify_totp(user, code) do
-        audit_totp(user, :success)
+        audit_totp(conn, user, :success)
 
         conn
         |> put_session(:totp_user_id, nil)
         |> put_flash(:info, "Welcome back!")
         |> YouWeb.OAuthFlow.complete_login(user)
       else
-        audit_totp(user, :failure)
+        audit_totp(conn, user, :failure)
 
         render(
           conn,
@@ -341,7 +344,8 @@ defmodule YouWeb.UserSessionController do
             user_id: user.id,
             email: user.email,
             method: "recovery_code",
-            result: :success
+            result: :success,
+            host: conn.host
           })
 
           conn
@@ -354,7 +358,8 @@ defmodule YouWeb.UserSessionController do
             user_id: user.id,
             email: user.email,
             method: "recovery_code",
-            result: :failure
+            result: :failure,
+            host: conn.host
           })
 
           render(
@@ -450,12 +455,13 @@ defmodule YouWeb.UserSessionController do
 
   # The second factor gets its own audit event so a login and the TOTP step
   # that gated it stay distinguishable in the log.
-  defp audit_totp(user, result) do
+  defp audit_totp(conn, user, result) do
     :telemetry.execute([:you, :audit, :login, :totp], %{}, %{
       user_id: user.id,
       email: user.email,
       method: "totp",
-      result: result
+      result: result,
+      host: conn.host
     })
   end
 

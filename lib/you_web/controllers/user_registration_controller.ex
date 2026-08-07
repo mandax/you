@@ -3,6 +3,7 @@ defmodule YouWeb.UserRegistrationController do
 
   alias You.Accounts
   alias You.Accounts.User
+  alias YouWeb.RequestURL
 
   def new(conn, params) do
     conn =
@@ -40,13 +41,13 @@ defmodule YouWeb.UserRegistrationController do
         url_fun =
           if callback_url do
             fn token ->
-              base = url(~p"/users/log-in/#{token}")
+              base = RequestURL.url(conn, ~p"/users/log-in/#{token}")
               extra = ["callback_url=#{URI.encode(callback_url)}"]
               extra = if scopes, do: ["scope=#{Enum.join(scopes, "+")}" | extra], else: extra
               base <> "?" <> Enum.join(extra, "&")
             end
           else
-            &url(~p"/users/log-in/#{&1}")
+            &RequestURL.url(conn, ~p"/users/log-in/#{&1}")
           end
 
         {:ok, _} = Accounts.deliver_login_instructions(user, url_fun)

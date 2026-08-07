@@ -12,6 +12,7 @@ defmodule YouWeb.AppLive.Show do
   import YouWeb.Components.ConsoleChrome
 
   alias You.{Admin, Roles}
+  alias YouWeb.RequestURL
 
   @tabs [
     {"overview", "Overview"},
@@ -217,7 +218,9 @@ defmodule YouWeb.AppLive.Show do
       invited_by_id: socket.assigns.current_scope.user.id
     }
 
-    case You.Invitations.invite(attrs, &url(~p"/invitations/#{&1}")) do
+    invite_url_fun = &RequestURL.url(socket.host_uri, ~p"/invitations/#{&1}")
+
+    case You.Invitations.invite(attrs, invite_url_fun) do
       {:ok, invitation} ->
         {:noreply,
          socket
