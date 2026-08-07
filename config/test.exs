@@ -31,6 +31,16 @@ config :you, YouWeb.Endpoint,
   # default host is what this value is for, not a coincidence to preserve.
   # Tests exercising a *different* host (a forged one, an app host, one
   # outside the RP ID's zone) already set `conn.host` explicitly.
+  #
+  # The cost of pinning them together, stated so it is not rediscovered: a
+  # test that *means* to exercise an unrecognised host but forgets to set
+  # `conn.host` now silently passes on the canonical path instead. Before
+  # this value matched, forcing `Hosting.enabled?/0` true reddened 288 tests
+  # and now reddens 21 — but the 288 were mostly measuring "the suite's
+  # default host is foreign", and ~40 of them were asserting branding on a
+  # foreign host, which passed only because unrecognised hosts still branded.
+  # The gate is now pinned by tests that name it rather than by that
+  # coincidence. If you are writing an unrecognised-host test, set the host.
   url: [host: "www.example.com"],
   http: [ip: {127, 0, 0, 1}, port: 4002],
   secret_key_base: "0zeFpEgIJy43yfWqEBHzCOlVLR5L4FVNJyQ2ZaJsZ0vDXS3USpfEtM2sp1bNeTj8",
