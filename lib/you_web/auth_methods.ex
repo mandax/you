@@ -16,16 +16,30 @@ defmodule YouWeb.AuthMethods do
   alias You.Admin.App
 
   @doc """
-  The sign-in methods available on this connection, as a list of strings.
+  The sign-in methods available, as a list of strings.
 
-  An instance-level switch beats a per-app one: if an admin turned magic links
-  off entirely, no app can opt back in.
+  Given a connection, resolved for its in-flight app and its request host —
+  this is what a visitor can actually use right now. Given an app directly,
+  resolved with no host, which is what the app settings preview wants: what
+  the app *would* offer, independent of who is looking at it or from where.
+  An instance-level switch beats a per-app one either way: if an admin turned
+  magic links off entirely, no app can opt back in.
   """
-  def enabled_methods(%Plug.Conn{} = conn), do: enabled_methods(app_for(conn))
+  def enabled_methods(%Plug.Conn{} = conn), do: enabled_methods(app_for(conn), conn.host)
+  def enabled_methods(app) when is_nil(app) or is_struct(app, App),
+    do: enabled_methods(app, nil)
 
-  def enabled_methods(app) when is_nil(app) or is_struct(app, App) do
+  @doc """
+  The sign-in methods `app` allows on `host` (or on any host, for `nil`).
+
+  Passkeys are additionally gated on whether `host` qualifies for the
+  configured WebAuthn RP ID (`You.WebAuthn.available_for_host?/1`) — a host
+  outside it cannot complete a passkey ceremony, so the option is not offered
+  there even if the app and instance both allow it.
+  """
+  def enabled_methods(app, host) when is_nil(app) or is_struct(app, App) do
     App.auth_methods()
-    |> Enum.filter(&instance_offers?/1)
+    |> Enum.filter(&instance_offers?(&1, host))
     |> then(&App.resolved_methods(app, &1))
   end
 
@@ -72,8 +86,11 @@ defmodule YouWeb.AuthMethods do
   defp branding_app(slug) when is_binary(slug) and slug != "", do: Admin.get_app_by_slug(slug)
   defp branding_app(_slug), do: nil
 
-  defp instance_offers?("magic_link"), do: You.Settings.enabled?(:feature_magic_link)
-  defp instance_offers?("passkey"), do: You.Settings.enabled?(:feature_passkeys)
-  defp instance_offers?("social"), do: You.Settings.enabled?(:feature_social_login)
-  defp instance_offers?(_), do: true
+  defp instance_offers?("magic_link", _host), do: You.Settings.enabled?(:feature_magic_link)
+
+  defp instance_offers?("passkey", host),
+    do: You.Settings.enabled?(:feature_passkeys) and You.WebAuthn.available_for_host?(host)
+
+  defp instance_offers?("social", _host), do: You.Settings.enabled?(:feature_social_login)
+  defp instance_offers?(_method, _host), do: true
 end

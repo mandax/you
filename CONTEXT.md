@@ -21,7 +21,7 @@ Documentation aimed at deploying or upgrading is written for the Operator; docum
 _Avoid_: Using this for a User with `is_admin = true` — that is an Admin
 
 **You Session**:
-The browser cookie on you.example.com that proves the user authenticated with You's portal. Database-backed via `users_tokens` (context: "session"). Used to skip the login form on subsequent app authorization flows. Separate from any app JWT: signing out of You does not invalidate app JWTs.
+The browser cookie that proves the user authenticated with You, scoped to the host that served the login — no `:domain` is set, so it does not span other hosts. Database-backed via `users_tokens` (context: "session"). Used to skip the login form on a subsequent app authorization flow served from that *same* host; an app on its own hostname does not share sign-in state and shows the login form again even to a user already signed in elsewhere. Deliberate: a shared cookie domain would be writable, not just readable, by every co-tenant host, and would widen the session-derived CSRF token to match — see `YouWeb.Endpoint`. Separate from any app JWT: signing out of You does not invalidate app JWTs.
 _Avoid_: Auth token, login cookie, global session
 
 **App JWT**:

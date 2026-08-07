@@ -25,10 +25,10 @@ defmodule You.Settings do
 
   A handful of bootstrap and key-material values — `DATABASE_PATH`,
   `SECRET_KEY_BASE`, `JWT_SIGNING_KEY`, `JWT_KEY_ID`, `JWT_PREVIOUS_KEYS`,
-  `PHX_HOST`, `PHX_SCHEME`, `POOL_SIZE`, `BIND_IP` — are deliberately absent
-  from `@defaults` and rejected by `set/2`: putting them behind a console
-  login is either circular (the login depends on them) or a way to lock an
-  operator out.
+  `PHX_HOST`, `PHX_SCHEME`, `POOL_SIZE`, `BIND_IP`, `WEBAUTHN_RP_ID` — are
+  deliberately absent from `@defaults` and rejected by `set/2`: putting them
+  behind a console login is either circular (the login depends on them) or a
+  way to lock whoever runs this instance out.
   """
 
   alias You.Settings.Setting
@@ -67,14 +67,18 @@ defmodule You.Settings do
 
   Bootstrap or key material: `DATABASE_PATH` names the file the console runs
   against, `SECRET_KEY_BASE`/`JWT_*` sign the sessions and tokens a console
-  login depends on, and `PHX_HOST`/`PHX_SCHEME`/`POOL_SIZE`/`BIND_IP` shape
-  how the instance is reached at all. `set/2` rejects these atoms outright, so
-  a future key added under one of these names cannot become console-editable
+  login depends on, `PHX_HOST`/`PHX_SCHEME`/`POOL_SIZE`/`BIND_IP` shape how
+  the instance is reached at all, and `WEBAUTHN_RP_ID` is the value a login
+  depends on for the same reason `PHX_HOST` is: it names what a passkey was
+  registered against, and changing it strands every credential already
+  issued, in both directions — a deployment operation with a maintenance
+  window, not a console toggle. `set/2` rejects these atoms outright, so a
+  future key added under one of these names cannot become console-editable
   by accident.
   """
   @forbidden_keys ~w(
     database_path secret_key_base jwt_signing_key jwt_key_id jwt_previous_keys
-    phx_host phx_scheme pool_size bind_ip
+    phx_host phx_scheme pool_size bind_ip webauthn_rp_id
   )a
 
   def forbidden_keys, do: @forbidden_keys

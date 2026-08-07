@@ -1,6 +1,15 @@
 defmodule YouWeb.Endpoint do
   use Phoenix.Endpoint, otp_app: :you
 
+  # No `:domain` — the cookie is host-local to whichever host served the
+  # login, on purpose, and there is deliberately no environment variable to
+  # widen it. A domain shared with other app hosts would be writable, not
+  # just readable, by every one of them (cookie tossing can fixate a
+  # session), it would make the session-derived CSRF token valid across every
+  # host sharing it, and `same_site: "Lax"` does not compensate — sibling
+  # subdomains are already same-site to the browser. The accepted cost is
+  # that signing in on one host does not carry to another; see CONTEXT.md's
+  # "You Session" entry.
   @session_options [
     store: :cookie,
     key: "_you_key",

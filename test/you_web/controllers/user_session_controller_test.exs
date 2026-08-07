@@ -320,6 +320,28 @@ defmodule YouWeb.UserSessionControllerTest do
     end
   end
 
+  # config/test.exs pins the WebAuthn RP ID to "example.com". A subdomain of
+  # it (the default ConnTest host, "www.example.com") is the canonical case
+  # every other test in this file already exercises; these cover the host
+  # that falls outside the RP ID's zone.
+  describe "passkey availability by host (WEBAUTHN_RP_ID)" do
+    test "a host outside the configured RP ID's zone omits the passkey control", %{conn: conn} do
+      conn = %{conn | host: "example.org"}
+
+      html = conn |> get(~p"/users/log-in") |> html_response(200)
+
+      refute html =~ ~s(id="passkey-login")
+    end
+
+    test "a host under the configured RP ID keeps the passkey control", %{conn: conn} do
+      conn = %{conn | host: "demo.example.com"}
+
+      html = conn |> get(~p"/users/log-in") |> html_response(200)
+
+      assert html =~ ~s(id="passkey-login")
+    end
+  end
+
   describe "per-app theme mode" do
     test "an app pinned to dark forces it at the document root", %{conn: conn} do
       {:ok, app, _} =

@@ -241,8 +241,17 @@ if config_env() == :prod do
 
   # Passkeys bind to an exact origin, so the port is omitted only when it is
   # the scheme's default.
+  #
+  # WEBAUTHN_RP_ID pins the relying-party ID rather than deriving it from the
+  # origin (`:auto`'s behaviour): with per-app hostnames, `:auto` would derive
+  # a different RP ID per host, and a passkey registered on one would not
+  # work on another. Unset reproduces exactly what `:auto` derives today
+  # (this instance's own host), so a single-host deployment is unchanged.
+  # Environment-only — see `You.Settings.forbidden_keys/0` — because changing
+  # it strands every passkey already registered, in both directions; that is
+  # a deployment operation with a maintenance window, not a console toggle.
   config :wax_,
     origin:
       "#{scheme}://#{host}#{if url_port == String.to_integer(default_url_port), do: "", else: ":#{url_port}"}",
-    rp_id: :auto
+    rp_id: env.("WEBAUTHN_RP_ID") || host
 end

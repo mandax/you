@@ -38,7 +38,11 @@ config :phoenix,
 config :you, :audit, enabled: false
 config :you, :audit_webhook_url, nil
 
-config :wax_, origin: "http://localhost:4002", rp_id: :auto
+# "example.com" rather than the request-independent localhost origin above:
+# ConnTest's default request host is "www.example.com", and pinning the RP ID
+# here exercises the same registrable-suffix check a real deployment relies
+# on (You.WebAuthn.available_for_host?/1) instead of masking it with `:auto`.
+config :wax_, origin: "http://localhost:4002", rp_id: "example.com"
 
 # No network in tests — the Pwned Passwords check is exercised via its pure parser.
 config :you, check_pwned_passwords: false

@@ -83,4 +83,33 @@ defmodule YouWeb.WebAuthnControllerTest do
       assert error =~ "not available"
     end
   end
+
+  # config/test.exs pins the WebAuthn RP ID to "example.com". The default
+  # ConnTest host ("www.example.com") is a subdomain of it, which is what the
+  # rest of this file's requests exercise — the canonical, qualifying host.
+  # These cover the boundary: a host outside the RP ID's zone is refused
+  # rather than served a mismatched ceremony.
+  describe "passkey availability by host" do
+    test "a host under the configured RP ID is offered passkeys", %{conn: conn} do
+      conn = %{conn | host: "demo.example.com"}
+
+      assert %{"publicKey" => %{"challenge" => _}} =
+               conn
+               |> init_test_session(callback_url: nil)
+               |> post(~p"/users/log-in/passkey/start", %{})
+               |> json_response(200)
+    end
+
+    test "a host outside the configured RP ID's zone is refused", %{conn: conn} do
+      conn = %{conn | host: "example.org"}
+
+      assert %{"error" => error} =
+               conn
+               |> init_test_session(callback_url: nil)
+               |> post(~p"/users/log-in/passkey/start", %{})
+               |> json_response(403)
+
+      assert error =~ "not available"
+    end
+  end
 end
