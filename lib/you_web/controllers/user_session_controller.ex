@@ -183,7 +183,7 @@ defmodule YouWeb.UserSessionController do
         email: user.email,
         method: "password",
         result: :success,
-        host: conn.host
+        request_host: conn.host
       })
 
       YouWeb.SecondFactor.complete_login(conn, user, "Welcome back!", user_params)
@@ -192,7 +192,7 @@ defmodule YouWeb.UserSessionController do
         email: email,
         method: "password",
         result: :failure,
-        host: conn.host
+        request_host: conn.host
       })
 
       form = Phoenix.Component.to_form(user_params, as: "user")
@@ -345,7 +345,7 @@ defmodule YouWeb.UserSessionController do
             email: user.email,
             method: "recovery_code",
             result: :success,
-            host: conn.host
+            request_host: conn.host
           })
 
           conn
@@ -359,7 +359,7 @@ defmodule YouWeb.UserSessionController do
             email: user.email,
             method: "recovery_code",
             result: :failure,
-            host: conn.host
+            request_host: conn.host
           })
 
           render(
@@ -455,13 +455,18 @@ defmodule YouWeb.UserSessionController do
 
   # The second factor gets its own audit event so a login and the TOTP step
   # that gated it stay distinguishable in the log.
+  #
+  # `request_host` here (and on every `:login` audit event) is `conn.host`
+  # straight off the Host header — recorded as "what was seen," not
+  # validated against anything. Never build a URL from an audit event's
+  # `request_host`; use `YouWeb.RequestURL` instead, which allowlists it.
   defp audit_totp(conn, user, result) do
     :telemetry.execute([:you, :audit, :login, :totp], %{}, %{
       user_id: user.id,
       email: user.email,
       method: "totp",
       result: result,
-      host: conn.host
+      request_host: conn.host
     })
   end
 

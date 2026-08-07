@@ -39,6 +39,17 @@ of them at once.
   instance no longer has (a feature you turned off, a mode you left) now
   answers honestly rather than looking like it worked.
 
+### Fixed
+
+- **Closed a reset/magic-link poisoning vector introduced earlier in this
+  unreleased branch** (never in a released version): host-aware email link
+  building briefly trusted the request's `Host` header directly, so a forged
+  `Host` on `/users/reset-password` or `/users/log-in` could have emailed a
+  live token — a full authentication credential in the magic-link case —
+  pointing at an attacker-chosen host. `YouWeb.RequestURL` now only ever
+  uses a request host that is on an allowlist (the canonical host, today)
+  and falls back to canonical for anything else.
+
 ## 0.4.0 — Per-app context, invitations, guests, and auth hardening
 
 ### Requires your attention

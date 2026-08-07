@@ -1,18 +1,25 @@
 defmodule YouWeb.RequestHostTest do
   @moduledoc """
-  Groundwork for per-app hostnames (#121): every user-facing link You emails
-  or hands a LiveView builds against the host the flow started on, not the
-  instance-wide canonical host — because sessions are host-local, and a link
-  pointing at a different host lands the user in a different session.
+  `YouWeb.RequestURL` builds every user-facing email link (magic link,
+  confirmation, password reset, email change, invitation) on the host a
+  request arrived on — but only when that host is allowlisted, never because
+  it showed up in the `Host` header.
 
-  Today there is exactly one host, so these tests set the request host
-  explicitly to prove the plumbing threads it through correctly, ahead of
-  #121 giving apps their own hostnames.
+  That distinction is the point of this file. `conn.host` is attacker
+  controlled: without the allowlist, a forged `Host` on `POST
+  /users/reset-password` would email a *live* reset token pointing at a host
+  the attacker runs, and the same forgery on the magic-link path would do it
+  to a token that is not a reset step but a full authentication credential —
+  one click is account takeover, not merely a broken-looking email.
 
-  Two categories are pinned to the canonical host on purpose and are
-  asserted to *ignore* the request host: the federated `redirect_uri`
-  (registered with upstream providers against the canonical host) and the
-  machine endpoints (`iss`, JWKS, discovery, the token endpoint).
+  Today `YouWeb.RequestURL.allowed_hosts/0` is exactly the canonical host, so
+  there is no *allowed* non-canonical host to prove the pass-through case
+  with yet — that arrives with #121 (per-app hostnames), which is meant to
+  extend the allowlist with hosts that resolve to a configured app, not with
+  whatever the header claims. Until then, every test below that used to
+  thread a distinct host through the flow instead asserts the fallback: a
+  forged (non-allowlisted) host must never appear in an emailed link, and
+  the canonical host must appear in its place.
   """
 
   use YouWeb.ConnCase, async: false
@@ -25,9 +32,12 @@ defmodule YouWeb.RequestHostTest do
   alias You.IdentityProviders
   alias You.JWT
 
-  @request_host "acme.example.com"
+  # Stands in for an attacker-forged `Host` header throughout this file. It
+  # must never appear in an emailed link.
+  @forged_host "evil.example.net"
 
-  defp with_request_host(conn), do: %{conn | host: @request_host}
+  defp with_forged_host(conn), do: %{conn | host: @forged_host}
+  defp with_canonical_host(conn), do: %{conn | host: YouWeb.Endpoint.host()}
 
   # `user_fixture/1` confirms its user via its own magic-link send, which
   # queues an unrelated {:email, _} message ahead of the one the test cares
@@ -40,71 +50,93 @@ defmodule YouWeb.RequestHostTest do
     end
   end
 
-  defp assert_email_url_host(host) do
+  defp emailed_url do
     assert_received {:email, email}
     [url] = Regex.run(~r{https?://[^\s]+}, email.text_body)
-    assert URI.parse(url).host == host
+    url
   end
 
-  describe "magic link login request" do
-    test "the emailed link carries the host the request arrived on", %{conn: conn} do
+  defp assert_email_url_is_canonical do
+    host = emailed_url() |> URI.parse() |> Map.fetch!(:host)
+    assert host == YouWeb.Endpoint.host()
+    refute host == @forged_host
+  end
+
+  describe "password reset — reset-poisoning guard" do
+    test "a forged Host never reaches the emailed reset link", %{conn: conn} do
       user = user_fixture()
       flush_mailbox()
 
       conn
-      |> with_request_host()
+      |> with_forged_host()
+      |> post(~p"/users/reset-password", %{"user" => %{"email" => user.email}})
+
+      assert_email_url_is_canonical()
+    end
+  end
+
+  describe "magic link login request — account-takeover guard" do
+    # The magic-link token is not a reset step, it *is* an authentication
+    # credential: clicking it logs the clicker in. A forged Host that
+    # survived into this link would hand the attacker a working login for
+    # the victim's account on the first click, so this test guards takeover,
+    # not merely a cosmetic URL.
+    test "a forged Host never reaches the emailed login link", %{conn: conn} do
+      user = user_fixture()
+      flush_mailbox()
+
+      conn
+      |> with_forged_host()
       |> post(~p"/users/log-in", %{"user" => %{"email" => user.email}})
 
-      assert_email_url_host(@request_host)
+      assert_email_url_is_canonical()
+    end
+  end
+
+  describe "the normal path" do
+    test "a request on the canonical host still gets a canonical link", %{conn: conn} do
+      user = user_fixture()
+      flush_mailbox()
+
+      conn
+      |> with_canonical_host()
+      |> post(~p"/users/log-in", %{"user" => %{"email" => user.email}})
+
+      assert_email_url_is_canonical()
     end
   end
 
   describe "registration confirmation" do
-    test "the emailed confirmation link carries the request host", %{conn: conn} do
+    test "a forged Host never reaches the emailed confirmation link", %{conn: conn} do
       email = unique_user_email()
 
       conn
-      |> with_request_host()
+      |> with_forged_host()
       |> post(~p"/users/register", %{"user" => valid_user_attributes(email: email)})
 
-      assert_email_url_host(@request_host)
-    end
-  end
-
-  describe "password reset" do
-    test "the emailed reset link carries the request host", %{conn: conn} do
-      user = user_fixture()
-      flush_mailbox()
-
-      conn
-      |> with_request_host()
-      |> post(~p"/users/reset-password", %{"user" => %{"email" => user.email}})
-
-      assert_email_url_host(@request_host)
+      assert_email_url_is_canonical()
     end
   end
 
   describe "email change" do
-    test "the emailed confirmation link carries the request host", %{conn: conn} do
+    test "a forged Host never reaches the emailed confirmation link", %{conn: conn} do
       user = user_fixture()
       flush_mailbox()
       conn = log_in_user(conn, user)
 
       conn
-      |> with_request_host()
+      |> with_forged_host()
       |> put(~p"/users/settings", %{
         "action" => "update_email",
         "user" => %{"email" => unique_user_email()}
       })
 
-      assert_email_url_host(@request_host)
+      assert_email_url_is_canonical()
     end
   end
 
   describe "invitations" do
-    test "the emailed acceptance link carries the host the console request arrived on", %{
-      conn: conn
-    } do
+    test "a forged Host never reaches the emailed acceptance link", %{conn: conn} do
       admin = user_fixture()
       flush_mailbox()
       Admin.promote_admin!(admin)
@@ -116,26 +148,26 @@ defmodule YouWeb.RequestHostTest do
           callback_url: "https://invite-host.example.com/cb"
         })
 
-      conn = conn |> with_request_host() |> log_in_user(admin)
+      conn = conn |> with_forged_host() |> log_in_user(admin)
       {:ok, lv, _html} = live(conn, ~p"/console/apps/#{app.slug}/members")
 
       render_submit(lv, "invite_member", %{"email" => unique_user_email(), "role" => "user"})
 
-      assert_email_url_host(@request_host)
+      assert_email_url_is_canonical()
     end
   end
 
   describe "machine endpoints ignore the request host" do
     test "discovery stays on the canonical host", %{conn: conn} do
-      conn = conn |> with_request_host() |> get(~p"/.well-known/openid-configuration")
+      conn = conn |> with_forged_host() |> get(~p"/.well-known/openid-configuration")
 
       assert %{"issuer" => issuer} = json_response(conn, 200)
       assert issuer == YouWeb.Endpoint.url()
-      refute issuer =~ @request_host
+      refute issuer =~ @forged_host
     end
 
     test "jwks is unaffected by the request host", %{conn: conn} do
-      conn = conn |> with_request_host() |> get(~p"/.well-known/jwks.json")
+      conn = conn |> with_forged_host() |> get(~p"/.well-known/jwks.json")
 
       assert %{"keys" => [_ | _]} = json_response(conn, 200)
     end
@@ -154,13 +186,13 @@ defmodule YouWeb.RequestHostTest do
 
       conn =
         conn
-        |> with_request_host()
+        |> with_forged_host()
         |> post(~p"/oauth/token", code: code, client_id: app.slug, client_secret: secret)
 
       assert %{"id_token" => id_token} = json_response(conn, 200)
       assert {:ok, claims} = JWT.verify(id_token)
       assert claims["iss"] == YouWeb.Endpoint.url()
-      refute claims["iss"] =~ @request_host
+      refute claims["iss"] =~ @forged_host
     end
   end
 
@@ -181,12 +213,12 @@ defmodule YouWeb.RequestHostTest do
     test "the authorize redirect's redirect_uri stays on the canonical host", %{conn: conn} do
       {:ok, _provider} = IdentityProviders.create_provider(@google_attrs)
 
-      conn = conn |> with_request_host() |> get(~p"/auth/google")
+      conn = conn |> with_forged_host() |> get(~p"/auth/google")
 
       location = redirected_to(conn, 302)
       redirect_uri = URI.decode_query(URI.parse(location).query) |> Map.fetch!("redirect_uri")
 
-      refute URI.parse(redirect_uri).host == @request_host
+      refute URI.parse(redirect_uri).host == @forged_host
       assert URI.parse(redirect_uri).host == URI.parse(YouWeb.Endpoint.url()).host
     end
   end
@@ -195,8 +227,8 @@ defmodule YouWeb.RequestHostTest do
     # Exercises the full callback: a github-kind provider (no userinfo
     # endpoint) routed through its own adapter, backed by a local Bandit
     # server standing in for GitHub. Confirms login still completes when the
-    # request that started the flow carries a non-canonical host.
-    test "still completes with a non-canonical request host", %{conn: conn} do
+    # request that started the flow carries a forged host.
+    test "still completes with a forged request host", %{conn: conn} do
       test_pid = self()
       port = 45_962
 
@@ -244,7 +276,7 @@ defmodule YouWeb.RequestHostTest do
 
       conn =
         conn
-        |> with_request_host()
+        |> with_forged_host()
         |> init_test_session(oidc_state: "st", oidc_provider: "github")
         |> get(~p"/auth/github/callback", %{"code" => "c", "state" => "st"})
 
