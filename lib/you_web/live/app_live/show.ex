@@ -445,7 +445,7 @@ defmodule YouWeb.AppLive.Show do
   attr :app, :map, required: true
 
   defp overview_tab(assigns) do
-    assigns = assign(assigns, :hostname_preview, hostname_preview(assigns.app))
+    assigns = assign(assigns, :hostname_status, hostname_status(assigns.app))
 
     ~H"""
     <.panel title="Identity and URLs" description="How the app is registered with You.">
@@ -466,12 +466,33 @@ defmodule YouWeb.AppLive.Show do
           value={@app.hostname_label}
           placeholder={@app.slug}
         />
-        <p :if={@hostname_preview} class="text-xs text-muted-foreground">
-          Serves this app's login pages at <span class="font-mono">{@hostname_preview}</span>.
-        </p>
-        <p :if={!@hostname_preview} class="text-xs text-muted-foreground">
-          Blank keeps this app on the canonical host, exactly as today. Does not change the
-          client_id — see Credentials.
+        <div class="text-xs text-muted-foreground">
+          <%= case @hostname_status do %>
+            <% {:active, hostname} -> %>
+              <div class="flex items-center gap-2">
+                <span>
+                  Serves this app's login pages at <span class="font-mono text-foreground">{hostname}</span>.
+                </span>
+                <.copy_button id="copy-app-hostname" value={hostname} label="Copy" />
+              </div>
+            <% {:pending, label} -> %>
+              <p>
+                Hostname label <span class="font-mono text-foreground">{label}</span>
+                is saved, but per-app hostnames are not active on this instance yet — that
+                needs the "Per-app hostnames" feature and a hostname template, both set under
+                Settings → Deployment. Until then this app stays on the canonical host.
+              </p>
+            <% :blank -> %>
+              <p>
+                Blank. Reachable only on the canonical host
+                (<span class="font-mono text-foreground">{You.Hosting.canonical_host()}</span>),
+                with <span class="font-mono text-foreground">?app={@app.slug}</span>
+                as a fallback for previewing without DNS.
+              </p>
+          <% end %>
+        </div>
+        <p class="text-xs text-muted-foreground">
+          Does not change the client_id — see Credentials.
         </p>
         <.input
           type="checkbox"
@@ -552,14 +573,18 @@ defmodule YouWeb.AppLive.Show do
 
   defp claims_json(_app), do: ""
 
-  # nil when the app has no label, or when the feature/template that would
-  # make the label resolve to anything isn't fully configured — a label
-  # sitting on the row unused is not "serving this app" yet.
-  defp hostname_preview(%{hostname_label: label}) when is_binary(label) do
-    if You.Hosting.enabled?(), do: You.Hosting.render_hostname(label)
+  # `:blank` covers no label at all. A label with resolution not fully
+  # configured (`You.Hosting.enabled?/0` false — feature off, or no valid
+  # template) is `:pending` rather than folded into `:blank`: the row has a
+  # saved value that just isn't serving anything yet, which is a different
+  # fact for an admin than never having set one.
+  defp hostname_status(%{hostname_label: label}) when is_binary(label) and label != "" do
+    if You.Hosting.enabled?(),
+      do: {:active, You.Hosting.render_hostname(label)},
+      else: {:pending, label}
   end
 
-  defp hostname_preview(_app), do: nil
+  defp hostname_status(_app), do: :blank
 
   # An empty box means "no extra claims", stored as an empty object rather
   # than left as whatever the app had before.

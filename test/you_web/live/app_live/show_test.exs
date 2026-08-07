@@ -107,6 +107,61 @@ defmodule YouWeb.AppLive.ShowTest do
     end
   end
 
+  describe "hostname status" do
+    defp enable_hostnames!(template \\ "{label}.example.com") do
+      Application.put_env(:you, :app_hostname_template, template)
+      You.Settings.set(:feature_app_hostnames, true)
+
+      on_exit(fn ->
+        You.Settings.set(:feature_app_hostnames, false)
+        Application.delete_env(:you, :app_hostname_template)
+      end)
+    end
+
+    test "no label: states the canonical host and the ?app= fallback, no copy button", %{
+      conn: conn,
+      app: app
+    } do
+      refute app.hostname_label
+
+      {:ok, _lv, html} = live(conn, ~p"/console/apps/#{app.slug}")
+
+      assert html =~ "Reachable only on the canonical host"
+      assert html =~ You.Hosting.canonical_host()
+      assert html =~ "?app=#{app.slug}"
+      refute html =~ "copy-app-hostname"
+    end
+
+    test "label saved but resolution not enabled: says so, does not claim a live hostname", %{
+      conn: conn,
+      app: app
+    } do
+      {:ok, app} = Admin.update_app(app, %{"hostname_label" => "edit"})
+      refute You.Hosting.enabled?()
+
+      {:ok, _lv, html} = live(conn, ~p"/console/apps/#{app.slug}")
+
+      assert html =~ "not active on this instance yet"
+      assert html =~ "edit"
+      refute html =~ "Serves this app&#39;s login pages at"
+      refute html =~ "copy-app-hostname"
+    end
+
+    test "label saved and resolution enabled: shows and offers to copy the resolved hostname", %{
+      conn: conn,
+      app: app
+    } do
+      enable_hostnames!()
+      {:ok, app} = Admin.update_app(app, %{"hostname_label" => "edit"})
+
+      {:ok, _lv, html} = live(conn, ~p"/console/apps/#{app.slug}")
+
+      assert html =~ "edit.example.com"
+      assert html =~ "copy-app-hostname"
+      refute html =~ "not active on this instance"
+    end
+  end
+
   describe "login branding" do
     test "sets and clears branding", %{conn: conn, app: app} do
       {:ok, lv, _} = live(conn, ~p"/console/apps/#{app.slug}/login")

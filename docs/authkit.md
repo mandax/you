@@ -40,10 +40,19 @@ GET /users/log-in
 > The plain method is not supported; failing to send a challenge results in a
 > non-PKCE code that still works but with weaker security.
 
+> Some instances also serve login pages on a hostname of their own per app
+> (`acme.example.com` instead of `?app=acme` on You's own address). If yours
+> does, your users may land there instead of on the operator's canonical
+> host — that doesn't change anything above; `callback_url` still identifies
+> your app the same way. See [app-hostnames.md](ops/app-hostnames.md) if
+> you're curious how that's decided.
+
 ### 1.2 User authenticates
 
 The user lands on You's login page (branded with your app's name, which You
-resolves from the callback URL). They authenticate with any supported method:
+resolves from the callback URL, or from the request's own hostname when this
+instance serves your app on its own — see the note above). They authenticate
+with any supported method:
 
 - **Password**,
 - **Magic link** (sent to their email),

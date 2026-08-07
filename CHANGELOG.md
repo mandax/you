@@ -134,6 +134,14 @@ of them at once.
   label that would render (through the configured template) to this
   instance's own canonical host is rejected at write time — that would be a
   takeover of the front door, not a naming collision.
+- **An app's page (#124) now states its actual hostname status**, not just
+  the label field: a saved label with per-app hostnames fully configured
+  shows the resolved hostname as a copyable value next to the form; a label
+  saved while the feature or template isn't configured says so explicitly
+  instead of silently behaving as if blank (the two used to render
+  identically); no label states plainly that the app is reachable only on
+  the canonical host, naming it, with `?app=<slug>` as the fallback for
+  previewing without DNS.
 - **`You.Hosting`**: the one place that answers "is this request host one of
   You's own, and if so which app" — `YouWeb.RequestURL.allowed_hosts/0`,
   `check_origin`, and app resolution (`YouWeb.AuthMethods.app_for/1`) all
