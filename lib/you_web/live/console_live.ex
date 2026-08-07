@@ -143,8 +143,6 @@ defmodule YouWeb.ConsoleLive do
        settings_tabs: @settings_tabs,
        settings_tab: elem(hd(@settings_tabs), 0),
        node_name: Node.self(),
-       new_secret: nil,
-       secret_app: nil,
        audit_filter: "",
        audit_app_filter: "",
        webhook_secret: nil,
@@ -299,8 +297,6 @@ defmodule YouWeb.ConsoleLive do
 
   defp reset_section_state(socket) do
     assign(socket,
-      new_secret: nil,
-      secret_app: nil,
       webhook_secret: nil,
       webhook_endpoint: nil,
       editing_user: nil,
@@ -382,26 +378,9 @@ defmodule YouWeb.ConsoleLive do
   end
 
   # ── apps ──────────────────────────────────────────────────────
-  def handle_event("create_app", params, socket) do
-    case Admin.create_app(
-           Map.take(params, [
-             "name",
-             "slug",
-             "callback_url",
-             "launch_url",
-             "logo_url",
-             "brand_color",
-             "first_party"
-           ])
-         ) do
-      {:ok, app, secret} ->
-        {:noreply, socket |> load_apps() |> assign(new_secret: secret, secret_app: app)}
-
-      {:error, changeset} ->
-        {:noreply, put_flash(socket, :error, "Could not create app: #{error_summary(changeset)}")}
-    end
-  end
-
+  # Creation lives at its own page, `AppLive.New` (#130): it mints a client
+  # secret shown exactly once, and a dialog that closes on a stray click is
+  # a bad place for the only copy of a credential.
   def handle_event("delete_app", %{"id" => id}, socket) do
     # `Admin.delete_app/1` emits the audit event itself; a second one here
     # would record the same removal twice under two different shapes.
@@ -581,9 +560,6 @@ defmodule YouWeb.ConsoleLive do
         {:noreply, put_flash(socket, :error, "Role is not allowed for this app.")}
     end
   end
-
-  def handle_event("dismiss_secret", _params, socket),
-    do: {:noreply, assign(socket, new_secret: nil, secret_app: nil)}
 
   # ── settings ──────────────────────────────────────────────────
   def handle_event("filter_apps", %{"query" => query}, socket) do
@@ -1130,12 +1106,7 @@ defmodule YouWeb.ConsoleLive do
             single_mode={@single_mode}
           />
         <% "apps" -> %>
-          <.apps_view
-            apps={search(@apps, @app_filter, [:name, :slug])}
-            app_filter={@app_filter}
-            new_secret={@new_secret}
-            secret_app={@secret_app}
-          />
+          <.apps_view apps={search(@apps, @app_filter, [:name, :slug])} app_filter={@app_filter} />
         <% "providers" -> %>
           <.providers_view
             providers={search(@providers, @provider_filter, [:display_name, :slug])}
@@ -1550,45 +1521,15 @@ defmodule YouWeb.ConsoleLive do
   # ── section: apps ─────────────────────────────────────────────
   attr :apps, :list, required: true
   attr :app_filter, :string, default: ""
-  attr :new_secret, :string, default: nil
-  attr :secret_app, :map, default: nil
 
   defp apps_view(assigns) do
     ~H"""
     <div class="space-y-4">
       <div class="flex items-center justify-between">
         <span class="font-mono text-xs text-muted-foreground">{length(@apps)} apps</span>
-        <.dialog id="new-app">
-          <:trigger>
-            <.button size="sm"><span class="lucide-plus size-4 block" /> New app</.button>
-          </:trigger>
-          <:title>Register app</:title>
-          <:description>A client secret is generated and shown once on creation.</:description>
-          <form phx-submit="create_app" class="space-y-4">
-            <.input type="text" name="name" label="Name" value="" required />
-            <.input type="text" name="slug" label="Slug (client_id)" value="" required />
-            <.input type="url" name="callback_url" label="Callback URL" value="" required />
-            <.input type="url" name="launch_url" label="Launch URL (optional)" value="" />
-            <.input type="url" name="logo_url" label="Logo URL (optional)" value="" />
-            <.input
-              type="text"
-              name="brand_color"
-              label="Brand color (optional)"
-              value=""
-              placeholder="#7c3aed"
-            />
-            <.input
-              type="checkbox"
-              name="first_party"
-              label="First-party app"
-              value="true"
-              checked={false}
-            />
-            <div class="flex justify-end">
-              <.button type="submit">Create</.button>
-            </div>
-          </form>
-        </.dialog>
+        <.link navigate={~p"/console/apps/new"}>
+          <.button size="sm"><span class="lucide-plus size-4 block" /> New app</.button>
+        </.link>
       </div>
 
       <.list_search
@@ -1635,25 +1576,6 @@ defmodule YouWeb.ConsoleLive do
           </td>
         </tr>
       </.data_table>
-
-      <.dialog id="app-secret" open={@new_secret != nil} on_close="dismiss_secret">
-        <:title>Client secret</:title>
-        <:description>Copy this now. It is hashed at rest and never shown again.</:description>
-        <div :if={@new_secret} class="space-y-3">
-          <div class="rounded-md border border-border bg-background px-3 py-2 font-mono text-xs break-all text-primary">
-            {@new_secret}
-          </div>
-          <div class="flex items-center justify-between">
-            <span :if={@secret_app} class="font-mono text-xs text-muted-foreground">
-              client_id: {@secret_app.slug}
-            </span>
-            <.copy_button id="copy-secret" value={@new_secret} label="Copy secret" />
-          </div>
-        </div>
-        <:footer>
-          <.button variant="outline" phx-click="dismiss_secret">Done</.button>
-        </:footer>
-      </.dialog>
     </div>
     """
   end

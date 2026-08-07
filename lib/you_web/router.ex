@@ -97,8 +97,12 @@ defmodule YouWeb.Router do
   #     resolves as the `apps` *view* with a tab named `solo` instead of the
   #     per-app page.
   #   - `/apps/new` (app creation, #130) must precede `/apps/:slug`, or
-  #     `new` is read as a slug — not declared here since that page does not
-  #     exist yet; #130 must insert it above `/apps/:slug` when it lands.
+  #     `new` is read as a slug rather than the registration page. #119's
+  #     slug format would otherwise allow an app literally slugged `new`,
+  #     which would then have no address of its own — resolved by reserving
+  #     `new` in `You.Admin.App.changeset/2` (`@reserved_slugs`), not by
+  #     routing tricks, so the rejection is a validation error rather than a
+  #     page that silently becomes unreachable.
   #
   # Consequence to accept: the apps registry can never have tabs of its own,
   # since `/console/apps/<x>` is already claimed by the per-app page. That is
@@ -108,6 +112,7 @@ defmodule YouWeb.Router do
 
     live_session :admin, on_mount: {YouWeb.UserAuth, :default} do
       live "/", ConsoleLive, :index
+      live "/apps/new", AppLive.New, :new
       live "/apps/:slug", AppLive.Show, :show
       live "/apps/:slug/:tab", AppLive.Show, :show
       live "/:view", ConsoleLive, :index

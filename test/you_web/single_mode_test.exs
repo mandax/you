@@ -296,7 +296,7 @@ defmodule YouWeb.SingleModeTest do
       {:ok, _lv, apps_html} = live(conn, ~p"/console/apps")
       {:ok, _lv, users_html} = live(conn, ~p"/console/users")
 
-      assert apps_html =~ "Register app"
+      assert apps_html =~ ~s(href="/console/apps/new")
       assert users_html =~ "all apps"
     end
   end

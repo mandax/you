@@ -24,14 +24,22 @@ defmodule YouWeb.AppLive.Show do
 
   @impl true
   def mount(%{"slug" => slug}, _session, socket) do
+    # `AppLive.New` (#130) hands off a freshly minted secret through the
+    # flash rather than a query param or session write, since neither of
+    # those survives a `push_navigate` to a different LiveView the way flash
+    # is built to. Landing straight on the credentials tab is what makes the
+    # secret visible without an extra click — the dialog that shows it only
+    # renders as part of that tab.
+    new_secret = socket.assigns.flash["new_app_secret"]
+
     {:ok,
      socket
      |> assign(
        nav: nav(),
        node_name: Node.self(),
        tabs: @tabs,
-       tab: "overview",
-       new_secret: nil,
+       tab: if(new_secret, do: "credentials", else: "overview"),
+       new_secret: new_secret,
        selected: MapSet.new(),
        preview_theme: "light",
        providers: You.IdentityProviders.list_enabled_providers(),
@@ -42,7 +50,7 @@ defmodule YouWeb.AppLive.Show do
 
   @impl true
   def handle_params(params, _uri, socket) do
-    tab = params["tab"] || "overview"
+    tab = params["tab"] || socket.assigns.tab
     tab = if List.keymember?(@tabs, tab, 0), do: tab, else: "overview"
     {:noreply, assign(socket, tab: tab)}
   end
