@@ -59,6 +59,13 @@ of them at once.
 
 ### Added
 
+- **The Emails section is now tabbed, one template per tab,** addressed at
+  `/console/emails/:tab` — the same standard `/console/settings/:tab` and
+  `/console/apps/:slug/:tab` already follow. It used to render all six
+  templates as stacked forms on one scrolling page; now only the template
+  you're looking at is on screen, and each keeps its own default badge and
+  "Reset to default" action. Tab labels and order still come straight from
+  `EmailTemplates.definitions/0`, so a new template gets a tab automatically.
 - **Email links follow the host a flow started on, when that host is one
   You knows about.** Magic link, confirmation, password reset, email-change
   and invitation links now build against an allowlisted request host
