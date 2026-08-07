@@ -301,6 +301,25 @@ defmodule You.Admin do
   end
 
   @doc """
+  Apps whose `hostname_label` would render, under the *currently configured*
+  `APP_HOSTNAME_TEMPLATE`, to this instance's own canonical host — a
+  takeover of the front door, not a naming collision.
+
+  `App.changeset/2` refuses this at write time (`You.Hosting.
+  label_collides_with_canonical?/1`), but only against the template and
+  `PHX_HOST` in force at that moment. A label accepted before a template
+  was configured, or before `PHX_HOST` was renamed to what the label now
+  matches, is never re-checked — this is the same gap `mix you.audit_slugs`
+  closes for `slug` (#119), for the same reason: the write-time guard
+  cannot see a collision that didn't exist yet when it ran.
+  """
+  def apps_with_colliding_hostname_label do
+    list_apps()
+    |> Enum.filter(& &1.hostname_label)
+    |> Enum.filter(&You.Hosting.label_collides_with_canonical?(&1.hostname_label))
+  end
+
+  @doc """
   Fetches a single app by id, raising if it does not exist.
   """
   def get_app!(id), do: Repo.get!(App, id)
@@ -315,6 +334,17 @@ defmodule You.Admin do
   an ordinary outcome rather than a bug — a preview link someone edited, say.
   """
   def get_app_by_slug(slug) when is_binary(slug), do: Repo.get_by(App, slug: slug)
+
+  @doc """
+  Fetches a single app by its `hostname_label`, or nil.
+
+  Used by `You.Hosting.resolve/1` to turn a request host into an app. The
+  label a request host resolves to is always the lowercase form
+  `App.changeset/2` enforces, so this is a plain equality lookup — no
+  case-folding needed on either side.
+  """
+  def get_app_by_hostname_label(label) when is_binary(label),
+    do: Repo.get_by(App, hostname_label: label)
 
   @doc """
   How long the JWTs issued for `app` live, in seconds.

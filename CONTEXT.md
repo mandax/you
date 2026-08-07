@@ -41,7 +41,11 @@ A service that integrates with You for authentication. Each app has an API key f
 _Avoid_: Service, client, integration
 
 **App hostname**:
-The hostname a given app's browser-facing auth pages are served on, derived from its slug rather than configured per app. Replaces `?app=<slug>` as the way You knows which app a flow belongs to (#121).
+The hostname a given app's browser-facing auth pages are served on: `hostname_label` (a nullable column on the app, DNS-label constrained, unique, empty by default) spliced into the console-configured hostname template. Deliberately **not** derived from `slug` — the slug is the OAuth `client_id`, and tying a cosmetic hostname to a protocol identifier would mean the public hostname can't change without breaking every consumer's configuration. Replaces `?app=<slug>` as the primary way You knows which app a flow belongs to, with `?app=` kept as a fallback for an app with no label (#121).
+
+Gated by two console-owned settings that must both be set — `feature_app_hostnames` and the template — or behaviour is byte-identical to today. Resolution (`You.Hosting`, the one place that decides whether a request host is canonical, a recognised app, or neither) and the routing rules below share that one gate, so resolution cannot go live without the rules that keep an app host from also answering as an alternate issuer.
+
+A request `Host` that resolves to no app is never branded — it serves You's own unbranded pages — because resolution runs only against labels You holds, never the header alone: anything pointing DNS at the instance otherwise gets to choose which app's branding and sign-in methods it's shown.
 
 **The pattern is a dedicated domain for You** (#125). Canonical host at `id.<domain>`; app hosts at `<slug>.<domain>`. Chosen over hanging app hosts off an existing shared domain because You is its own thing rather than one service among several, and over nesting them two labels deep under the canonical host because that needs a paid certificate add-on where a dedicated registration does not.
 
@@ -50,7 +54,7 @@ Two consequences follow from that choice and are load-bearing:
 - **Passkeys work on app hosts.** `WEBAUTHN_RP_ID` is the domain, of which every app host is a registrable suffix, so a credential registered on one host is usable on the others. This is the reason `You.WebAuthn` gates on a suffix check rather than on host equality (#120).
 - **Sessions do not follow.** The session cookie is host-local by construction, so signing in on one app host does not sign you in on another. Accepted deliberately: a widened cookie would let any host in the zone set it (cookie tossing) and would widen the CSRF token with it. Anything that must cross hosts carries its state explicitly instead — see #123 and the federated login flow (#132).
 
-Machine endpoints stay on the canonical host regardless: `iss`, JWKS, discovery, and the token endpoint are contracts consumers pin.
+Machine endpoints stay on the canonical host regardless: `iss`, JWKS, discovery, and the token endpoint are contracts consumers pin. Discovery and JWKS 302 to canonical; the token/introspect/revoke endpoints refuse a non-canonical request with a 4xx instead, since a redirect on a POST is not safe for most OAuth clients to follow. `/console` and `/users/settings/*` also redirect to canonical — You's own surfaces, not an app's (#123).
 
 **Identity Provider**:
 An upstream OIDC or non-OIDC service (Google, Microsoft, GitHub, Discord, etc.) that users can authenticate through. Each provider has its own row in the `identity_providers` table with an encrypted `client_secret`, editable at runtime rather than through config. Providers were migrated from `config :you, :oidc_providers` (which is still seeded on boot for backward compatibility). Non-OIDC providers (GitHub, Discord) route through dedicated adapters instead of the generic userinfo fetch.

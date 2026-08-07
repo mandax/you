@@ -3,6 +3,15 @@ import Config
 # Address the dev endpoint binds to. Loopback unless BIND_IP says otherwise —
 # set BIND_IP=0.0.0.0 to reach the dev server from another machine on the LAN.
 # Dev has no auth on the admin unless configured, so only expose on trusted nets.
+#
+# Reaching the dev server by a LAN IP or Tailscale hostname also needs
+# PHX_HOST set to that same address: `check_origin` (`config/config.exs`)
+# now checks every environment's WebSocket handshake against
+# `You.Hosting.own_host?/1`, which is `YouWeb.Endpoint.host/0` — i.e.
+# PHX_HOST — unless per-app hostnames are configured. Visiting the page over
+# BIND_IP=0.0.0.0 without also setting PHX_HOST renders static markup and
+# then never connects a LiveView socket, the exact failure #121's
+# `check_origin` fix exists to prevent on an app host.
 bind_ip =
   System.get_env("BIND_IP", "127.0.0.1")
   |> String.to_charlist()
@@ -25,7 +34,6 @@ config :you, You.Repo,
 # debugging and code reloading.
 config :you, YouWeb.Endpoint,
   http: [ip: bind_ip],
-  check_origin: false,
   code_reloader: true,
   debug_errors: true,
   secret_key_base: "/IDzX034gJzQ59Uip5jFFMqOSZp5Lkgds2vm1W/1YlvJ9zqeofy3xmnj0JnDPltr",

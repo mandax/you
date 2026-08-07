@@ -212,6 +212,101 @@ defmodule You.AdminTest do
     end
   end
 
+  # #121: `hostname_label` is a nullable, DNS-label-constrained column kept
+  # apart from `slug` (see `You.Admin.App`'s moduledoc). These pin the
+  # format rule, the default (nil, never auto-filled from `slug`), and the
+  # canonical-collision guard the milestone re-review added.
+  describe "hostname_label" do
+    alias You.Admin.App
+
+    @valid_attrs %{slug: "hlapp", name: "HL App", callback_url: "https://hlapp.example.com/cb"}
+
+    test "nil by default, and not auto-filled from slug" do
+      assert {:ok, app, _secret} = Admin.create_app(@valid_attrs)
+      assert app.hostname_label == nil
+    end
+
+    test "accepts a well-formed single DNS label" do
+      for label <- ["acme", "acme-2", "a", String.duplicate("a", 63)] do
+        changeset =
+          App.changeset(%App{}, Map.put(@valid_attrs, :hostname_label, label))
+
+        assert changeset.valid?,
+               "expected #{inspect(label)} to be valid: #{inspect(errors_on(changeset))}"
+      end
+    end
+
+    test "rejects a label with characters or shape a DNS label disallows" do
+      for label <- [
+            "ACME",
+            "acme.com",
+            "acme_co",
+            "-acme",
+            "acme-",
+            "ac me",
+            String.duplicate("a", 64)
+          ] do
+        changeset = App.changeset(%App{}, Map.put(@valid_attrs, :hostname_label, label))
+        refute changeset.valid?, "expected #{inspect(label)} to be invalid"
+        assert [_ | _] = errors_on(changeset).hostname_label
+      end
+    end
+
+    test "blank normalizes to nil rather than an empty string" do
+      {:ok, app, _secret} = Admin.create_app(Map.put(@valid_attrs, :hostname_label, "acme-blank"))
+      assert {:ok, updated} = Admin.update_app(app, %{"hostname_label" => ""})
+      assert updated.hostname_label == nil
+    end
+
+    test "must be unique" do
+      assert {:ok, _app, _} =
+               Admin.create_app(Map.put(@valid_attrs, :hostname_label, "taken"))
+
+      other_attrs =
+        %{@valid_attrs | slug: "hlapp2", callback_url: "https://hlapp2.example.com/cb"}
+        |> Map.put(:hostname_label, "taken")
+
+      assert {:error, changeset} = Admin.create_app(other_attrs)
+      assert "has already been taken" in errors_on(changeset).hostname_label
+    end
+
+    test "renaming a slug does not touch hostname_label" do
+      {:ok, app, _} = Admin.create_app(Map.put(@valid_attrs, :hostname_label, "stable"))
+      {:ok, updated} = Admin.update_app(app, %{"name" => "Renamed"})
+      assert updated.hostname_label == "stable"
+    end
+
+    # The milestone re-review: a label whose *rendered* hostname equals the
+    # canonical host would let an app take over the instance's own front
+    # door. Computed from the current template at write time, not a
+    # hard-coded name.
+    # The canonical host itself (`www.example.com` in test config) is not a
+    # valid single DNS label — it has to be split into a label and a
+    # template that renders back to it, the same shape a real deployment's
+    # `{label}.example.com` template and canonical `PHX_HOST` would take.
+    defp label_and_template_for_canonical do
+      [label, suffix] = YouWeb.Endpoint.host() |> String.split(".", parts: 2)
+      {label, "{label}." <> suffix}
+    end
+
+    test "rejects a label that would render to the canonical host" do
+      {label, template} = label_and_template_for_canonical()
+      Application.put_env(:you, :app_hostname_template, template)
+      on_exit(fn -> Application.delete_env(:you, :app_hostname_template) end)
+
+      changeset = App.changeset(%App{}, Map.put(@valid_attrs, :hostname_label, label))
+      refute changeset.valid?
+
+      assert "would resolve to this instance's own canonical host" in errors_on(changeset).hostname_label
+    end
+
+    test "the same label is accepted with no template configured to collide against" do
+      {label, _template} = label_and_template_for_canonical()
+      changeset = App.changeset(%App{}, Map.put(@valid_attrs, :hostname_label, label))
+      assert changeset.valid?
+    end
+  end
+
   describe "app branding" do
     alias You.Admin.App
 

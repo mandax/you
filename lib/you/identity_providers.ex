@@ -217,10 +217,12 @@ defmodule You.IdentityProviders do
   keys — every read misses, `ctx["callback_url"]` is `nil`, and the flow
   fails closed with no error to point at why.
 
-  Not yet linked from anywhere a user can reach: today `/auth/:provider`
-  always has a same-host session to read `ctx` from instead, so no caller
-  mints one. Kept here, and consumed by `verify_ctx/1` when present, so #121
-  only has to change where the social button links.
+  Minted by `UserSessionController.social_ctx/1` for the social sign-in
+  button on an app host (#121) — a page served off canonical has no
+  same-host session for `/auth/:provider` to read `ctx` from directly, so
+  the button carries it signed instead. On the canonical host `ctx` is
+  still absent from the link and `resolve_ctx/2` falls back to the session,
+  as it always has.
   """
   def sign_ctx(attrs) when is_map(attrs) do
     normalized = Map.new(attrs, fn {key, value} -> {to_string(key), value} end)

@@ -153,7 +153,7 @@
     >
       <.button
         :for={provider <- if("social" in @methods, do: ordered_providers(@providers), else: [])}
-        href={~p"/auth/#{provider.slug}"}
+        href={social_auth_href(provider.slug, assigns[:social_ctx])}
         variant="outline"
         class="w-full"
       >

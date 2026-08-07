@@ -51,7 +51,9 @@ defmodule YouWeb.AppLive.Show do
   @impl true
   def handle_event("update_app", params, socket) do
     socket.assigns.app
-    |> Admin.update_app(Map.take(params, ["name", "callback_url", "launch_url", "first_party"]))
+    |> Admin.update_app(
+      Map.take(params, ["name", "callback_url", "launch_url", "hostname_label", "first_party"])
+    )
     |> reload(socket, "App updated.")
   end
 
@@ -443,6 +445,8 @@ defmodule YouWeb.AppLive.Show do
   attr :app, :map, required: true
 
   defp overview_tab(assigns) do
+    assigns = assign(assigns, :hostname_preview, hostname_preview(assigns.app))
+
     ~H"""
     <.panel title="Identity and URLs" description="How the app is registered with You.">
       <form id="app-overview-form" phx-submit="update_app" class="max-w-xl space-y-4">
@@ -455,6 +459,20 @@ defmodule YouWeb.AppLive.Show do
           required
         />
         <.input type="url" name="launch_url" label="Launch URL (optional)" value={@app.launch_url} />
+        <.input
+          type="text"
+          name="hostname_label"
+          label="Hostname label (optional)"
+          value={@app.hostname_label}
+          placeholder={@app.slug}
+        />
+        <p :if={@hostname_preview} class="text-xs text-muted-foreground">
+          Serves this app's login pages at <span class="font-mono">{@hostname_preview}</span>.
+        </p>
+        <p :if={!@hostname_preview} class="text-xs text-muted-foreground">
+          Blank keeps this app on the canonical host, exactly as today. Does not change the
+          client_id — see Credentials.
+        </p>
         <.input
           type="checkbox"
           name="first_party"
@@ -533,6 +551,15 @@ defmodule YouWeb.AppLive.Show do
     do: Jason.encode!(claims, pretty: true)
 
   defp claims_json(_app), do: ""
+
+  # nil when the app has no label, or when the feature/template that would
+  # make the label resolve to anything isn't fully configured — a label
+  # sitting on the row unused is not "serving this app" yet.
+  defp hostname_preview(%{hostname_label: label}) when is_binary(label) do
+    if You.Hosting.enabled?(), do: You.Hosting.render_hostname(label)
+  end
+
+  defp hostname_preview(_app), do: nil
 
   # An empty box means "no extra claims", stored as an empty object rather
   # than left as whatever the app had before.

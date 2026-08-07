@@ -12,6 +12,20 @@ defmodule YouWeb.Router do
     plug :protect_from_forgery
     plug :put_secure_browser_headers
     plug :fetch_current_scope_for_user
+    plug YouWeb.Plugs.ResolveAppHost
+  end
+
+  # #123: routes that must answer on the canonical host only. Two shapes —
+  # a browser GET redirects (there is somewhere else to send it), a machine
+  # POST refuses outright (a redirect on a POST fails silently for most
+  # OAuth clients). Both no-op when `You.Hosting.enabled?/0` is false; see
+  # `YouWeb.Plugs.CanonicalHostRedirect`'s moduledoc.
+  pipeline :canonical_host_redirect do
+    plug YouWeb.Plugs.CanonicalHostRedirect
+  end
+
+  pipeline :require_canonical_host do
+    plug YouWeb.Plugs.RequireCanonicalHost
   end
 
   pipeline :api do
@@ -88,7 +102,13 @@ defmodule YouWeb.Router do
   # segment under `/console`, and the literal `/mailbox` must win the match
   # or every hit here would be read as the console view named "mailbox".
   scope "/console" do
-    pipe_through [:browser, :require_authenticated_user, :require_admin, :require_local_mailbox]
+    pipe_through [
+      :browser,
+      :canonical_host_redirect,
+      :require_authenticated_user,
+      :require_admin,
+      :require_local_mailbox
+    ]
 
     forward "/mailbox", Plug.Swoosh.MailboxPreview
   end
@@ -112,7 +132,13 @@ defmodule YouWeb.Router do
   # since `/console/apps/<x>` is already claimed by the per-app page. That is
   # fine — it is a list, and lists do not need tabs.
   scope "/console", YouWeb do
-    pipe_through [:browser, :require_authenticated_user, :require_admin, :console_legacy_redirect]
+    pipe_through [
+      :browser,
+      :canonical_host_redirect,
+      :require_authenticated_user,
+      :require_admin,
+      :console_legacy_redirect
+    ]
 
     live_session :admin, on_mount: {YouWeb.UserAuth, :default} do
       live "/", ConsoleLive, :index
@@ -156,20 +182,35 @@ defmodule YouWeb.Router do
   ## token exchange. These allow non-BEAM consumers to integrate without
   ## Erlang distribution.
 
+  # #123: there is exactly one issuer. Discovery and JWKS 302 to canonical
+  # rather than serve on an app host — even with `iss` correctly canonical,
+  # a discovery document reachable there invites a consumer to configure the
+  # app host as its issuer. The token/introspect/revoke endpoints refuse
+  # outright instead (`:require_canonical_host`): a redirect on a POST is
+  # not safe for most OAuth clients to follow.
   scope "/", YouWeb do
-    pipe_through :api
+    pipe_through [:api, :canonical_host_redirect]
 
     get "/.well-known/openid-configuration", OIDCController, :discovery
     get "/.well-known/jwks.json", OIDCController, :jwks
+  end
+
+  scope "/", YouWeb do
+    pipe_through [:api, :require_canonical_host]
 
     scope "/" do
       pipe_through :rate_limit_oauth_token
       post "/oauth/token", OIDCController, :create_token
     end
 
-    get "/oauth/userinfo", OIDCController, :userinfo
     post "/oauth/introspect", OIDCController, :introspect
     post "/oauth/revoke", OIDCController, :revoke
+  end
+
+  scope "/", YouWeb do
+    pipe_through :api
+
+    get "/oauth/userinfo", OIDCController, :userinfo
   end
 
   ## Headless auth API: first-party apps authenticate users directly (no
@@ -250,6 +291,15 @@ defmodule YouWeb.Router do
 
     get "/users/dashboard", UserDashboardController, :index
     delete "/users/dashboard/apps/:app_id", UserDashboardController, :revoke
+  end
+
+  # #123: You's own account-management surface, not an app's — same
+  # canonical-only rule as `/console/*`, kept as its own scope (rather than
+  # folded into the one above) so the redirect never reaches `/users/
+  # dashboard`, which stays reachable wherever it's asked for.
+  scope "/", YouWeb do
+    pipe_through [:browser, :canonical_host_redirect, :require_authenticated_user]
+
     get "/users/settings", UserSettingsController, :edit
     put "/users/settings", UserSettingsController, :update
     get "/users/settings/confirm-email/:token", UserSettingsController, :confirm_email

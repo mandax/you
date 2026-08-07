@@ -299,4 +299,38 @@ if config_env() == :prod do
   config :wax_,
     origin: webauthn_origin,
     rp_id: webauthn_rp_id
+
+  # APP_HOSTNAME_TEMPLATE names the pattern app hostnames follow
+  # (`{label}.example.com`), one `{label}` placeholder spliced with each
+  # app's own `hostname_label` — see `You.Hosting`. Environment-only, same
+  # reasoning as `WEBAUTHN_RP_ID` just above: it gates which hosts an
+  # emailed link may point at and which origins a LiveView socket accepts,
+  # values a login depends on, so a console toggle would put them behind
+  # the very login they gate. Choosing the pattern also means owning the
+  # DNS and certificate it needs, which is the Operator's territory, not
+  # the Admin's — `feature_app_hostnames` (whether to use it at all) stays
+  # a console/Admin switch, same as any other feature.
+  #
+  # Validated at boot rather than left to fail closed silently at request
+  # time: a template with no `{label}` (or more than one) can never resolve
+  # or render anything, and `You.Hosting.enabled?/0` already treats that the
+  # same as unset — but an Operator who mistyped it deserves a boot error
+  # naming the mistake, not a feature that quietly never turns on.
+  case env.("APP_HOSTNAME_TEMPLATE") do
+    nil ->
+      :ok
+
+    template ->
+      case String.split(template, "{label}") do
+        [_prefix, _suffix] ->
+          config :you, :app_hostname_template, template
+
+        _ ->
+          raise """
+          APP_HOSTNAME_TEMPLATE must contain exactly one {label} placeholder, got: #{inspect(template)}
+
+          For example: {label}.example.com
+          """
+      end
+  end
 end

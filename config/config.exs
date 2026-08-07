@@ -26,10 +26,26 @@ config :you,
   audit_webhook_url: nil,
   oidc_providers: %{}
 
+# Unset by default: no app hostname template until the Operator configures
+# `APP_HOSTNAME_TEMPLATE` (`config/runtime.exs`) — environment-only, like
+# `WEBAUTHN_RP_ID` and `PHX_HOST` (`You.Settings.forbidden_keys/0`), because
+# it gates which hosts an emailed link may point at and which origins a
+# LiveView socket accepts. See `You.Hosting`'s moduledoc.
+config :you, :app_hostname_template, nil
+
 # Configure the endpoint
+#
+# `check_origin` is an MFA rather than a static list: the WebSocket
+# handshake's Origin has to be checked against the same "is this one of
+# You's own hosts" answer everywhere else uses (`You.Hosting`), or an app
+# host recognised for branding but not for sockets — or the reverse — is
+# exactly the kind of drift #120's review spent three rounds eliminating.
+# Never `false`: that disables CSWSH protection outright rather than
+# widening who it's checked against. See `You.Hosting.check_origin?/1`.
 config :you, YouWeb.Endpoint,
   url: [host: "localhost"],
   adapter: Bandit.PhoenixAdapter,
+  check_origin: {You.Hosting, :check_origin?, []},
   render_errors: [
     formats: [html: YouWeb.ErrorHTML, json: YouWeb.ErrorJSON],
     layout: false

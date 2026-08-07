@@ -60,7 +60,10 @@ defmodule YouWeb.ConsoleLive do
        "Anonymous accounts a first-party app can create before signup, upgraded in place when the person signs up. Off by default: it mints user rows on request."},
     feature_landing_page:
       {"Public landing page",
-       "What visitors see at /. Switched off, / goes to the console for admins and to the login page for everyone else — the right shape when this instance is infrastructure for your own app rather than a product with a homepage."}
+       "What visitors see at /. Switched off, / goes to the console for admins and to the login page for everyone else — the right shape when this instance is infrastructure for your own app rather than a product with a homepage."},
+    feature_app_hostnames:
+      {"Per-app hostnames",
+       "Serve each app's login page on its own hostname, set below under Deployment mode. Needs a hostname template configured there too — off, or with no template, nothing about today's behaviour changes."}
   }
 
   # Write-only in the console: never rendered into the DOM, blank on save
@@ -2483,6 +2486,18 @@ defmodule YouWeb.ConsoleLive do
       <p class="pt-1 font-mono text-[11px] text-muted-foreground">
         Single mode replaces the apps registry with one application. Applies to this console
         session on save; other open console tabs pick it up on their next page load.
+      </p>
+    </.settings_card>
+    <.settings_card>
+      <.kv k="App hostname template" v={You.Hosting.template() || "not set"} />
+      <p class="pt-1 font-mono text-[11px] text-muted-foreground" phx-no-curly-interpolation>
+        Set via APP_HOSTNAME_TEMPLATE (one {label} placeholder, e.g. {label}.example.com) —
+        environment-only, like WEBAUTHN_RP_ID and PHX_HOST: it gates which hosts an emailed link
+        may point at and which origins a LiveView socket accepts, so it is the Operator's to set,
+        not the console's. An app's hostname is this template with its own Hostname label
+        spliced in, set on the app's own page. Also requires the "Per-app hostnames" feature
+        switched on — see Features. Either half missing or off, and every app keeps sharing
+        this instance's canonical host, exactly as it does today.
       </p>
     </.settings_card>
     """

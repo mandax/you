@@ -131,6 +131,45 @@ defmodule You.Release do
     System.halt(1)
   end
 
+  @doc """
+  Reports apps whose `hostname_label` would render, under the currently
+  configured `APP_HOSTNAME_TEMPLATE`, to this instance's own canonical
+  host. Run via:
+
+      bin/you eval 'You.Release.audit_hostname_labels()'
+
+  See `Mix.Tasks.You.AuditHostnameLabels` for when to run this and why.
+  Halts with status 1 when it finds anything.
+  """
+  def audit_hostname_labels do
+    start_app()
+    report_hostname_labels(You.Admin.apps_with_colliding_hostname_label())
+  end
+
+  defp report_hostname_labels([]) do
+    IO.puts("No app hostname_label collides with the canonical host.")
+  end
+
+  defp report_hostname_labels(apps) do
+    IO.puts(
+      :stderr,
+      "#{length(apps)} app(s) have a hostname_label that resolves to this instance's " <>
+        "own canonical host under the current APP_HOSTNAME_TEMPLATE:\n"
+    )
+
+    Enum.each(apps, fn app ->
+      IO.puts("  - #{app.hostname_label} (#{app.name}, id #{app.id})")
+    end)
+
+    IO.puts(
+      "\nEach of these apps would answer as the instance's own front door — clear or " <>
+        "rename the hostname_label (PATCH /api/v1/apps/:id, or the app's own console " <>
+        "page) before enabling or changing APP_HOSTNAME_TEMPLATE for real traffic."
+    )
+
+    System.halt(1)
+  end
+
   defp start_app do
     load_app()
     {:ok, _} = Application.ensure_all_started(@app)

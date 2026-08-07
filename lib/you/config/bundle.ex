@@ -28,9 +28,9 @@ defmodule You.Config.Bundle do
 
   @version 1
 
-  @app_fields ~w(slug name callback_url launch_url logo_url brand_color brand_color_dark
-                 accent_color accent_color_dark theme_mode headline subtitle tos_url
-                 privacy_url email_from_name enabled_providers enabled_methods
+  @app_fields ~w(slug name callback_url launch_url hostname_label logo_url brand_color
+                 brand_color_dark accent_color accent_color_dark theme_mode headline subtitle
+                 tos_url privacy_url email_from_name enabled_providers enabled_methods
                  allowed_roles default_role first_party jwt_expiry_hours
                  code_expiry_minutes custom_claims)a
 

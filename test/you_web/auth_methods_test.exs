@@ -113,6 +113,114 @@ defmodule YouWeb.AuthMethodsTest do
     end
   end
 
+  # #121: app_for/1 gained a second precedence step (request-host
+  # resolution) between callback_url and branding_app_slug. These pin the
+  # order stated in its moduledoc and prove each step actually matters by
+  # neutering the one ahead of it, not merely by asserting a value a fixture
+  # happens to produce.
+  describe "app_for/1 (a conn) — the three-way precedence" do
+    setup do
+      Application.put_env(:you, :app_hostname_template, "{label}.example.com")
+      You.Settings.set(:feature_app_hostnames, true)
+
+      on_exit(fn ->
+        You.Settings.set(:feature_app_hostnames, false)
+        Application.delete_env(:you, :app_hostname_template)
+      end)
+
+      :ok
+    end
+
+    defp conn_with_session(host, session) do
+      %Plug.Conn{host: host} |> Plug.Test.init_test_session(session)
+    end
+
+    test "host resolution names the app when nothing else does" do
+      app =
+        create_app!(%{hostname_label: "byhost", callback_url: "https://byhost.example.com/cb"})
+
+      conn = conn_with_session("byhost.example.com", %{})
+
+      assert AuthMethods.app_for(conn).id == app.id
+    end
+
+    test "callback_url beats a host that resolves to a different app" do
+      by_callback = create_app!(%{callback_url: "https://precedence.example.com/cb"})
+
+      by_host =
+        create_app!(%{hostname_label: "byhost2", callback_url: "https://byhost2.example.com/cb"})
+
+      conn =
+        conn_with_session("byhost2.example.com", %{
+          callback_url: "https://precedence.example.com/cb"
+        })
+
+      assert AuthMethods.app_for(conn).id == by_callback.id
+      refute AuthMethods.app_for(conn).id == by_host.id
+    end
+
+    test "host resolution beats ?app= / branding_app_slug" do
+      by_host =
+        create_app!(%{hostname_label: "byhost3", callback_url: "https://byhost3.example.com/cb"})
+
+      by_slug = create_app!(%{callback_url: "https://byslug.example.com/cb"})
+
+      conn = conn_with_session("byhost3.example.com", %{branding_app_slug: by_slug.slug})
+
+      assert AuthMethods.app_for(conn).id == by_host.id
+    end
+
+    # #121's own acceptance criteria contradict themselves here ("?app= still
+    # works, on any host" vs. "an unrecognised host ... selects no app"), and
+    # the impersonation argument in #121's "Why unknown hosts must not
+    # brand" section is the one that has to win: an arbitrary Host is
+    # attacker-controlled DNS, and if it could still select an app via
+    # ?app=, whoever controls that DNS picks which app's branding and
+    # sign-in methods a visitor sees.
+    test "an unrecognised host selects no app, even with ?app= naming a real one" do
+      by_slug = create_app!(%{callback_url: "https://byslug2.example.com/cb"})
+      conn = conn_with_session("nobody-owns-this.example.com", %{branding_app_slug: by_slug.slug})
+
+      refute AuthMethods.app_for(conn)
+    end
+
+    test "an unrecognised host selects no app, even with a callback_url naming a real one" do
+      app = create_app!(%{callback_url: "https://byurl.example.com/cb"})
+      conn = conn_with_session("nobody-owns-this.example.com", %{callback_url: app.callback_url})
+
+      refute AuthMethods.app_for(conn)
+    end
+
+    test "?app= still works on the canonical host — the legitimate case is unaffected" do
+      by_slug = create_app!(%{callback_url: "https://byslug3.example.com/cb"})
+      conn = conn_with_session(YouWeb.Endpoint.host(), %{branding_app_slug: by_slug.slug})
+
+      assert AuthMethods.app_for(conn).id == by_slug.id
+    end
+
+    test "?app= still works on a different app's recognised host too (host resolution wins, not host recognition alone)" do
+      by_host =
+        create_app!(%{hostname_label: "byhost4", callback_url: "https://byhost4.example.com/cb"})
+
+      by_slug = create_app!(%{callback_url: "https://byslug4.example.com/cb"})
+
+      conn = conn_with_session("byhost4.example.com", %{branding_app_slug: by_slug.slug})
+
+      assert AuthMethods.app_for(conn).id == by_host.id
+    end
+
+    test "feature off: host resolution never fires, even for a labelled app's own host" do
+      _app =
+        create_app!(%{hostname_label: "offhost", callback_url: "https://offhost.example.com/cb"})
+
+      You.Settings.set(:feature_app_hostnames, false)
+
+      conn = conn_with_session("offhost.example.com", %{})
+
+      refute AuthMethods.app_for(conn)
+    end
+  end
+
   describe "previewed_methods/1 (no request host)" do
     test "includes passkey regardless of any host's RP ID qualification" do
       # There is no host-qualifying app in this scenario at all — the point
