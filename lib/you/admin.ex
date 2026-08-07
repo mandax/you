@@ -317,6 +317,17 @@ defmodule You.Admin do
   def get_app_by_slug(slug) when is_binary(slug), do: Repo.get_by(App, slug: slug)
 
   @doc """
+  Fetches a single app by its `hostname_label`, or nil.
+
+  Used by `You.Hosting.resolve/1` to turn a request host into an app. The
+  label a request host resolves to is always the lowercase form
+  `App.changeset/2` enforces, so this is a plain equality lookup — no
+  case-folding needed on either side.
+  """
+  def get_app_by_hostname_label(label) when is_binary(label),
+    do: Repo.get_by(App, hostname_label: label)
+
+  @doc """
   How long the JWTs issued for `app` live, in seconds.
 
   Accepts an `App`, a slug, or nil — the token-issuing paths variously hold

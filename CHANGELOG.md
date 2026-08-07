@@ -13,6 +13,36 @@ of them at once.
 
 ### Requires your attention
 
+- **Per-app hostnames (#121, #123): off by default, and a two-step turn-on.**
+  Apps can now be served on their own hostname (`acme.example.com`) instead
+  of sharing the canonical host, gated by a new "Per-app hostnames" feature
+  switch (Features) plus an app hostname template (Settings → Deployment
+  mode, one `{label}` placeholder, e.g. `{label}.example.com`) — both off
+  and unset by default, and **both required together**: either one missing
+  and behaviour is byte-identical to today. Turning it on:
+  1. Point DNS for every hostname you intend to use at this instance (and,
+     if you terminate TLS yourself, get a certificate that covers them —
+     a wildcard for the template's suffix is the simplest way).
+  2. Set the hostname template in the console.
+  3. Give the apps you want on their own host a "Hostname label" (their own
+     console page — optional, blank by default, offered the app's slug as a
+     placeholder only). An app with no label keeps sharing the canonical
+     host exactly as before.
+  4. Switch the feature on.
+  An unrecognised `Host` — anything pointing DNS here that isn't a
+  configured app hostname — never brands: it serves You's own unbranded
+  pages and is logged (sampled) as a possible impersonation probe. Discovery,
+  JWKS, and the OAuth token/introspect/revoke endpoints stay canonical-only
+  once the feature is on: discovery and JWKS 302 to canonical, the POST
+  endpoints refuse with a 4xx instead, so there is exactly one issuer
+  regardless of how many hostnames are configured. `/console` and
+  `/users/settings/*` also redirect to canonical, so the admin console is
+  never reachable under an app's branded hostname.
+  `check_origin` (the LiveView WebSocket handshake check) now reads
+  `You.Hosting`'s own-host predicate instead of defaulting to canonical-only
+  or (in dev) being switched off outright — dev no longer accepts a
+  WebSocket handshake from an arbitrary origin either; set `PHX_HOST` if you
+  develop against something other than `localhost`.
 - **The WebAuthn relying-party ID is now pinned, decoupled from `PHX_HOST`.**
   `config :wax_, rp_id: :auto` derived the RP ID from the configured origin —
   resolved per challenge, but from that boot-fixed config rather than the
@@ -85,6 +115,27 @@ of them at once.
 
 ### Added
 
+- **`hostname_label` on apps** (#121): a nullable, unique, DNS-label
+  constrained column, set on an app's own console page. Never auto-filled
+  from `slug` — the slug is the OAuth `client_id`, so a public hostname has
+  to be free to change without touching every consumer's configuration. A
+  label that would render (through the configured template) to this
+  instance's own canonical host is rejected at write time — that would be a
+  takeover of the front door, not a naming collision.
+- **`You.Hosting`**: the one place that answers "is this request host one of
+  You's own, and if so which app" — `YouWeb.RequestURL.allowed_hosts/0`,
+  `check_origin`, and app resolution (`YouWeb.AuthMethods.app_for/1`) all
+  defer to it, so they cannot drift apart into disagreeing about the same
+  host. `YouWeb.AuthMethods.app_for/1`'s moduledoc states the full
+  three-way precedence between an OAuth `callback_url`, a resolved host, and
+  `?app=`/`branding_app_slug` in one place.
+- **The social sign-in button on an app host links to canonical carrying a
+  signed `ctx`,** rather than `/auth/:provider` on that same host — the
+  upstream provider's registered `redirect_uri` is canonical-only, so a
+  ceremony started on an app host could never complete there. Uses the
+  `ctx` carrier #132 built and left unlinked; on the canonical host the
+  button is unchanged, a plain relative link reading this page's own
+  session.
 - **The Emails section is now tabbed, one template per tab,** addressed at
   `/console/emails/:tab` — the same standard `/console/settings/:tab` and
   `/console/apps/:slug/:tab` already follow. It used to render all six

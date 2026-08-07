@@ -60,7 +60,10 @@ defmodule YouWeb.ConsoleLive do
        "Anonymous accounts a first-party app can create before signup, upgraded in place when the person signs up. Off by default: it mints user rows on request."},
     feature_landing_page:
       {"Public landing page",
-       "What visitors see at /. Switched off, / goes to the console for admins and to the login page for everyone else — the right shape when this instance is infrastructure for your own app rather than a product with a homepage."}
+       "What visitors see at /. Switched off, / goes to the console for admins and to the login page for everyone else — the right shape when this instance is infrastructure for your own app rather than a product with a homepage."},
+    feature_app_hostnames:
+      {"Per-app hostnames",
+       "Serve each app's login page on its own hostname, set below under Deployment mode. Needs a hostname template configured there too — off, or with no template, nothing about today's behaviour changes."}
   }
 
   # Write-only in the console: never rendered into the DOM, blank on save
@@ -120,7 +123,8 @@ defmodule YouWeb.ConsoleLive do
     %{key: :mail_from, label: "Mail from address"},
     %{key: :api_token, label: "Management API token"},
     %{key: :analytics_src, label: "Analytics script URL"},
-    %{key: :analytics_domain, label: "Analytics domain"}
+    %{key: :analytics_domain, label: "Analytics domain"},
+    %{key: :hostname_template, label: "App hostname template"}
   ]
 
   @impl true
@@ -2483,6 +2487,19 @@ defmodule YouWeb.ConsoleLive do
       <p class="pt-1 font-mono text-[11px] text-muted-foreground">
         Single mode replaces the apps registry with one application. Applies to this console
         session on save; other open console tabs pick it up on their next page load.
+      </p>
+    </.settings_card>
+    <.settings_card>
+      <.setting_field
+        name="hostname_template"
+        label="App hostname template"
+        value={@settings[:hostname_template]}
+      />
+      <p class="pt-1 font-mono text-[11px] text-muted-foreground" phx-no-curly-interpolation>
+        One {label} placeholder, e.g. {label}.example.com. An app's hostname is this template
+        with its own Hostname label spliced in, set on the app's own page. Also requires the
+        "Per-app hostnames" feature switched on — see Features. Either half missing or off, and
+        every app keeps sharing this instance's canonical host, exactly as it does today.
       </p>
     </.settings_card>
     """

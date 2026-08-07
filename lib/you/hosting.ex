@@ -1,0 +1,222 @@
+defmodule You.Hosting do
+  @moduledoc """
+  The one place that answers "is this request host one of You's own, and if
+  so which app is it" (#121, #123).
+
+  Before this module, that question was starting to get asked three separate
+  ways: `YouWeb.RequestURL.allowed_hosts/0` (which links are safe to build),
+  `You.WebAuthn.available_for_host?/1` (which hosts may offer passkeys), and
+  the endpoint's `check_origin` (which origins a LiveView socket may connect
+  from). Three independent predicates that can disagree is a security bug
+  waiting to happen — a host that resolves to an app for branding but is
+  refused for links, or vice versa. `resolve/1` is now the single source of
+  truth for host recognition; `RequestURL.allowed_hosts/0` and
+  `check_origin?/1` both defer to it. `You.WebAuthn.available_for_host?/1` is
+  deliberately **not** rebuilt on top of it: passkeys are gated on a
+  registrable-suffix check against `WEBAUTHN_RP_ID`, a genuinely broader
+  question ("is this host under the RP ID's zone") than "is this an app You
+  has a row for" — see its own moduledoc.
+
+  ## Resolution
+
+  A request host resolves one of three ways:
+
+  - `:canonical` — matches `YouWeb.Endpoint.host/0` (`PHX_HOST`).
+  - `{:app, app}` — matches a registered app's rendered hostname
+    (`hostname_label` spliced into `hostname_template`).
+  - `:unknown` — neither. Never branded, never treated as one of You's own.
+
+  ## One gate for resolution and #123's routing rules
+
+  `enabled?/0` — `feature_app_hostnames` on *and* `hostname_template` set —
+  is the single switch both this module's resolution and the router's
+  canonical-only redirects (`YouWeb.Plugs.RequireCanonicalHost`,
+  `YouWeb.Plugs.CanonicalHostRedirect`) are driven by. #121's security
+  review flagged the risk of resolution going live before #123's routing
+  rules do — a recognised app host would then also serve discovery, JWKS and
+  `/oauth/*`, an alternate issuer with a real app's name on it. Driving both
+  off this one function makes that ordering impossible to get wrong by
+  configuration: there is no environment or console state that turns on
+  resolution without also turning on the redirects, because they read the
+  same flag through the same code path. A separate boot-time assertion would
+  only be guarding against two independently-wired mechanisms drifting apart
+  — they are not independently wired.
+
+  Feature off, or template unset: `resolve/1` never returns `{:app, _}`,
+  `hosts/0` is exactly `[canonical]`, and `check_origin?/1` accepts only the
+  canonical origin — byte-identical to today.
+  """
+
+  alias You.Admin
+  alias You.Admin.App
+
+  @doc """
+  Whether per-app hostname resolution is live on this instance.
+
+  Both halves are required: a template with the feature off, or a feature on
+  with no template, resolve nothing — there would be no rule to turn a
+  request host into a label.
+  """
+  def enabled? do
+    You.Settings.enabled?(:feature_app_hostnames) and template() not in [nil, ""]
+  end
+
+  @doc "The configured hostname template (`{label}.example.com`), or nil."
+  def template do
+    case You.Settings.get(:hostname_template) do
+      "" -> nil
+      value -> value
+    end
+  end
+
+  @doc "The canonical host: `YouWeb.Endpoint.host/0`, i.e. `PHX_HOST`."
+  def canonical_host, do: YouWeb.Endpoint.host()
+
+  @doc """
+  Resolves `host` to `:canonical`, `{:app, app}`, or `:unknown`.
+
+  Checked in that order: a host equal to the canonical host is always
+  `:canonical`, even with the feature on — an operator cannot accidentally
+  shadow their own front door by registering a colliding label, and
+  `App.changeset/2` refuses that label at write time regardless (see
+  `label_collides_with_canonical?/1`).
+  """
+  def resolve(host) when is_binary(host) do
+    normalized = normalize(host)
+
+    cond do
+      normalized == normalize(canonical_host()) -> :canonical
+      enabled?() -> resolve_app(normalized)
+      true -> :unknown
+    end
+  end
+
+  def resolve(_host), do: :unknown
+
+  @doc "Whether `host` is one of You's own — canonical or a recognised app host."
+  def own_host?(host), do: resolve(host) != :unknown
+
+  @doc "Whether `host` is exactly the canonical host."
+  def canonical?(host), do: resolve(host) == :canonical
+
+  @doc """
+  Every hostname a request-built link may point at: the canonical host, plus
+  the rendered hostname of every app that has a `hostname_label` — empty
+  when the feature is off or the template is unset. Configuration-derived,
+  never from a request: `YouWeb.RequestURL.allowed_hosts/0` delegates here.
+  """
+  def hosts do
+    [canonical_host() | app_hostnames()]
+  end
+
+  @doc """
+  The `check_origin` predicate for `YouWeb.Endpoint`'s WebSocket transport,
+  wired as `{You.Hosting, :check_origin?, []}`.
+
+  Phoenix calls this with the parsed `Origin` header as a bare `%URI{}` (see
+  `Phoenix.Socket.Transport`). Accepts only a host `resolve/1` recognises,
+  and — same as Phoenix's own default `check_origin: true` — a scheme and
+  port matching the endpoint's configured `:url`, when configured; an unset
+  scheme or port in `:url` (as in `config/config.exs`) imposes no
+  restriction on that dimension, exactly as Phoenix's own comparison does.
+  """
+  def check_origin?(%URI{host: host, scheme: scheme, port: port}) do
+    own_host?(host) and url_matches?(:scheme, scheme) and url_matches?(:port, port)
+  end
+
+  @doc """
+  Whether `label`, rendered through the configured template, produces the
+  canonical host.
+
+  Checked at write time (`App.changeset/2`) rather than only at resolution
+  time: an operator setting `hostname_label = "id"` while the canonical host
+  is `id.example.com` would otherwise mint an app whose hostname *is* the
+  instance's own front door — a takeover of canonical, not a naming
+  collision. Computed from the *current* template rather than a hard-coded
+  name, so a later template or `PHX_HOST` change cannot silently reopen the
+  hole a stale list would leave.
+  """
+  def label_collides_with_canonical?(label) when is_binary(label) do
+    case render_hostname(label) do
+      nil -> false
+      rendered -> normalize(rendered) == normalize(canonical_host())
+    end
+  end
+
+  @doc """
+  Splices `label` into the configured template, or `nil` when no template is
+  configured. Used both to render an app's hostname and, in reverse
+  (`parse_label/1`), to recover a label from a request host.
+  """
+  def render_hostname(label) when is_binary(label) do
+    case split_template() do
+      {prefix, suffix} -> prefix <> label <> suffix
+      nil -> nil
+    end
+  end
+
+  # -- Resolution internals
+
+  defp resolve_app(host) do
+    with label when is_binary(label) <- parse_label(host),
+         true <- You.Hostname.valid?(label),
+         %App{} = app <- Admin.get_app_by_hostname_label(label) do
+      {:app, app}
+    else
+      _ -> :unknown
+    end
+  end
+
+  defp parse_label(host) do
+    with {prefix, suffix} <- split_template() do
+      extract_label(host, prefix, suffix)
+    end
+  end
+
+  defp extract_label(host, prefix, suffix) do
+    plen = byte_size(prefix)
+    slen = byte_size(suffix)
+    hlen = byte_size(host)
+
+    if hlen > plen + slen and
+         binary_part(host, 0, plen) == prefix and
+         binary_part(host, hlen - slen, slen) == suffix do
+      label = binary_part(host, plen, hlen - plen - slen)
+      if String.contains?(label, "."), do: nil, else: label
+    end
+  end
+
+  # Exactly one `{label}` placeholder. Anything else (none, or more than one)
+  # is a misconfigured template that cannot resolve or render — `enabled?/0`
+  # still reports true (the value is present), but resolution and rendering
+  # both fail closed to `:unknown`/`nil` rather than guessing.
+  defp split_template do
+    case template() && String.split(template(), "{label}", parts: 2) do
+      [prefix, suffix] -> if String.contains?(suffix, "{label}"), do: nil, else: {prefix, suffix}
+      _ -> nil
+    end
+  end
+
+  defp app_hostnames do
+    if enabled?() do
+      Admin.list_apps()
+      |> Enum.filter(& &1.hostname_label)
+      |> Enum.map(&render_hostname(&1.hostname_label))
+      |> Enum.reject(&is_nil/1)
+    else
+      []
+    end
+  end
+
+  defp url_matches?(key, value) do
+    allowed = (YouWeb.Endpoint.config(:url) || [])[key]
+    is_nil(allowed) or to_string(value) == to_string(allowed)
+  end
+
+  defp normalize(nil), do: nil
+
+  defp normalize(host) do
+    host = String.downcase(host)
+    if String.ends_with?(host, "."), do: binary_part(host, 0, byte_size(host) - 1), else: host
+  end
+end

@@ -27,9 +27,18 @@ config :you,
   oidc_providers: %{}
 
 # Configure the endpoint
+#
+# `check_origin` is an MFA rather than a static list: the WebSocket
+# handshake's Origin has to be checked against the same "is this one of
+# You's own hosts" answer everywhere else uses (`You.Hosting`), or an app
+# host recognised for branding but not for sockets — or the reverse — is
+# exactly the kind of drift #120's review spent three rounds eliminating.
+# Never `false`: that disables CSWSH protection outright rather than
+# widening who it's checked against. See `You.Hosting.check_origin?/1`.
 config :you, YouWeb.Endpoint,
   url: [host: "localhost"],
   adapter: Bandit.PhoenixAdapter,
+  check_origin: {You.Hosting, :check_origin?, []},
   render_errors: [
     formats: [html: YouWeb.ErrorHTML, json: YouWeb.ErrorJSON],
     layout: false

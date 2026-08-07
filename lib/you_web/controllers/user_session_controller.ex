@@ -84,9 +84,32 @@ defmodule YouWeb.UserSessionController do
         form: form,
         callback_url: get_session(conn, :callback_url),
         providers: oidc_providers(app),
-        methods: enabled_methods(app, conn.host)
+        methods: enabled_methods(app, conn.host),
+        social_ctx: social_ctx(conn)
       ] ++ YouWeb.AppBranding.assigns(conn)
     )
+  end
+
+  # `nil` on the canonical host: `/auth/:provider` already has this page's
+  # own session to read, same as always. Off canonical, the social button
+  # has to reach `/auth/:provider` on the canonical host instead — that
+  # route's redirect_uri is registered with each upstream provider against
+  # canonical, so a ceremony started on an app host can never complete
+  # there — and hands it this session's flight state signed into `ctx`
+  # (`You.IdentityProviders.sign_ctx/1`, #132), since a cross-host request
+  # arrives with no session of its own to read it from.
+  defp social_ctx(conn) do
+    if You.Hosting.canonical?(conn.host) do
+      nil
+    else
+      You.IdentityProviders.sign_ctx(%{
+        callback_url: get_session(conn, :callback_url),
+        scopes: get_session(conn, :scopes),
+        code_challenge: get_session(conn, :code_challenge),
+        branding_app_slug: get_session(conn, :branding_app_slug),
+        state: get_session(conn, :state)
+      })
+    end
   end
 
   # Enabled upstream OIDC providers, as a sorted list of slugs ("google", …),

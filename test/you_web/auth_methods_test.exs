@@ -113,6 +113,82 @@ defmodule YouWeb.AuthMethodsTest do
     end
   end
 
+  # #121: app_for/1 gained a second precedence step (request-host
+  # resolution) between callback_url and branding_app_slug. These pin the
+  # order stated in its moduledoc and prove each step actually matters by
+  # neutering the one ahead of it, not merely by asserting a value a fixture
+  # happens to produce.
+  describe "app_for/1 (a conn) — the three-way precedence" do
+    setup do
+      You.Settings.set(:hostname_template, "{label}.example.com")
+      You.Settings.set(:feature_app_hostnames, true)
+
+      on_exit(fn ->
+        You.Settings.set(:feature_app_hostnames, false)
+        You.Settings.set(:hostname_template, "")
+      end)
+
+      :ok
+    end
+
+    defp conn_with_session(host, session) do
+      %Plug.Conn{host: host} |> Plug.Test.init_test_session(session)
+    end
+
+    test "host resolution names the app when nothing else does" do
+      app =
+        create_app!(%{hostname_label: "byhost", callback_url: "https://byhost.example.com/cb"})
+
+      conn = conn_with_session("byhost.example.com", %{})
+
+      assert AuthMethods.app_for(conn).id == app.id
+    end
+
+    test "callback_url beats a host that resolves to a different app" do
+      by_callback = create_app!(%{callback_url: "https://precedence.example.com/cb"})
+
+      by_host =
+        create_app!(%{hostname_label: "byhost2", callback_url: "https://byhost2.example.com/cb"})
+
+      conn =
+        conn_with_session("byhost2.example.com", %{
+          callback_url: "https://precedence.example.com/cb"
+        })
+
+      assert AuthMethods.app_for(conn).id == by_callback.id
+      refute AuthMethods.app_for(conn).id == by_host.id
+    end
+
+    test "host resolution beats ?app= / branding_app_slug" do
+      by_host =
+        create_app!(%{hostname_label: "byhost3", callback_url: "https://byhost3.example.com/cb"})
+
+      by_slug = create_app!(%{callback_url: "https://byslug.example.com/cb"})
+
+      conn = conn_with_session("byhost3.example.com", %{branding_app_slug: by_slug.slug})
+
+      assert AuthMethods.app_for(conn).id == by_host.id
+    end
+
+    test "an unrecognised host falls through to branding_app_slug, not to that host's absence of an app" do
+      by_slug = create_app!(%{callback_url: "https://byslug2.example.com/cb"})
+      conn = conn_with_session("nobody-owns-this.example.com", %{branding_app_slug: by_slug.slug})
+
+      assert AuthMethods.app_for(conn).id == by_slug.id
+    end
+
+    test "feature off: host resolution never fires, even for a labelled app's own host" do
+      _app =
+        create_app!(%{hostname_label: "offhost", callback_url: "https://offhost.example.com/cb"})
+
+      You.Settings.set(:feature_app_hostnames, false)
+
+      conn = conn_with_session("offhost.example.com", %{})
+
+      refute AuthMethods.app_for(conn)
+    end
+  end
+
   describe "previewed_methods/1 (no request host)" do
     test "includes passkey regardless of any host's RP ID qualification" do
       # There is no host-qualifying app in this scenario at all — the point

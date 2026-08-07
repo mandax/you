@@ -25,7 +25,6 @@ config :you, You.Repo,
 # debugging and code reloading.
 config :you, YouWeb.Endpoint,
   http: [ip: bind_ip],
-  check_origin: false,
   code_reloader: true,
   debug_errors: true,
   secret_key_base: "/IDzX034gJzQ59Uip5jFFMqOSZp5Lkgds2vm1W/1YlvJ9zqeofy3xmnj0JnDPltr",

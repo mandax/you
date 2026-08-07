@@ -9,11 +9,16 @@ defmodule You.Admin.App do
   `client_id` ambiguous against hostname-shaped values, and a slash would
   break path construction. See `validate_slug/1`.
 
-  No DNS-label reservation lives here — that constrains a separate
-  `hostname_label` column (#121), kept apart precisely so hostname concerns
-  do not reach into the client_id namespace. The one name this module does
-  reserve, `new`, is reserved for a routing reason of its own: see
-  `@reserved_slugs`.
+  `hostname_label` (#121) is kept apart from `slug` precisely so hostname
+  concerns do not reach into the `client_id` namespace: it is nullable,
+  empty by default, and never auto-filled from `slug` — an app with no
+  label has no hostname and shares the canonical host exactly as it does
+  today. It uses `You.Hostname`'s DNS-label format, not `slug`'s looser
+  rules, and is additionally refused when it would render (via
+  `You.Hosting`'s configured template) to the instance's own canonical
+  host — that would be a takeover of the front door, not a naming
+  collision. The one name `slug` itself reserves, `new`, is reserved for a
+  routing reason of its own: see `@reserved_slugs`.
   """
 
   use Ecto.Schema
@@ -26,6 +31,9 @@ defmodule You.Admin.App do
     field :name, :string
     field :callback_url, :string
     field :launch_url, :string
+    # Nullable, empty by default, never auto-filled from `slug` — see
+    # `validate_hostname_label/1` and `You.Hosting`.
+    field :hostname_label, :string
     # nil means "follow the instance setting", so an app keeps tracking the
     # instance default until someone deliberately gives it its own.
     field :jwt_expiry_hours, :integer
@@ -243,6 +251,7 @@ defmodule You.Admin.App do
       :name,
       :callback_url,
       :launch_url,
+      :hostname_label,
       :logo_url,
       :brand_color,
       :headline,
@@ -265,6 +274,7 @@ defmodule You.Admin.App do
     ])
     |> validate_required([:slug, :name, :callback_url])
     |> validate_slug()
+    |> validate_hostname_label()
     # An app with no allowed roles can never have a role assigned, so every
     # assignment attempt would fail. Keep at least one.
     |> validate_length(:allowed_roles, min: 1)
@@ -301,6 +311,7 @@ defmodule You.Admin.App do
     )
     |> validate_change(:custom_claims, &validate_custom_claims/2)
     |> unique_constraint(:slug)
+    |> unique_constraint(:hostname_label)
     |> unique_constraint(:callback_url,
       message: "is already registered to another app"
     )
@@ -361,6 +372,41 @@ defmodule You.Admin.App do
     |> validate_exclusion(:slug, @reserved_slugs,
       message: "is reserved for a console page (/console/apps/new) and cannot be used as a slug"
     )
+  end
+
+  # Blank stays nil (the "no hostname" state) rather than becoming an empty
+  # string that would then have to be special-cased everywhere else that
+  # reads the column. `validate_format`/`validate_change` below only run
+  # when the field is present in `changeset.changes` in the first place, so
+  # a change to `""` still reaches here and gets normalised.
+  defp validate_hostname_label(changeset) do
+    case get_change(changeset, :hostname_label) do
+      "" -> put_change(changeset, :hostname_label, nil)
+      label when is_binary(label) -> validate_hostname_label_format(changeset, label)
+      _ -> changeset
+    end
+  end
+
+  defp validate_hostname_label_format(changeset, label) do
+    cond do
+      not You.Hostname.valid?(label) ->
+        add_error(
+          changeset,
+          :hostname_label,
+          "must be a single DNS label: lowercase letters, digits, or interior hyphens, " <>
+            "up to #{You.Hostname.max_length()} characters"
+        )
+
+      You.Hosting.label_collides_with_canonical?(label) ->
+        add_error(
+          changeset,
+          :hostname_label,
+          "would resolve to this instance's own canonical host"
+        )
+
+      true ->
+        changeset
+    end
   end
 
   defp validate_http_url(field, url) do

@@ -86,12 +86,14 @@ defmodule YouWeb.RequestURL do
   def url(:not_mounted_at_router, path) when is_binary(path), do: build(nil, path)
 
   @doc """
-  The hosts a request-built link is allowed to point at. Exactly the
-  canonical host today. #121 extends this list with hosts that resolve to a
-  configured app — it must not become a pass-through for whatever arrived
-  on the request.
+  The hosts a request-built link is allowed to point at: the canonical host,
+  plus every app's rendered hostname when per-app hostnames are configured
+  (`You.Hosting.hosts/0` — the single place that decides which hosts You
+  recognises, so this list and app-host resolution can never drift apart).
+  Feature off, or no app has a hostname: exactly the canonical host, same as
+  before #121.
   """
-  def allowed_hosts, do: [YouWeb.Endpoint.host()]
+  def allowed_hosts, do: You.Hosting.hosts()
 
   defp build(host, path) do
     YouWeb.Endpoint.struct_url()

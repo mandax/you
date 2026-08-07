@@ -17,6 +17,7 @@ defmodule You.Settings do
   - `smtp_port`: 587
   - `api_token`: ""
   - `analytics_src`, `analytics_domain`: ""
+  - `hostname_template`: "" — `{label}.example.com`-shaped; see `You.Hosting`
 
   Every key here is reachable from `deploy environment` and the console alike:
   the environment seeds a key's row the first time an instance boots without
@@ -51,6 +52,8 @@ defmodule You.Settings do
     feature_webhooks: true,
     feature_landing_page: true,
     feature_guest_login: false,
+    feature_app_hostnames: false,
+    hostname_template: "",
     you_mode: "multi",
     smtp_host: "",
     smtp_port: 587,
@@ -96,7 +99,8 @@ defmodule You.Settings do
     :feature_social_login,
     :feature_webhooks,
     :feature_landing_page,
-    :feature_guest_login
+    :feature_guest_login,
+    :feature_app_hostnames
   ]
 
   @doc "The optional features an admin can switch off."

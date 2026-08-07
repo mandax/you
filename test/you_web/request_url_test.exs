@@ -5,7 +5,12 @@ defmodule YouWeb.RequestURLTest do
   end-to-end through the real mail-sending flows.
   """
 
-  use ExUnit.Case, async: false
+  # `YouWeb.RequestURL.allowed_hosts/0` now delegates to `You.Hosting`
+  # (#121), which reads `You.Settings` (feature flag, hostname template) and
+  # the apps table — both DB-backed, so this needs the sandbox `ConnCase`
+  # sets up. Plain `ExUnit.Case` was enough when the allowlist was a static
+  # list.
+  use YouWeb.ConnCase, async: false
 
   import ExUnit.CaptureLog
 
