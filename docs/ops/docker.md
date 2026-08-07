@@ -65,6 +65,10 @@ docker run -d \
 | `YOU_BUNDLE_PASSWORD_FILE` | No | (none) | Read by `mix you.bundle` / `You.Release.*_bundle`. Path to a file holding the bundle password — the right answer for CI, where a mounted secret beats a string in a job definition |
 | `YOU_BUNDLE_PASSWORD` | No | (none) | Same, as a value. Checked after the file. There is deliberately no `--password` flag |
 
+Giving each app its own login hostname rather than sharing `PHX_HOST`? See
+[app-hostnames.md](app-hostnames.md) — it decides what `WEBAUTHN_RP_ID` above
+has to be, and the DNS and certificate this needs.
+
 ### Volumes
 
 | Mount | Purpose |
