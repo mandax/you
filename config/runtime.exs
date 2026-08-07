@@ -241,17 +241,29 @@ if config_env() == :prod do
 
   # Passkeys bind to an exact origin, so the port is omitted only when it is
   # the scheme's default.
+  webauthn_origin =
+    "#{scheme}://#{host}#{if url_port == String.to_integer(default_url_port), do: "", else: ":#{url_port}"}"
+
+  # WEBAUTHN_RP_ID pins the relying-party ID. `:auto` (the prior default)
+  # derived it from this same origin, resolved once at boot rather than per
+  # request — `URI.parse(origin).host`, i.e. PHX_HOST with any port
+  # stripped — so it moved silently whenever PHX_HOST did, stranding every
+  # passkey with no warning. Unset reproduces that exact derivation
+  # (`URI.parse(webauthn_origin).host`, not the raw `host` binding above, so
+  # a `PHX_HOST` that happens to carry a port still resolves the same way
+  # `:auto` did), so a single-host deployment is unchanged. Environment-only
+  # — see `You.Settings.forbidden_keys/0` — because changing it strands
+  # every passkey already registered, in both directions; that is a
+  # deployment operation with a maintenance window, not a console toggle.
   #
-  # WEBAUTHN_RP_ID pins the relying-party ID rather than deriving it from the
-  # origin (`:auto`'s behaviour): with per-app hostnames, `:auto` would derive
-  # a different RP ID per host, and a passkey registered on one would not
-  # work on another. Unset reproduces exactly what `:auto` derives today
-  # (this instance's own host), so a single-host deployment is unchanged.
-  # Environment-only — see `You.Settings.forbidden_keys/0` — because changing
-  # it strands every passkey already registered, in both directions; that is
-  # a deployment operation with a maintenance window, not a console toggle.
+  # `origin_verify_fun` is deliberately not set here: `Wax.Challenge.new/1`
+  # only pulls `@opt_names` out of this app's config
+  # (`deps/wax_/lib/wax/challenge.ex`), which does not include
+  # `origin_verify_fun` — set globally, it would be silently ignored. Every
+  # `Wax.new_registration_challenge/1` and `Wax.new_authentication_challenge/1`
+  # call passes `origin_verify_fun: {You.WebAuthn, :origin_matches?, []}`
+  # explicitly instead (`YouWeb.WebAuthnController`).
   config :wax_,
-    origin:
-      "#{scheme}://#{host}#{if url_port == String.to_integer(default_url_port), do: "", else: ":#{url_port}"}",
-    rp_id: env.("WEBAUTHN_RP_ID") || host
+    origin: webauthn_origin,
+    rp_id: env.("WEBAUTHN_RP_ID") || URI.parse(webauthn_origin).host
 end

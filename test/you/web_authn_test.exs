@@ -27,8 +27,10 @@ defmodule You.WebAuthnTest do
       refute WebAuthn.available_for_host?("notexample.com")
     end
 
-    test "nil is unrestricted, for host-independent previews" do
-      assert WebAuthn.available_for_host?(nil)
+    test "case and a trailing dot are normalized, matching YouWeb.RequestURL" do
+      assert WebAuthn.available_for_host?("WWW.EXAMPLE.COM")
+      assert WebAuthn.available_for_host?("example.com.")
+      assert WebAuthn.available_for_host?("DEMO.Example.COM.")
     end
 
     test "changing the configured RP ID changes which hosts qualify" do

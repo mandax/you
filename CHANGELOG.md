@@ -13,20 +13,23 @@ of them at once.
 
 ### Requires your attention
 
-- **The WebAuthn relying-party ID is now pinned, not derived per request.**
-  `config :wax_, rp_id: :auto` derived the RP ID from the request host, which
-  is fine on one hostname but would silently mint a different RP ID per host
-  once You serves several — stranding every passkey a user registered on a
-  different one. `WEBAUTHN_RP_ID` now fixes it explicitly. Unset reproduces
-  today's derived value exactly, so a single-host deployment is unchanged. It
-  is environment-only, like `PHX_HOST` — no console path can set it — and
-  **changing it strands every passkey already registered, in both
-  directions**: an existing credential's RP ID no longer matches, and a
-  credential registered under the new RP ID is not recognized if you change
-  it back. Treat it as a deployment operation with a maintenance window, not
-  a setting to toggle. A host only offers passkeys when it equals
-  `WEBAUTHN_RP_ID` or is a subdomain of it; other hosts hide the passkey
-  option and fall back to the app's other enabled sign-in methods.
+- **The WebAuthn relying-party ID is now pinned, decoupled from `PHX_HOST`.**
+  `config :wax_, rp_id: :auto` derived the RP ID from the configured origin —
+  resolved once at boot, not per request, which in practice means `PHX_HOST`
+  with any port stripped. So the RP ID silently moved whenever `PHX_HOST` did:
+  repointing the instance at a new public hostname stranded every passkey
+  already registered, with nothing to say so. `WEBAUTHN_RP_ID` now pins it
+  explicitly and independently. Unset reproduces today's derived value
+  exactly, so a single-host deployment is unchanged. It is environment-only,
+  like `PHX_HOST` — no console path can set it — and **changing it strands
+  every passkey already registered, in both directions**: an existing
+  credential's RP ID no longer matches, and a credential registered under the
+  new RP ID is not recognized if you change it back. Treat it as a deployment
+  operation with a maintenance window, not a setting to toggle. A host only
+  offers passkeys when it equals `WEBAUTHN_RP_ID` or is a subdomain of it;
+  other hosts hide the passkey option and fall back to the app's other
+  enabled sign-in methods, and cannot complete a ceremony even if asked to
+  directly — `origin_verify_fun` enforces the same rule `Wax` checks against.
 - **App slugs are now validated, and `new` is reserved.** `slug` doubles as
   the OAuth `client_id`, a segment of every authorize URL, and half of the
   role-resolution key, but was checked for uniqueness only — `foo.bar`, `My

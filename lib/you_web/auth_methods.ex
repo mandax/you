@@ -16,43 +16,51 @@ defmodule YouWeb.AuthMethods do
   alias You.Admin.App
 
   @doc """
-  The sign-in methods available, as a list of strings.
+  The sign-in methods available on this connection, as a list of strings.
 
-  Given a connection, resolved for its in-flight app and its request host —
-  this is what a visitor can actually use right now. Given an app directly,
-  resolved with no host, which is what the app settings preview wants: what
-  the app *would* offer, independent of who is looking at it or from where.
-  An instance-level switch beats a per-app one either way: if an admin turned
-  magic links off entirely, no app can opt back in.
+  Resolved for its in-flight app and its request host — this is what a
+  visitor can actually use right now. An instance-level switch beats a
+  per-app one: if an admin turned magic links off entirely, no app can opt
+  back in.
   """
   def enabled_methods(%Plug.Conn{} = conn), do: enabled_methods(app_for(conn), conn.host)
-  def enabled_methods(app) when is_nil(app) or is_struct(app, App),
-    do: enabled_methods(app, nil)
 
   @doc """
-  The sign-in methods `app` allows on `host` (or on any host, for `nil`).
+  The sign-in methods `app` allows on `host`.
 
   Passkeys are additionally gated on whether `host` qualifies for the
   configured WebAuthn RP ID (`You.WebAuthn.available_for_host?/1`) — a host
   outside it cannot complete a passkey ceremony, so the option is not offered
-  there even if the app and instance both allow it.
+  there even if the app and instance both allow it. `host` must be a real
+  request host; there is deliberately no value here that means "skip the
+  check" — see `previewed_methods/1` for the one caller that genuinely has
+  no host to gate against.
   """
-  def enabled_methods(app, host) when is_nil(app) or is_struct(app, App) do
+  def enabled_methods(app, host)
+      when (is_nil(app) or is_struct(app, App)) and is_binary(host) do
     App.auth_methods()
     |> Enum.filter(&instance_offers?(&1, host))
     |> then(&App.resolved_methods(app, &1))
   end
 
   @doc """
-  Whether `method` may be used, either on this connection or for an app
-  resolved some other way (see `app_for/2`) — the latter for a caller that
-  has an app from somewhere other than the connection's own session, such as
-  a signed `ctx` that named a different app than the session does (#132).
-  """
-  def enabled?(%Plug.Conn{} = conn, method), do: method in enabled_methods(conn)
+  The sign-in methods `app` allows, independent of any request host.
 
-  def enabled?(app, method) when is_nil(app) or is_struct(app, App),
-    do: method in enabled_methods(app)
+  For the app settings preview, which describes what an app *would* offer
+  rather than what today's visitor can use — there is no host to gate
+  passkeys against, so, unlike `enabled_methods/2`, they are never
+  host-filtered here. Named apart from `enabled_methods/2` on purpose: a
+  security gate should not have a call shape a future caller can satisfy by
+  omitting the one argument that turns it off.
+  """
+  def previewed_methods(app) do
+    App.auth_methods()
+    |> Enum.filter(&instance_offers?(&1, :any_host))
+    |> then(&App.resolved_methods(app, &1))
+  end
+
+  @doc "Whether `method` may be used on this connection."
+  def enabled?(%Plug.Conn{} = conn, method), do: method in enabled_methods(conn)
 
   @doc """
   The registered app the in-flight OAuth handoff is for, or `nil` for a plain
@@ -87,6 +95,7 @@ defmodule YouWeb.AuthMethods do
   defp branding_app(_slug), do: nil
 
   defp instance_offers?("magic_link", _host), do: You.Settings.enabled?(:feature_magic_link)
+  defp instance_offers?("passkey", :any_host), do: You.Settings.enabled?(:feature_passkeys)
 
   defp instance_offers?("passkey", host),
     do: You.Settings.enabled?(:feature_passkeys) and You.WebAuthn.available_for_host?(host)

@@ -33,7 +33,7 @@ defmodule YouWeb.FederatedAuthController do
   def authorize(conn, %{"provider" => provider} = params) do
     with {:ok, config} <- fetch_provider_config(provider),
          {:ok, ctx} <- resolve_ctx(conn, params),
-         :ok <- authorize_for_app(ctx, provider) do
+         :ok <- authorize_for_app(conn, ctx, provider) do
       {state, nonce} = IdentityProviders.start_login_flow(provider, ctx)
 
       query =
@@ -76,7 +76,7 @@ defmodule YouWeb.FederatedAuthController do
   def callback(conn, %{"provider" => provider, "code" => code, "state" => state}) do
     with {:ok, config} <- fetch_provider_config(provider),
          {:ok, ctx} <- verify_state(conn, provider, state),
-         :ok <- authorize_for_app(ctx, provider),
+         :ok <- authorize_for_app(conn, ctx, provider),
          {:ok, tokens} <- exchange_code(config, code, conn, provider),
          {:ok, userinfo} <- fetch_userinfo(config, tokens),
          {:ok, user} <-
@@ -195,16 +195,20 @@ defmodule YouWeb.FederatedAuthController do
   # turned off instance-wide via Settings, or per-app by omitting "social"
   # from the app's enabled_methods.
   #
-  # Takes `ctx` rather than `conn`: the app this gate has to check against is
-  # the one `ctx` names (`callback_url`/`branding_app_slug`), not whatever
-  # the session on the host handling this request happens to hold. Today
-  # those are the same thing (`ctx` falls back to session — see
+  # Resolves the app from `ctx`, not from `conn`'s session: the app this gate
+  # checks against is the one `ctx` names (`callback_url`/`branding_app_slug`),
+  # not whatever the session on the host handling this request happens to
+  # hold. Today those are the same thing (`ctx` falls back to session — see
   # `resolve_ctx/2`); once #121 lands they will not be, and the session on
   # canonical is simply absent.
-  defp authorize_for_app(ctx, provider) do
+  #
+  # The host, though, does come from `conn` — a method has to work on the host
+  # actually serving the request, which is why `enabled_methods/2` takes one
+  # and has no host-less shape to call by accident (#120).
+  defp authorize_for_app(conn, ctx, provider) do
     app = AuthMethods.app_for(ctx["callback_url"], ctx["branding_app_slug"])
 
-    if AuthMethods.enabled?(app, "social") and
+    if "social" in AuthMethods.enabled_methods(app, conn.host) and
          provider in Admin.App.resolved_providers(app, [provider]) do
       :ok
     else

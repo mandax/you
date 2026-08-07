@@ -10,16 +10,31 @@ defmodule YouWeb.WebAuthnController do
   Returns PublicKeyCredentialCreationOptions for the registration ceremony.
 
   The challenge is persisted in the session so `finish_registration/2` can
-  verify the attestation response.
+  verify the attestation response. Gated the same as authentication: a host
+  that does not qualify for the configured RP ID cannot complete a
+  ceremony (`Wax.register/3` would fail origin verification), so it must
+  not be offered a challenge either — the settings page hides the control,
+  but this is what actually stops it.
   """
-  def start_registration(conn, _params) do
+  def start_registration(conn, params) do
+    if not enabled?(conn, "passkey") do
+      conn
+      |> put_status(403)
+      |> json(%{error: "Passkey authentication is not available for this application."})
+    else
+      do_start_registration(conn, params)
+    end
+  end
+
+  defp do_start_registration(conn, _params) do
     user = conn.assigns.current_scope.user
     existing_passkeys = Accounts.list_user_passkeys(user)
 
     challenge =
       Wax.new_registration_challenge(
         attestation: "none",
-        user_verification: "preferred"
+        user_verification: "preferred",
+        origin_verify_fun: {You.WebAuthn, :origin_matches?, []}
       )
 
     options = %{
@@ -53,6 +68,16 @@ defmodule YouWeb.WebAuthnController do
   Verifies the attestation response from the browser and stores the new credential.
   """
   def finish_registration(conn, params) do
+    if not enabled?(conn, "passkey") do
+      conn
+      |> put_status(403)
+      |> json(%{error: "Passkey authentication is not available for this application."})
+    else
+      do_finish_registration(conn, params)
+    end
+  end
+
+  defp do_finish_registration(conn, params) do
     user = conn.assigns.current_scope.user
 
     with challenge when not is_nil(challenge) <- get_session(conn, :webauthn_challenge),
@@ -131,11 +156,15 @@ defmodule YouWeb.WebAuthnController do
 
     challenge =
       if allow_credentials == [] do
-        Wax.new_authentication_challenge(user_verification: "preferred")
+        Wax.new_authentication_challenge(
+          user_verification: "preferred",
+          origin_verify_fun: {You.WebAuthn, :origin_matches?, []}
+        )
       else
         Wax.new_authentication_challenge(
           allow_credentials: allow_credentials,
-          user_verification: "preferred"
+          user_verification: "preferred",
+          origin_verify_fun: {You.WebAuthn, :origin_matches?, []}
         )
       end
 

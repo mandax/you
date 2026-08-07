@@ -1,13 +1,21 @@
 defmodule YouWeb.AuthMethodsTest do
   @moduledoc """
-  Unit coverage for `app_for/2` and the `enabled?/2` app-struct clause added
-  for #132: `FederatedAuthController` needs to resolve the app named by a
-  `ctx` map (mint-time values that may not match this connection's own
-  session) rather than always reading `conn`'s session directly. This pins
-  that both give the same answer `app_for/1`/`enabled?/2` on a conn would.
+  Unit coverage for the two ways a caller can ask what a request may use
+  without holding a `Plug.Conn`.
+
+  `app_for/2` exists for #132: `FederatedAuthController` resolves the app named
+  by a `ctx` map — mint-time values that may not match this connection's own
+  session — rather than always reading `conn`'s session. These pin that it
+  gives the same answer `app_for/1` would on a conn.
+
+  `enabled_methods/2` and `previewed_methods/1` are the #120 split: the first
+  takes a real request host and gates passkeys on it, the second deliberately
+  does not exist to skip that check but to describe an app independent of any
+  host, for the settings preview.
   """
 
-  use You.DataCase, async: true
+  # Settings are instance-wide, and several tests here flip them.
+  use You.DataCase, async: false
 
   alias YouWeb.AuthMethods
 
@@ -51,7 +59,7 @@ defmodule YouWeb.AuthMethodsTest do
     end
   end
 
-  describe "enabled?/2 with an already-resolved app (not a conn)" do
+  describe "enabled_methods/2 with an already-resolved app (not a conn)" do
     test "an app's own enabled_methods gates a resolved-app caller the same way it gates a conn" do
       app =
         create_app!(%{
@@ -59,12 +67,12 @@ defmodule YouWeb.AuthMethodsTest do
           enabled_methods: ["password"]
         })
 
-      refute AuthMethods.enabled?(app, "social")
-      assert AuthMethods.enabled?(app, "password")
+      refute "social" in AuthMethods.enabled_methods(app, "example.com")
+      assert "password" in AuthMethods.enabled_methods(app, "example.com")
     end
 
     test "nil app (no app in flight) is unrestricted, same as app_for(conn) resolving nil" do
-      assert AuthMethods.enabled?(nil, "social")
+      assert "social" in AuthMethods.enabled_methods(nil, "example.com")
     end
 
     test "the instance-wide switch still beats an app that allows the method" do
@@ -72,22 +80,51 @@ defmodule YouWeb.AuthMethodsTest do
         create_app!(%{callback_url: "https://switch.example.com/cb", enabled_methods: ["social"]})
 
       You.Settings.set(:feature_social_login, false)
-      refute AuthMethods.enabled?(app, "social")
-      You.Settings.set(:feature_social_login, true)
+      on_exit(fn -> You.Settings.set(:feature_social_login, true) end)
+
+      refute "social" in AuthMethods.enabled_methods(app, "example.com")
     end
 
-    # Anything that isn't a conn, an %App{}, or nil is a caller bug — a
-    # future #121 minter passing the wrong thing (a slug string, a map that
-    # isn't a `ctx`) should get an immediate crash at the call site, not a
-    # `FunctionClauseError` several frames deep inside `App.resolved_methods/2`.
-    test "a value that is neither a conn, an App, nor nil raises immediately, at this boundary" do
-      assert_raise FunctionClauseError, ~r/AuthMethods\.enabled\?\/2/, fn ->
-        AuthMethods.enabled?("not-an-app", "social")
-      end
+    # The guards on `enabled_methods/1,2` and `enabled?/2` are deliberately
+    # not asserted here. Elixir 1.19's type checker rejects a wrongly-typed
+    # literal at these call sites at *compile* time — a strictly stronger
+    # guarantee than an `assert_raise` on the runtime clause, and one that
+    # cannot be satisfied by a test that merely happens to pass. The guards
+    # stay for the dynamic case (a future #121 minter threading a value the
+    # checker cannot narrow), where they still fail at this boundary rather
+    # than several frames deep inside `App.resolved_methods/2`.
+  end
 
-      assert_raise FunctionClauseError, ~r/AuthMethods\.enabled_methods\/1/, fn ->
-        AuthMethods.enabled_methods("not-an-app")
-      end
+  # config/test.exs pins the WebAuthn RP ID to "example.com".
+  describe "enabled_methods/2 (a real request host)" do
+    test "includes passkey on a host under the configured RP ID" do
+      assert "passkey" in AuthMethods.enabled_methods(nil, "demo.example.com")
+    end
+
+    test "omits passkey on a host outside the RP ID's zone" do
+      refute "passkey" in AuthMethods.enabled_methods(nil, "example.org")
+    end
+
+    test "a disabled instance feature omits passkey even on a qualifying host" do
+      You.Settings.set(:feature_passkeys, false)
+      on_exit(fn -> You.Settings.set(:feature_passkeys, true) end)
+
+      refute "passkey" in AuthMethods.enabled_methods(nil, "demo.example.com")
+    end
+  end
+
+  describe "previewed_methods/1 (no request host)" do
+    test "includes passkey regardless of any host's RP ID qualification" do
+      # There is no host-qualifying app in this scenario at all — the point
+      # of previewed_methods/1 is that it never asks the question.
+      assert "passkey" in AuthMethods.previewed_methods(nil)
+    end
+
+    test "a disabled instance feature still omits passkey" do
+      You.Settings.set(:feature_passkeys, false)
+      on_exit(fn -> You.Settings.set(:feature_passkeys, true) end)
+
+      refute "passkey" in AuthMethods.previewed_methods(nil)
     end
   end
 end

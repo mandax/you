@@ -33,7 +33,8 @@ services:
     environment:
       # ── Required ────────────────────────────────────────────────
       # The public hostname, used for generated URLs (magic links, OIDC
-      # discovery, WebAuthn relying party id). Must match what users type.
+      # discovery) and, unless WEBAUTHN_RP_ID is set below, to derive the
+      # WebAuthn relying-party id. Must match what users type.
       PHX_HOST: ${PHX_HOST:?set PHX_HOST to the public hostname}
       # https unless You is reached over plain http (localhost, private network).
       PHX_SCHEME: ${PHX_SCHEME:-https}
@@ -70,6 +71,13 @@ services:
       # ── Optional ────────────────────────────────────────────────
       # Bearer token for the management REST API. Unset disables it.
       API_TOKEN: ${API_TOKEN:-}
+      # Pins the WebAuthn relying-party id. Unset derives it from PHX_HOST,
+      # unchanged from before this existed. Set it explicitly once you serve
+      # more than one hostname, so a later PHX_HOST change can't silently
+      # strand every passkey — see docs/ops/docker.md. Changing this value
+      # itself is just as destructive, in both directions, so treat it as a
+      # maintenance-window operation, never a routine edit.
+      WEBAUTHN_RP_ID: ${WEBAUTHN_RP_ID:-}
     volumes:
       # Named, not bind-mounted, and never anonymous: the SQLite file, the
       # generated secrets and the WAL all live here. Losing it is losing every
