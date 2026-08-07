@@ -38,6 +38,23 @@ of them at once.
   query param that could name nothing. A stale link to a section your
   instance no longer has (a feature you turned off, a mode you left) now
   answers honestly rather than looking like it worked.
+- **The `login:attempt` and `login:totp` audit events gained a
+  `request_host_claimed` field, including on the copies streamed to your
+  configured webhooks.** It is the `Host` header as the client sent it,
+  recorded unvalidated for forensics — not the (allowlisted) host any link
+  was actually built with. If you consume these webhook events, expect the
+  new field in the payload.
+
+### Added
+
+- **Email links follow the host a flow started on, when that host is one
+  You knows about.** Magic link, confirmation, password reset, email-change
+  and invitation links now build against an allowlisted request host
+  instead of always the instance-wide canonical host. Today the allowlist
+  is exactly the canonical host, so this changes nothing you'll see yet —
+  it's the groundwork for per-app hostnames. A request host that is *not*
+  allowlisted (a forged `Host` header, for instance) falls back to
+  canonical rather than being used.
 
 ## 0.4.0 — Per-app context, invitations, guests, and auth hardening
 

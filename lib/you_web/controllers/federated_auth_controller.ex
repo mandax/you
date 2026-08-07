@@ -62,7 +62,8 @@ defmodule YouWeb.FederatedAuthController do
         user_id: user.id,
         email: user.email,
         method: "oidc:#{provider}",
-        result: :success
+        result: :success,
+        request_host_claimed: conn.host
       })
 
       # An identity provider proves the first factor only: an account with a
@@ -96,7 +97,8 @@ defmodule YouWeb.FederatedAuthController do
         :telemetry.execute([:you, :audit, :login, :attempt], %{}, %{
           method: "oidc:#{provider}",
           result: :failure,
-          reason: :email_not_verified
+          reason: :email_not_verified,
+          request_host_claimed: conn.host
         })
 
         conn
@@ -110,7 +112,8 @@ defmodule YouWeb.FederatedAuthController do
         :telemetry.execute([:you, :audit, :login, :attempt], %{}, %{
           method: "oidc:#{provider}",
           result: :failure,
-          reason: reason
+          reason: reason,
+          request_host_claimed: conn.host
         })
 
         conn
@@ -177,6 +180,9 @@ defmodule YouWeb.FederatedAuthController do
   defp access_token(tokens) when is_binary(tokens), do: tokens
   defp access_token(tokens) when is_map(tokens), do: tokens["access_token"]
 
+  # Deliberately not `YouWeb.RequestURL`: this URI is registered with each
+  # upstream provider (Google, GitHub, …) against the canonical host, so it
+  # can never follow the host the login started on.
   defp redirect_uri(_conn, provider) do
     url(~p"/auth/#{provider}/callback")
   end

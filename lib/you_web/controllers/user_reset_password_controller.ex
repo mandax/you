@@ -2,6 +2,7 @@ defmodule YouWeb.UserResetPasswordController do
   use YouWeb, :controller
 
   alias You.Accounts
+  alias YouWeb.RequestURL
 
   def new(conn, params) do
     conn =
@@ -36,7 +37,7 @@ defmodule YouWeb.UserResetPasswordController do
 
       url_fun =
         fn token ->
-          base = url(~p"/users/reset-password/#{token}")
+          base = RequestURL.url(conn, ~p"/users/reset-password/#{token}")
           extra = []
 
           extra =

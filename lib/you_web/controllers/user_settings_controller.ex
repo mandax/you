@@ -5,6 +5,7 @@ defmodule YouWeb.UserSettingsController do
   alias You.Accounts
   alias You.Accounts.Consent
   alias You.Admin.App
+  alias YouWeb.RequestURL
   alias YouWeb.UserAuth
 
   import YouWeb.UserAuth, only: [require_sudo_mode: 2]
@@ -84,7 +85,7 @@ defmodule YouWeb.UserSettingsController do
         Accounts.deliver_user_update_email_instructions(
           Ecto.Changeset.apply_action!(changeset, :insert),
           user.email,
-          &url(~p"/users/settings/confirm-email/#{&1}")
+          &RequestURL.url(conn, ~p"/users/settings/confirm-email/#{&1}")
         )
 
         conn

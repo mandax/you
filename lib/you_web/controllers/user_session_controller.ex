@@ -4,6 +4,7 @@ defmodule YouWeb.UserSessionController do
   import YouWeb.AuthMethods, only: [app_for: 1, enabled_methods: 1, enabled?: 2]
 
   alias You.Accounts
+  alias YouWeb.RequestURL
   alias YouWeb.UserAuth
 
   def new(conn, params) do
@@ -181,7 +182,8 @@ defmodule YouWeb.UserSessionController do
         user_id: user.id,
         email: user.email,
         method: "password",
-        result: :success
+        result: :success,
+        request_host_claimed: conn.host
       })
 
       YouWeb.SecondFactor.complete_login(conn, user, "Welcome back!", user_params)
@@ -189,7 +191,8 @@ defmodule YouWeb.UserSessionController do
       :telemetry.execute([:you, :audit, :login, :attempt], %{}, %{
         email: email,
         method: "password",
-        result: :failure
+        result: :failure,
+        request_host_claimed: conn.host
       })
 
       form = Phoenix.Component.to_form(user_params, as: "user")
@@ -210,7 +213,7 @@ defmodule YouWeb.UserSessionController do
 
       Accounts.deliver_login_instructions(
         user,
-        &url(~p"/users/log-in/#{&1}?#{link_params}"),
+        &RequestURL.url(conn, ~p"/users/log-in/#{&1}?#{link_params}"),
         app_from_name(conn)
       )
     end
@@ -283,14 +286,14 @@ defmodule YouWeb.UserSessionController do
       user = Accounts.get_user!(user_id)
 
       if Accounts.verify_totp(user, code) do
-        audit_totp(user, :success)
+        audit_totp(conn, user, :success)
 
         conn
         |> put_session(:totp_user_id, nil)
         |> put_flash(:info, "Welcome back!")
         |> YouWeb.OAuthFlow.complete_login(user)
       else
-        audit_totp(user, :failure)
+        audit_totp(conn, user, :failure)
 
         render(
           conn,
@@ -341,7 +344,8 @@ defmodule YouWeb.UserSessionController do
             user_id: user.id,
             email: user.email,
             method: "recovery_code",
-            result: :success
+            result: :success,
+            request_host_claimed: conn.host
           })
 
           conn
@@ -354,7 +358,8 @@ defmodule YouWeb.UserSessionController do
             user_id: user.id,
             email: user.email,
             method: "recovery_code",
-            result: :failure
+            result: :failure,
+            request_host_claimed: conn.host
           })
 
           render(
@@ -450,12 +455,22 @@ defmodule YouWeb.UserSessionController do
 
   # The second factor gets its own audit event so a login and the TOTP step
   # that gated it stay distinguishable in the log.
-  defp audit_totp(user, result) do
+  #
+  # `request_host_claimed` here — and on every `:login` audit event fired
+  # from a controller that has a `conn` (password, recovery-code, TOTP,
+  # federated) — is `conn.host` straight off the Host header, recorded as
+  # "what the client claimed," not validated against anything. Never build a
+  # URL from it; use `YouWeb.RequestURL` instead, which allowlists it. The
+  # headless, guest and registration paths in `You.IAM.Server` carry no
+  # `request_host_claimed` at all: those calls arrive over Erlang
+  # distribution, not HTTP, so there is no Host header to record.
+  defp audit_totp(conn, user, result) do
     :telemetry.execute([:you, :audit, :login, :totp], %{}, %{
       user_id: user.id,
       email: user.email,
       method: "totp",
-      result: result
+      result: result,
+      request_host_claimed: conn.host
     })
   end
 
