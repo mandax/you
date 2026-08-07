@@ -28,7 +28,7 @@ defmodule You.Settings do
   `PHX_HOST`, `PHX_SCHEME`, `POOL_SIZE`, `BIND_IP`, `WEBAUTHN_RP_ID` — are
   deliberately absent from `@defaults` and rejected by `set/2`: putting them
   behind a console login is either circular (the login depends on them) or a
-  way to lock whoever runs this instance out.
+  way to lock the operator out.
   """
 
   alias You.Settings.Setting

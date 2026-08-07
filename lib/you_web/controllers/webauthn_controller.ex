@@ -41,7 +41,12 @@ defmodule YouWeb.WebAuthnController do
       publicKey: %{
         rp: %{name: "You", id: challenge.rp_id},
         user: %{
-          id: Base.url_encode64(user.id, padding: false),
+          # WebAuthn's `user.id` is a byte handle, but `users.id` is an
+          # integer primary key, not a binary — encoding it directly crashed
+          # `Base.url_encode64/2` on every real registration attempt. This
+          # predates the RP ID work; it just had no test that reached this
+          # line until one did.
+          id: Base.url_encode64(to_string(user.id), padding: false),
           name: user.email,
           displayName: user.email
         },
@@ -243,12 +248,21 @@ defmodule YouWeb.WebAuthnController do
 
   ## Passkey management (settings)
 
-  @doc "Lists the user's registered passkeys."
+  @doc """
+  Lists the user's registered passkeys.
+
+  Viewing and removing an existing passkey is not host-restricted — a
+  credential registered elsewhere is still this user's to manage. Adding a
+  new one is: `registration_available?` tells the template whether to
+  render "Add passkey" at all, so a host outside the configured RP ID's
+  zone doesn't offer a control that `start_registration/2` would just
+  403 anyway.
+  """
   def index(conn, _params) do
     user = conn.assigns.current_scope.user
     passkeys = Accounts.list_user_passkeys(user)
 
-    render(conn, :index, passkeys: passkeys)
+    render(conn, :index, passkeys: passkeys, registration_available?: enabled?(conn, "passkey"))
   end
 
   @doc "Deletes a passkey, scoped to the owning user."

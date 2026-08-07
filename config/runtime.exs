@@ -245,10 +245,11 @@ if config_env() == :prod do
     "#{scheme}://#{host}#{if url_port == String.to_integer(default_url_port), do: "", else: ":#{url_port}"}"
 
   # WEBAUTHN_RP_ID pins the relying-party ID. `:auto` (the prior default)
-  # derived it from this same origin, resolved once at boot rather than per
-  # request — `URI.parse(origin).host`, i.e. PHX_HOST with any port
-  # stripped — so it moved silently whenever PHX_HOST did, stranding every
-  # passkey with no warning. Unset reproduces that exact derivation
+  # derived it from this same origin, resolved per challenge but from this
+  # boot-fixed config rather than the live request — `URI.parse(origin).host`,
+  # i.e. PHX_HOST with any port stripped — so it moved silently whenever
+  # PHX_HOST did, stranding every passkey with no warning. Unset reproduces
+  # that exact derivation
   # (`URI.parse(webauthn_origin).host`, not the raw `host` binding above, so
   # a `PHX_HOST` that happens to carry a port still resolves the same way
   # `:auto` did), so a single-host deployment is unchanged. Environment-only
@@ -263,7 +264,21 @@ if config_env() == :prod do
   # `Wax.new_registration_challenge/1` and `Wax.new_authentication_challenge/1`
   # call passes `origin_verify_fun: {You.WebAuthn, :origin_matches?, []}`
   # explicitly instead (`YouWeb.WebAuthnController`).
+  webauthn_rp_id = env.("WEBAUTHN_RP_ID") || URI.parse(webauthn_origin).host
+
+  # A typo here (or a WEBAUTHN_RP_ID set for a hostname this instance no
+  # longer answers to) makes every host, including the canonical one, fail
+  # You.WebAuthn.available_for_host?/1 — passkeys vanish with no button, no
+  # error, nothing to point at. This is the boot-time signal that gap would
+  # otherwise have none of.
+  if host != webauthn_rp_id and not String.ends_with?(host, ".#{webauthn_rp_id}") do
+    Logger.warning(
+      "WEBAUTHN_RP_ID (#{webauthn_rp_id}) does not cover PHX_HOST (#{host}) — " <>
+        "it must equal it or be a parent domain of it, or the canonical host will not offer passkeys."
+    )
+  end
+
   config :wax_,
     origin: webauthn_origin,
-    rp_id: env.("WEBAUTHN_RP_ID") || URI.parse(webauthn_origin).host
+    rp_id: webauthn_rp_id
 end

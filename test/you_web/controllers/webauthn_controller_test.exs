@@ -112,4 +112,96 @@ defmodule YouWeb.WebAuthnControllerTest do
       assert error =~ "not available"
     end
   end
+
+  # start_registration/2 and finish_registration/2 are behind
+  # :require_authenticated_user, so these need a signed-in user rather than
+  # the bare conn the authentication tests above use.
+  describe "passkey registration gating" do
+    setup :register_and_log_in_user
+
+    test "start is refused on a host outside the configured RP ID's zone", %{conn: conn} do
+      conn = %{conn | host: "example.org"}
+
+      assert %{"error" => error} =
+               conn
+               |> post(~p"/users/settings/passkeys/register/start", %{})
+               |> json_response(403)
+
+      assert error =~ "not available"
+    end
+
+    test "finish is refused on a host outside the configured RP ID's zone", %{conn: conn} do
+      conn = %{conn | host: "example.org"}
+
+      assert %{"error" => error} =
+               conn
+               |> post(~p"/users/settings/passkeys/register/finish", %{})
+               |> json_response(403)
+
+      assert error =~ "not available"
+    end
+
+    test "start is offered on a host under the configured RP ID", %{conn: conn} do
+      conn = %{conn | host: "demo.example.com"}
+
+      assert %{"publicKey" => %{"challenge" => _}} =
+               conn
+               |> post(~p"/users/settings/passkeys/register/start", %{})
+               |> json_response(200)
+    end
+
+    test "a disabled instance feature refuses start on the canonical host too", %{conn: conn} do
+      You.Settings.set(:feature_passkeys, false)
+      on_exit(fn -> You.Settings.set(:feature_passkeys, true) end)
+
+      assert %{"error" => _} =
+               conn
+               |> post(~p"/users/settings/passkeys/register/start", %{})
+               |> json_response(403)
+    end
+  end
+
+  # The management page (view/remove) is not host-restricted — only adding a
+  # new passkey is, since that's the part a non-qualifying host can't
+  # actually complete.
+  describe "passkey settings page" do
+    setup :register_and_log_in_user
+
+    test "offers Add passkey on a host under the configured RP ID", %{conn: conn} do
+      conn = %{conn | host: "demo.example.com"}
+
+      html = conn |> get(~p"/users/settings/passkeys") |> html_response(200)
+
+      assert html =~ ~s(id="register-passkey")
+    end
+
+    test "omits Add passkey, with an explanation, on a non-qualifying host", %{conn: conn} do
+      conn = %{conn | host: "example.org"}
+
+      html = conn |> get(~p"/users/settings/passkeys") |> html_response(200)
+
+      refute html =~ ~s(id="register-passkey")
+      assert html =~ "isn't available on this hostname"
+    end
+
+    test "still lists and allows managing existing passkeys on a non-qualifying host", %{
+      conn: conn,
+      user: user
+    } do
+      {:ok, passkey} =
+        You.Accounts.register_passkey(user, %{
+          credential_id: :crypto.strong_rand_bytes(16),
+          public_key: %{1 => 2, 3 => -7, -1 => 1, -2 => <<0::256>>, -3 => <<0::256>>},
+          sign_count: 0,
+          label: "Existing key"
+        })
+
+      conn = %{conn | host: "example.org"}
+
+      html = conn |> get(~p"/users/settings/passkeys") |> html_response(200)
+
+      assert html =~ "Existing key"
+      assert html =~ ~p"/users/settings/passkeys/#{passkey.id}"
+    end
+  end
 end

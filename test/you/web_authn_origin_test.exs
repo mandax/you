@@ -111,5 +111,27 @@ defmodule You.WebAuthnOriginTest do
       assert {:error, %Wax.InvalidClientDataError{reason: :origin_mismatch}} =
                Wax.register(attestation_object(), client_data, challenge)
     end
+
+    test "rejects a port mismatch even on a qualifying host" do
+      challenge = challenge({You.WebAuthn, :origin_matches?, []})
+      client_data = client_data_json(challenge, "https://demo.example.com:8443")
+
+      assert {:error, %Wax.InvalidClientDataError{reason: :origin_mismatch}} =
+               Wax.register(attestation_object(), client_data, challenge)
+    end
+
+    test "rejects a non-binary origin (a JSON null) without raising" do
+      challenge = challenge({You.WebAuthn, :origin_matches?, []})
+
+      client_data =
+        Jason.encode!(%{
+          "type" => "webauthn.create",
+          "challenge" => Base.url_encode64(challenge.bytes, padding: false),
+          "origin" => nil
+        })
+
+      assert {:error, %Wax.InvalidClientDataError{reason: :origin_mismatch}} =
+               Wax.register(attestation_object(), client_data, challenge)
+    end
   end
 end

@@ -15,8 +15,9 @@ of them at once.
 
 - **The WebAuthn relying-party ID is now pinned, decoupled from `PHX_HOST`.**
   `config :wax_, rp_id: :auto` derived the RP ID from the configured origin —
-  resolved once at boot, not per request, which in practice means `PHX_HOST`
-  with any port stripped. So the RP ID silently moved whenever `PHX_HOST` did:
+  resolved per challenge, but from that boot-fixed config rather than the
+  live request, which in practice means `PHX_HOST` with any port stripped.
+  So the RP ID silently moved whenever `PHX_HOST` did:
   repointing the instance at a new public hostname stranded every passkey
   already registered, with nothing to say so. `WEBAUTHN_RP_ID` now pins it
   explicitly and independently. Unset reproduces today's derived value
