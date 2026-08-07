@@ -25,13 +25,15 @@ defmodule YouWeb.AppLive.NewTest do
         "app" => %{
           "name" => "Billing",
           "slug" => "billing",
-          "callback_url" => "https://billing.example.com/cb"
+          "callback_url" => "https://billing.example.com/cb",
+          "first_party" => "true"
         }
       })
       |> render_submit()
 
     assert [app] = Admin.list_apps()
     assert app.slug == "billing"
+    assert app.first_party
 
     # The secret is revealed in place, on the same page just submitted —
     # no navigation happens, so there is nothing to carry a credential
@@ -133,7 +135,12 @@ defmodule YouWeb.AppLive.NewTest do
       {:ok, _lv, html} = live(conn, ~p"/console/apps/#{app.slug}")
 
       refute html =~ "Register app"
-      assert html =~ "Identity and URLs"
+
+      # "Identity and URLs" is a panel title on both pages; the tab strip is
+      # what only `AppLive.Show` renders, so that is what actually tells
+      # these two apart.
+      assert html =~ "Credentials"
+      assert html =~ "Members"
     end
   end
 

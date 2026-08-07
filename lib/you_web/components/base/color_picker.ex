@@ -22,6 +22,9 @@ defmodule YouWeb.Components.Base.ColorPicker do
   caller with no form behind it (`app_live/show.ex`'s live-preview form,
   which posts straight from params rather than through a changeset).
   """
+  # `input/1` derives `id` from `field.id` when omitted; this stays required
+  # instead, since every caller already supplies one for `phx-hook` on the
+  # wrapping `<div>` — deriving it too would need a second, redundant path.
   attr :id, :string, required: true
   # No `default:` on `name`/`value`: a default would pre-populate the key in
   # `assigns` before the field-based clause below runs, and `assign_new/3`
@@ -86,7 +89,10 @@ defmodule YouWeb.Components.Base.ColorPicker do
           placeholder={@placeholder}
           spellcheck="false"
           autocomplete="off"
-          class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          class={[
+            "flex h-10 w-full rounded-md border bg-background px-3 py-2 font-mono text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+            if(@errors != [], do: "border-destructive", else: "border-input")
+          ]}
         />
 
         <button

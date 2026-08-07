@@ -378,9 +378,6 @@ defmodule YouWeb.ConsoleLive do
   end
 
   # ── apps ──────────────────────────────────────────────────────
-  # Creation lives at its own page, `AppLive.New` (#130): it mints a client
-  # secret shown exactly once, and a dialog that closes on a stray click is
-  # a bad place for the only copy of a credential.
   def handle_event("delete_app", %{"id" => id}, socket) do
     # `Admin.delete_app/1` emits the audit event itself; a second one here
     # would record the same removal twice under two different shapes.
@@ -1527,9 +1524,9 @@ defmodule YouWeb.ConsoleLive do
     <div class="space-y-4">
       <div class="flex items-center justify-between">
         <span class="font-mono text-xs text-muted-foreground">{length(@apps)} apps</span>
-        <.link navigate={~p"/console/apps/new"}>
-          <.button size="sm"><span class="lucide-plus size-4 block" /> New app</.button>
-        </.link>
+        <.button navigate={~p"/console/apps/new"} size="sm">
+          <span class="lucide-plus size-4 block" /> New app
+        </.button>
       </div>
 
       <.list_search

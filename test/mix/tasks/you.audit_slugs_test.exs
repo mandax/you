@@ -48,7 +48,7 @@ defmodule Mix.Tasks.You.AuditSlugsTest do
   # `new` was reserved after slug validation shipped (#130), so a row already
   # slugged `new` — written when that was still a legal slug — is exactly the
   # class of legacy row this task exists to surface: nothing about updating
-  # its other fields would ever fail and point an operator at it.
+  # its other fields would ever fail and point whoever runs this instance at it.
   test "reports a legacy app slugged with a name reserved after it was created" do
     app = AdminFixtures.insert_legacy_app!("new")
 

@@ -14,7 +14,17 @@ defmodule YouWeb.AppLive.New do
   have to carry the plaintext across the wire again — through a query
   param, the session, or the flash — and every one of those is a worse
   place for a credential than the connected socket it already lives on.
-  The admin gets a link on to the app once they have read it.
+  The admin gets a link on to the app once they have read it. The price:
+  a reconnect between "Create" and "Copy" — a wifi blip, a laptop sleep, a
+  deploy — remounts to a blank form, and the secret is gone for good. That
+  is recoverable (rotate the secret from the app's own page) but not free,
+  which a redirect-based handoff would not have risked in the same way.
+
+  Refuses to render in single-app mode, the same way `/console/apps` itself
+  does (`ConsoleLive.resolve_section/4`): single mode replaces the apps
+  registry with a direct link to the one configured app precisely because
+  there is no second app to register, and this route has no other gate to
+  stop it minting one anyway.
   """
   use YouWeb, :live_view
 
@@ -25,6 +35,10 @@ defmodule YouWeb.AppLive.New do
 
   @impl true
   def mount(_params, _session, socket) do
+    if You.Mode.single?() do
+      raise YouWeb.NotFoundError, "app registration is unavailable in single mode"
+    end
+
     {:ok,
      socket
      |> assign(nav: nav(), node_name: Node.self(), page_title: "Register app", created: nil)
@@ -109,9 +123,7 @@ defmodule YouWeb.AppLive.New do
           one and shows the new value once, the same way.
         </p>
         <div class="flex justify-end">
-          <.link navigate={~p"/console/apps/#{@app.slug}"}>
-            <.button>Go to {@app.name}</.button>
-          </.link>
+          <.button navigate={~p"/console/apps/#{@app.slug}"}>Go to {@app.name}</.button>
         </div>
       </div>
     </.panel>
