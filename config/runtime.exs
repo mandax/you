@@ -271,7 +271,25 @@ if config_env() == :prod do
   # You.WebAuthn.available_for_host?/1 — passkeys vanish with no button, no
   # error, nothing to point at. This is the boot-time signal that gap would
   # otherwise have none of.
-  if host != webauthn_rp_id and not String.ends_with?(host, ".#{webauthn_rp_id}") do
+  #
+  # Compared the same way available_for_host?/1 compares: downcased, one
+  # trailing dot stripped, and against the *canonical* host
+  # (`URI.parse(webauthn_origin).host`, matching what `conn.host` actually
+  # carries) rather than the raw PHX_HOST binding, which — unusually, but
+  # not incorrectly — may itself carry a port. Comparing the raw values
+  # would warn on cases that work fine at runtime, and a warning an
+  # instance can't ever silence except by "fixing" a config that was never
+  # broken is worse than no warning.
+  webauthn_normalize_host = fn h ->
+    h = String.downcase(h)
+    if String.ends_with?(h, "."), do: binary_part(h, 0, byte_size(h) - 1), else: h
+  end
+
+  webauthn_canonical_host = webauthn_normalize_host.(URI.parse(webauthn_origin).host)
+  webauthn_rp_id_normalized = webauthn_normalize_host.(webauthn_rp_id)
+
+  if webauthn_canonical_host != webauthn_rp_id_normalized and
+       not String.ends_with?(webauthn_canonical_host, ".#{webauthn_rp_id_normalized}") do
     Logger.warning(
       "WEBAUTHN_RP_ID (#{webauthn_rp_id}) does not cover PHX_HOST (#{host}) — " <>
         "it must equal it or be a parent domain of it, or the canonical host will not offer passkeys."

@@ -15,7 +15,7 @@
       <div class="flex items-center justify-between">
         <h3 class="text-sm font-medium">Registered passkeys</h3>
         <button
-          :if={@registration_available?}
+          :if={@passkeys_feature_enabled? and @host_qualifies?}
           id="register-passkey"
           type="button"
           class="inline-flex items-center justify-center rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
@@ -24,7 +24,13 @@
           Add passkey
         </button>
       </div>
-      <p :if={!@registration_available?} class="text-xs text-muted-foreground">
+      <p :if={!@passkeys_feature_enabled?} class="text-xs text-muted-foreground">
+        Passkeys are turned off for this instance.
+      </p>
+      <p
+        :if={@passkeys_feature_enabled? and !@host_qualifies?}
+        class="text-xs text-muted-foreground"
+      >
         Adding a passkey isn't available on this hostname. Sign in from the instance's canonical host to add one.
       </p>
 

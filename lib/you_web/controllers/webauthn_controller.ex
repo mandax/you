@@ -7,26 +7,69 @@ defmodule YouWeb.WebAuthnController do
   alias You.Accounts.Passkey
 
   @doc """
+  Whether the signed-in user may add a passkey to their own account.
+
+  Deliberately *not* `YouWeb.AuthMethods.enabled?/2`: that resolves the
+  in-flight app's `enabled_methods`, which is right for a login endpoint
+  (an app restricted to `["password"]` shouldn't offer passkey sign-in for
+  *that app*) but wrong here — `/users/settings/passkeys` manages the
+  account's own credentials, not a login for any particular app, so a
+  password-only app merely being in session (a `callback_url` left over
+  from how the user arrived) must not block enrollment. Only the instance
+  switch and the host's RP ID qualification are account-level facts.
+  """
+  def registration_available?(conn),
+    do: You.Settings.enabled?(:feature_passkeys) and You.WebAuthn.available_for_host?(conn.host)
+
+  plug :require_passkey_login when action in [:start_authentication, :finish_authentication]
+  plug :require_passkey_registration when action in [:start_registration, :finish_registration]
+
+  defp require_passkey_login(conn, _opts) do
+    if enabled?(conn, "passkey"), do: conn, else: refuse_passkey(conn)
+  end
+
+  defp require_passkey_registration(conn, _opts) do
+    if registration_available?(conn), do: conn, else: refuse_passkey(conn)
+  end
+
+  defp refuse_passkey(conn) do
+    conn
+    |> put_status(403)
+    |> json(%{error: "Passkey authentication is not available for this application."})
+    |> halt()
+  end
+
+  @doc """
   Returns PublicKeyCredentialCreationOptions for the registration ceremony.
 
   The challenge is persisted in the session so `finish_registration/2` can
-  verify the attestation response. Gated the same as authentication: a host
-  that does not qualify for the configured RP ID cannot complete a
+  verify the attestation response. Gated by `require_passkey_registration/2`:
+  a host that does not qualify for the configured RP ID cannot complete a
   ceremony (`Wax.register/3` would fail origin verification), so it must
   not be offered a challenge either — the settings page hides the control,
   but this is what actually stops it.
-  """
-  def start_registration(conn, params) do
-    if not enabled?(conn, "passkey") do
-      conn
-      |> put_status(403)
-      |> json(%{error: "Passkey authentication is not available for this application."})
-    else
-      do_start_registration(conn, params)
-    end
-  end
 
-  defp do_start_registration(conn, _params) do
+  ## The `user.id` handle
+
+  WebAuthn's `user.id` is an opaque byte handle for the authenticator and
+  platform to key on — it is never read back by this controller, a stored
+  credential is looked up by `credential_id` alone. `users.id` is an
+  integer primary key, not a binary; encoding it directly crashed
+  `Base.url_encode64/2` on every real registration attempt (fixed here as
+  part of #148, predating the RP ID work — it just had no test that
+  reached this line until one did).
+
+  `to_string(user.id)` is the fix, not a random handle: a random value
+  would need a new column and a lookup on top of a field nothing consumes,
+  buying nothing today. The trade-off it accepts is that the handle
+  reveals `users.id`, a sequential row id, to the authenticator and
+  platform — enumerable, so it leaks signup ordering to whatever has
+  access to that layer. Accepted because that access already implies a
+  compromised client or a curious platform vendor, neither of which needs
+  the handle to learn ordering some other way; revisit if `user.id`
+  itself ever stops being a bare sequential integer.
+  """
+  def start_registration(conn, _params) do
     user = conn.assigns.current_scope.user
     existing_passkeys = Accounts.list_user_passkeys(user)
 
@@ -41,11 +84,6 @@ defmodule YouWeb.WebAuthnController do
       publicKey: %{
         rp: %{name: "You", id: challenge.rp_id},
         user: %{
-          # WebAuthn's `user.id` is a byte handle, but `users.id` is an
-          # integer primary key, not a binary — encoding it directly crashed
-          # `Base.url_encode64/2` on every real registration attempt. This
-          # predates the RP ID work; it just had no test that reached this
-          # line until one did.
           id: Base.url_encode64(to_string(user.id), padding: false),
           name: user.email,
           displayName: user.email
@@ -73,16 +111,6 @@ defmodule YouWeb.WebAuthnController do
   Verifies the attestation response from the browser and stores the new credential.
   """
   def finish_registration(conn, params) do
-    if not enabled?(conn, "passkey") do
-      conn
-      |> put_status(403)
-      |> json(%{error: "Passkey authentication is not available for this application."})
-    else
-      do_finish_registration(conn, params)
-    end
-  end
-
-  defp do_finish_registration(conn, params) do
     user = conn.assigns.current_scope.user
 
     with challenge when not is_nil(challenge) <- get_session(conn, :webauthn_challenge),
@@ -134,16 +162,6 @@ defmodule YouWeb.WebAuthnController do
   `allowCredentials`. Otherwise the browser may use any discoverable credential.
   """
   def start_authentication(conn, params) do
-    if not enabled?(conn, "passkey") do
-      conn
-      |> put_status(403)
-      |> json(%{error: "Passkey authentication is not available for this application."})
-    else
-      do_start_authentication(conn, params)
-    end
-  end
-
-  defp do_start_authentication(conn, params) do
     passkeys =
       if email = params["email"] do
         case Accounts.get_user_by_email(email) do
@@ -199,16 +217,6 @@ defmodule YouWeb.WebAuthnController do
   establishes a session.
   """
   def finish_authentication(conn, params) do
-    if not enabled?(conn, "passkey") do
-      conn
-      |> put_status(403)
-      |> json(%{error: "Passkey authentication is not available for this application."})
-    else
-      do_finish_authentication(conn, params)
-    end
-  end
-
-  defp do_finish_authentication(conn, params) do
     with challenge when not is_nil(challenge) <- get_session(conn, :webauthn_challenge),
          raw_id <- decode_param(params["rawId"] || params["id"]),
          {:ok, raw_id} <- raw_id,
@@ -253,16 +261,24 @@ defmodule YouWeb.WebAuthnController do
 
   Viewing and removing an existing passkey is not host-restricted — a
   credential registered elsewhere is still this user's to manage. Adding a
-  new one is: `registration_available?` tells the template whether to
-  render "Add passkey" at all, so a host outside the configured RP ID's
-  zone doesn't offer a control that `start_registration/2` would just
-  403 anyway.
+  new one is: the template renders "Add passkey" only when both
+  `passkeys_feature_enabled?` and `host_qualifies?` hold, so a host outside
+  the configured RP ID's zone doesn't offer a control that
+  `start_registration/2` would just 403 anyway. Passed separately, rather
+  than the single `registration_available?/1` the plug uses, so the
+  template can say *which* of the two is why — folding them into one
+  boolean would leave the copy naming a cause that might not be the actual
+  one.
   """
   def index(conn, _params) do
     user = conn.assigns.current_scope.user
     passkeys = Accounts.list_user_passkeys(user)
 
-    render(conn, :index, passkeys: passkeys, registration_available?: enabled?(conn, "passkey"))
+    render(conn, :index,
+      passkeys: passkeys,
+      passkeys_feature_enabled?: You.Settings.enabled?(:feature_passkeys),
+      host_qualifies?: You.WebAuthn.available_for_host?(conn.host)
+    )
   end
 
   @doc "Deletes a passkey, scoped to the owning user."

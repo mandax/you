@@ -58,7 +58,14 @@ defmodule You.WebAuthn do
   such an RP ID regardless of what this predicate says. A wrong
   `WEBAUTHN_RP_ID` is a deployment bug either way — see
   `config/runtime.exs`'s boot-time check.
+
+  `nil` refuses rather than raising — `conn.host` is always a binary for a
+  real request, but a call site built from an optional value (a `URI.t()`'s
+  `:host`, for instance) should get a clean `false`, the same posture
+  `origin_matches?/2` takes toward its own untrusted input.
   """
+  def available_for_host?(nil), do: false
+
   def available_for_host?(host) when is_binary(host) do
     rp = normalize(rp_id())
     host = normalize(host)

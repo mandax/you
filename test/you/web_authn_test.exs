@@ -33,6 +33,10 @@ defmodule You.WebAuthnTest do
       assert WebAuthn.available_for_host?("DEMO.Example.COM.")
     end
 
+    test "nil refuses rather than raising" do
+      refute WebAuthn.available_for_host?(nil)
+    end
+
     test "changing the configured RP ID changes which hosts qualify" do
       original = Application.fetch_env!(:wax_, :rp_id)
       Application.put_env(:wax_, :rp_id, "you.example.com")

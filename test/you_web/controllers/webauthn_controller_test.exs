@@ -159,6 +159,73 @@ defmodule YouWeb.WebAuthnControllerTest do
                |> post(~p"/users/settings/passkeys/register/start", %{})
                |> json_response(403)
     end
+
+    # /users/settings/passkeys manages the account's own credentials, not a
+    # login for any particular app — an app the user merely arrived through
+    # (its callback_url left over in session) restricting itself to
+    # ["password"] must not block adding a passkey to the account.
+    test "an in-flight app restricted to password does not block enrollment", %{conn: conn} do
+      {:ok, app, _secret} =
+        You.Admin.create_app(%{
+          slug: "pw-only-enrollment",
+          name: "Password Only",
+          callback_url: "https://pw-only.example.com/cb"
+        })
+
+      {:ok, app} = You.Admin.update_app(app, %{"enabled_methods" => ["password"]})
+      refute "passkey" in YouWeb.AuthMethods.enabled_methods(app, conn.host)
+
+      conn = init_test_session(conn, callback_url: app.callback_url)
+
+      assert %{"publicKey" => %{"challenge" => _}} =
+               conn
+               |> post(~p"/users/settings/passkeys/register/start", %{})
+               |> json_response(200)
+    end
+  end
+
+  # Every Wax.new_registration_challenge/1 and Wax.new_authentication_challenge/1
+  # call must pass origin_verify_fun: {You.WebAuthn, :origin_matches?, []} —
+  # Wax's own default (Wax.origins_match?/2) is an exact match against the
+  # single configured origin and would silently refuse every subdomain,
+  # with the render gate still saying the host qualifies. The challenge
+  # round-trips through the session, so the wiring is directly checkable.
+  describe "origin_verify_fun wiring" do
+    setup :register_and_log_in_user
+
+    test "registration challenges carry it", %{conn: conn} do
+      conn = post(conn, ~p"/users/settings/passkeys/register/start", %{})
+
+      assert get_session(conn, :webauthn_challenge).origin_verify_fun ==
+               {You.WebAuthn, :origin_matches?, []}
+    end
+
+    test "authentication challenges with no allow_credentials carry it", %{conn: conn} do
+      conn =
+        conn
+        |> init_test_session(callback_url: nil)
+        |> post(~p"/users/log-in/passkey/start", %{})
+
+      assert get_session(conn, :webauthn_challenge).origin_verify_fun ==
+               {You.WebAuthn, :origin_matches?, []}
+    end
+
+    test "authentication challenges with allow_credentials carry it", %{conn: conn, user: user} do
+      {:ok, _passkey} =
+        You.Accounts.register_passkey(user, %{
+          credential_id: :crypto.strong_rand_bytes(16),
+          public_key: %{1 => 2, 3 => -7, -1 => 1, -2 => <<0::256>>, -3 => <<0::256>>},
+          sign_count: 0
+        })
+
+      conn =
+        conn
+        |> init_test_session(callback_url: nil)
+        |> post(~p"/users/log-in/passkey/start", %{"email" => user.email})
+
+      assert get_session(conn, :webauthn_challenge).origin_verify_fun ==
+               {You.WebAuthn, :origin_matches?, []}
+    end
   end
 
   # The management page (view/remove) is not host-restricted — only adding a
@@ -175,13 +242,30 @@ defmodule YouWeb.WebAuthnControllerTest do
       assert html =~ ~s(id="register-passkey")
     end
 
-    test "omits Add passkey, with an explanation, on a non-qualifying host", %{conn: conn} do
+    test "omits Add passkey, with an explanation naming the hostname, on a non-qualifying host",
+         %{conn: conn} do
       conn = %{conn | host: "example.org"}
 
       html = conn |> get(~p"/users/settings/passkeys") |> html_response(200)
 
       refute html =~ ~s(id="register-passkey")
       assert html =~ "isn't available on this hostname"
+    end
+
+    # The hostname copy is wrong advice when the real cause is the instance
+    # switch — the user is already on a qualifying host, and re-visiting it
+    # changes nothing. Each cause gets its own message.
+    test "omits Add passkey, with a different explanation, when the feature is off", %{
+      conn: conn
+    } do
+      You.Settings.set(:feature_passkeys, false)
+      on_exit(fn -> You.Settings.set(:feature_passkeys, true) end)
+
+      html = conn |> get(~p"/users/settings/passkeys") |> html_response(200)
+
+      refute html =~ ~s(id="register-passkey")
+      refute html =~ "isn't available on this hostname"
+      assert html =~ "turned off for this instance"
     end
 
     test "still lists and allows managing existing passkeys on a non-qualifying host", %{

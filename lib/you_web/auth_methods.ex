@@ -32,9 +32,11 @@ defmodule YouWeb.AuthMethods do
   configured WebAuthn RP ID (`You.WebAuthn.available_for_host?/1`) — a host
   outside it cannot complete a passkey ceremony, so the option is not offered
   there even if the app and instance both allow it. `host` must be a real
-  request host; there is deliberately no value here that means "skip the
-  check" — see `previewed_methods/1` for the one caller that genuinely has
-  no host to gate against.
+  request host: this clause has no argument that skips the check. There is
+  one, `:any_host` — `previewed_methods/1` passes it, one layer down, for
+  the one caller that genuinely has no host to gate against — but it is not
+  reachable through this arity, so a future caller cannot open the gate by
+  omission here.
   """
   def enabled_methods(app, host)
       when (is_nil(app) or is_struct(app, App)) and is_binary(host) do
