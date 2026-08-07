@@ -40,22 +40,50 @@ defmodule YouWeb.RequestURL do
   outside the allowlist silently falls back to canonical rather than
   raising: a forged header must not be able to turn into a 500 an attacker
   can trigger at will.
+
+  Comparison is case-insensitive and tolerates one trailing dot (the DNS
+  root label), so `LOCALHOST` and `localhost.` match `localhost` — harmless
+  today since the allowlist has one entry, but the day #121 adds a real app
+  hostname, a case or trailing-dot variant that failed to match would
+  silently drop the user onto the canonical host, which is a different
+  host-local session. Nothing else about the host is normalized: a stray
+  port or extra whitespace still falls back to canonical, as it must, since
+  neither one is a form `conn.host` legitimately takes.
   """
 
   require Logger
+
+  # The refused-host log is rate-limited so a scripted probe against many
+  # forged hosts can't flood it, but keying the limiter on the host itself
+  # would make an attacker-controlled, effectively unbounded string (Bandit
+  # accepts a Host header up to ~9.9 KB) an ETS key retained for the window
+  # — a memory-exhaustion vector the guard would itself introduce. Keying on
+  # its hash instead bounds the key to a fixed size regardless of input.
+  @refused_host_log_window :timer.minutes(5)
+
+  # Longest a DNS hostname can legitimately be; anything past this in a log
+  # line is padding an attacker is paying to have logged, not signal.
+  @max_logged_host_length 253
 
   @doc """
   Absolute URL for `path` (typically built with `~p`) on the host the
   request or LiveView socket arrived on, when that host is allowed, or on
   the canonical host otherwise.
 
-  Accepts a `%Plug.Conn{}` (controllers) or the `%URI{}` LiveView assigns as
-  `socket.host_uri` on mount.
+  Accepts a `%Plug.Conn{}` (controllers), a `%Phoenix.LiveView.Socket{}`
+  (LiveViews — reads its `host_uri` itself, so callers never need to reach
+  into the socket), or a bare `%URI{}` such as `socket.host_uri`.
   """
-  def url(conn_or_host_uri, path)
+  def url(conn_or_socket_or_host_uri, path)
 
   def url(%Plug.Conn{host: host}, path) when is_binary(path), do: build(host, path)
   def url(%URI{host: host}, path) when is_binary(path), do: build(host, path)
+
+  def url(%Phoenix.LiveView.Socket{host_uri: host_uri}, path) when is_binary(path) do
+    url(host_uri, path)
+  end
+
+  def url(:not_mounted_at_router, path) when is_binary(path), do: build(nil, path)
 
   @doc """
   The hosts a request-built link is allowed to point at. Exactly the
@@ -72,30 +100,63 @@ defmodule YouWeb.RequestURL do
     |> Kernel.<>(path)
   end
 
+  defp resolve_host(nil), do: fallback_host(nil)
+
   defp resolve_host(host) do
-    if host in allowed_hosts() do
-      host
+    normalized = normalize(host)
+
+    if normalized in Enum.map(allowed_hosts(), &normalize/1) do
+      normalized
     else
-      log_refused_host(host)
-      YouWeb.Endpoint.host()
+      fallback_host(host)
     end
+  end
+
+  defp fallback_host(host) do
+    log_refused_host(host)
+    YouWeb.Endpoint.host()
+  end
+
+  defp normalize(host) do
+    host
+    |> String.downcase()
+    |> strip_trailing_dot()
+  end
+
+  defp strip_trailing_dot(host) do
+    if String.ends_with?(host, "."), do: binary_part(host, 0, byte_size(host) - 1), else: host
   end
 
   # A Host header that doesn't resolve to a known host, hitting a route that
   # emails a link, is the signature of someone probing for exactly the
-  # injection this module exists to close. Sampled to one log line per host
-  # per window rather than one per request, so a scripted probe against many
-  # forged hosts can't be used to flood the log.
+  # injection this module exists to close. The host goes in the *message*,
+  # inspected: `Logger.warning/2`'s metadata is dropped by the default
+  # formatter (`config :logger` only forwards its `:metadata` allowlist,
+  # which doesn't include arbitrary keys), so passing the host as metadata
+  # alone would log a line with no host in it — silent on the one thing
+  # worth knowing. `inspect/1` quotes and escapes it, so a host containing
+  # control characters or text shaped like a log line can't be mistaken for
+  # one.
   defp log_refused_host(host) do
-    case YouWeb.RateLimit.check({:refused_request_host, host}, 1, :timer.minutes(5)) do
+    key = :erlang.phash2(host)
+
+    case YouWeb.RateLimit.check({:refused_request_host, key}, 1, @refused_host_log_window) do
       {:allow, 1} ->
-        Logger.warning("refused non-allowlisted request host for link building",
-          request_host: host,
-          canonical_host: YouWeb.Endpoint.host()
+        Logger.warning(
+          "refused non-allowlisted request host for link building: " <>
+            "request_host=#{inspect(truncate(host))} canonical_host=#{inspect(YouWeb.Endpoint.host())}"
         )
 
       _ ->
         :ok
     end
   end
+
+  defp truncate(nil), do: nil
+
+  defp truncate(host) when byte_size(host) > @max_logged_host_length do
+    binary_part(host, 0, @max_logged_host_length) <> "…(truncated)"
+  end
+
+  defp truncate(host), do: host
 end

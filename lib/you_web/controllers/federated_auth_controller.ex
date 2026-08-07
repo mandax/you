@@ -63,7 +63,7 @@ defmodule YouWeb.FederatedAuthController do
         email: user.email,
         method: "oidc:#{provider}",
         result: :success,
-        request_host: conn.host
+        request_host_claimed: conn.host
       })
 
       # An identity provider proves the first factor only: an account with a
@@ -98,7 +98,7 @@ defmodule YouWeb.FederatedAuthController do
           method: "oidc:#{provider}",
           result: :failure,
           reason: :email_not_verified,
-          request_host: conn.host
+          request_host_claimed: conn.host
         })
 
         conn
@@ -113,7 +113,7 @@ defmodule YouWeb.FederatedAuthController do
           method: "oidc:#{provider}",
           result: :failure,
           reason: reason,
-          request_host: conn.host
+          request_host_claimed: conn.host
         })
 
         conn

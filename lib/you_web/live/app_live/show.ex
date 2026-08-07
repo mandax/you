@@ -218,7 +218,7 @@ defmodule YouWeb.AppLive.Show do
       invited_by_id: socket.assigns.current_scope.user.id
     }
 
-    invite_url_fun = &RequestURL.url(socket.host_uri, ~p"/invitations/#{&1}")
+    invite_url_fun = &RequestURL.url(socket, ~p"/invitations/#{&1}")
 
     case You.Invitations.invite(attrs, invite_url_fun) do
       {:ok, invitation} ->
