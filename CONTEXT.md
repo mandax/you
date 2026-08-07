@@ -10,7 +10,15 @@ _Avoid_: Account, member
 
 **Admin**:
 A User with `is_admin = true`. Gates access to You's admin panel (`/admin`) and instance configuration. Bootstrap via `mix you.bootstrap_admin`. Only an existing admin can promote others.
-_Avoid_: Superuser, operator, root
+_Avoid_: Superuser, root, and **operator** when an Admin is what is meant — an [[Operator]] is a different person with a different kind of authority.
+
+**Operator**:
+Whoever deploys and runs an instance. Sets `PHX_HOST` and `WEBAUTHN_RP_ID`, holds the `.env`, runs `mix you.audit_slugs`, chooses the app hostname pattern, and takes the maintenance window. Distinct from an Admin in the source of their authority: an Admin's comes from a row in You's own database and can be granted and revoked inside the product, whereas an Operator's comes from shell access to the host and cannot. An Operator need not have a You account at all, and an Admin with no server access is not an Operator.
+
+The distinction is why some values are environment-only and deliberately not console-editable (`Settings.forbidden_keys/0`): the values a login depends on must not sit behind that login. Those are the Operator's to set, and the console can at most show them read-only.
+
+Documentation aimed at deploying or upgrading is written for the Operator; documentation about managing users and apps is written for the Admin.
+_Avoid_: Using this for a User with `is_admin = true` — that is an Admin
 
 **You Session**:
 The browser cookie on you.example.com that proves the user authenticated with You's portal. Database-backed via `users_tokens` (context: "session"). Used to skip the login form on subsequent app authorization flows. Separate from any app JWT: signing out of You does not invalidate app JWTs.
@@ -31,6 +39,18 @@ _Avoid_: Permission, scope, privilege
 **App**:
 A service that integrates with You for authentication. Each app has an API key for server-to-server communication and a configured set of allowed roles.
 _Avoid_: Service, client, integration
+
+**App hostname**:
+The hostname a given app's browser-facing auth pages are served on, derived from its slug rather than configured per app. Replaces `?app=<slug>` as the way You knows which app a flow belongs to (#121).
+
+**The pattern is a dedicated domain for You** (#125). Canonical host at `id.<domain>`; app hosts at `<slug>.<domain>`. Chosen over hanging app hosts off an existing shared domain because You is its own thing rather than one service among several, and over nesting them two labels deep under the canonical host because that needs a paid certificate add-on where a dedicated registration does not.
+
+Two consequences follow from that choice and are load-bearing:
+
+- **Passkeys work on app hosts.** `WEBAUTHN_RP_ID` is the domain, of which every app host is a registrable suffix, so a credential registered on one host is usable on the others. This is the reason `You.WebAuthn` gates on a suffix check rather than on host equality (#120).
+- **Sessions do not follow.** The session cookie is host-local by construction, so signing in on one app host does not sign you in on another. Accepted deliberately: a widened cookie would let any host in the zone set it (cookie tossing) and would widen the CSRF token with it. Anything that must cross hosts carries its state explicitly instead — see #123 and the federated login flow (#132).
+
+Machine endpoints stay on the canonical host regardless: `iss`, JWKS, discovery, and the token endpoint are contracts consumers pin.
 
 **Identity Provider**:
 An upstream OIDC or non-OIDC service (Google, Microsoft, GitHub, Discord, etc.) that users can authenticate through. Each provider has its own row in the `identity_providers` table with an encrypted `client_secret`, editable at runtime rather than through config. Providers were migrated from `config :you, :oidc_providers` (which is still seeded on boot for backward compatibility). Non-OIDC providers (GitHub, Discord) route through dedicated adapters instead of the generic userinfo fetch.
