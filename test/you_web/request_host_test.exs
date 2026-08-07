@@ -274,11 +274,21 @@ defmodule YouWeb.RequestHostTest do
           "enabled" => true
         })
 
+      conn = conn |> with_forged_host() |> get(~p"/auth/github")
+
+      state =
+        conn
+        |> redirected_to(302)
+        |> URI.parse()
+        |> Map.fetch!(:query)
+        |> URI.decode_query()
+        |> Map.fetch!("state")
+
       conn =
         conn
+        |> recycle()
         |> with_forged_host()
-        |> init_test_session(oidc_state: "st", oidc_provider: "github")
-        |> get(~p"/auth/github/callback", %{"code" => "c", "state" => "st"})
+        |> get(~p"/auth/github/callback", %{"code" => "c", "state" => state})
 
       assert_received {:hit, "/login/oauth/access_token"}
       assert_received {:hit, "/user"}

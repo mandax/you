@@ -105,5 +105,35 @@ defmodule YouWeb.Plugs.RateLimitTest do
         assert html_response(get(conn, ~p"/users/log-in"), 200)
       end
     end
+
+    # `GET /auth/:provider` (#132) writes a `federated_login_flows` row per
+    # request and is reachable with no credential, so it's rate-limited like
+    # every other unauthenticated write here — pipe_through is otherwise
+    # untested (config/test.exs sets `%{}`, so nothing else in the suite
+    # would catch it being dropped from the route).
+    test "GET /auth/:provider is throttled after the configured attempts", %{conn: conn} do
+      {:ok, _provider} =
+        You.IdentityProviders.create_provider(%{
+          "slug" => "google",
+          "display_name" => "Google",
+          "kind" => "google",
+          "client_id" => "gid",
+          "client_secret" => "gsecret",
+          "authorize_url" => "https://accounts.google.com/o/oauth2/v2/auth",
+          "token_url" => "https://oauth2.googleapis.com/token",
+          "userinfo_url" => "https://openidconnect.googleapis.com/v1/userinfo",
+          "scopes" => "openid email profile"
+        })
+
+      Application.put_env(:you, YouWeb.RateLimit, %{social_login: {2, 60_000}})
+      conn = %{conn | remote_ip: {198, 51, 100, 8}}
+
+      get(conn, ~p"/auth/google")
+      get(conn, ~p"/auth/google")
+      conn = get(conn, ~p"/auth/google")
+
+      assert response(conn, 429) =~ "Too many requests"
+      assert [_] = get_resp_header(conn, "retry-after")
+    end
   end
 end
