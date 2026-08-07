@@ -174,8 +174,8 @@ defmodule YouWeb.ConsoleLive do
   end
 
   @doc """
-  Resolves the section and Settings tab from the path and loads exactly the
-  data that section renders.
+  Resolves the section and its tab (Settings, Emails) from the path and loads
+  exactly the data that section renders.
 
   `handle_params/3` runs after `mount/3` on every render — disconnected and
   connected alike — so this is the one place a view's dataset needs loading;
@@ -314,10 +314,7 @@ defmodule YouWeb.ConsoleLive do
     if List.keymember?(@settings_tabs, tab, 0), do: tab, else: elem(hd(@settings_tabs), 0)
   end
 
-  # Resolves the emails section's tab path segment against the known template
-  # keys, falling back to the first template in EmailTemplates.definitions/0
-  # order on anything unknown or missing — the same convention settings_tab/1
-  # follows for /console/settings/:tab.
+  # Same convention as settings_tab/1, against EmailTemplates.keys/0 instead.
   defp email_tab(tab) do
     keys = You.EmailTemplates.keys()
     if tab in keys, do: tab, else: hd(keys)
@@ -1944,7 +1941,13 @@ defmodule YouWeb.ConsoleLive do
 
   defp emails_view(assigns) do
     definition = You.EmailTemplates.definition(assigns.tab)
-    tabs = Enum.map(You.EmailTemplates.definitions(), &{&1.key, &1.label})
+
+    tabs =
+      Enum.map(
+        You.EmailTemplates.definitions(),
+        &{&1.key, &1.label, Map.has_key?(assigns.overrides, &1.key)}
+      )
+
     assigns = assign(assigns, definition: definition, tabs: tabs)
 
     ~H"""

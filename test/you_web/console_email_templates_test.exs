@@ -8,6 +8,17 @@ defmodule YouWeb.ConsoleEmailTemplatesTest do
 
   alias You.EmailTemplates
 
+  # The "default" badge's own markup — `rounded-full bg-muted …` is the class
+  # combination unique to that pill, nothing else on the page. Asserting on
+  # this rather than the bare word "default" matters in both directions: the
+  # word alone also matches the root layout's `data-default="You"` and the
+  # section's "keeps using the default copy" blurb (so a bare `assert` would
+  # still pass with the badge deleted), and `"default</span>"` never appears
+  # in the rendered markup at all because HEEx puts a newline before the
+  # closing tag (so a bare `refute` on it is free — always true, badge or no
+  # badge).
+  defp default_badge?(html), do: html =~ ~r/rounded-full bg-muted[^"]*"[^>]*>\s*default\s*</
+
   setup %{conn: conn} do
     user = You.AccountsFixtures.user_fixture()
     You.Admin.promote_admin!(user)
@@ -23,7 +34,7 @@ defmodule YouWeb.ConsoleEmailTemplatesTest do
       assert html =~ definition.label
     end
 
-    assert html =~ "default"
+    assert default_badge?(html)
   end
 
   test "saving stores an override", %{conn: conn} do
@@ -130,6 +141,28 @@ defmodule YouWeb.ConsoleEmailTemplatesTest do
       assert %{subject: "Untouched"} = EmailTemplates.get_override(second.key)
     end
 
+    test "resetting one template's tab does not disturb an override on another", %{conn: conn} do
+      # Deliberately not the first template: a handler that reset the first
+      # key regardless of which button was clicked would still pass a test
+      # scoped to `hd(definitions())`, since that mis-scoping and the correct
+      # behaviour agree there. Targeting the second exposes that class of bug.
+      [first, second | _] = EmailTemplates.definitions()
+
+      {:ok, _} =
+        EmailTemplates.upsert(first.key, %{"subject" => "Untouched", "body" => "{{url}}"})
+
+      {:ok, _} = EmailTemplates.upsert(second.key, %{"subject" => "Custom", "body" => "{{url}}"})
+
+      {:ok, lv, _html} = live(conn, ~p"/console/emails/#{second.key}")
+
+      lv
+      |> element("button[phx-click='reset_email_template'][phx-value-key='#{second.key}']")
+      |> render_click()
+
+      assert EmailTemplates.get_override(second.key) == nil
+      assert %{subject: "Untouched"} = EmailTemplates.get_override(first.key)
+    end
+
     test "switching tabs does not leak the previous tab's form into the next", %{conn: conn} do
       [first, second | _] = EmailTemplates.definitions()
 
@@ -144,16 +177,26 @@ defmodule YouWeb.ConsoleEmailTemplatesTest do
       assert html =~ ~s(id="email-template-#{second.key}")
     end
 
+    test "the tab strip marks templates with an override, not untouched ones", %{conn: conn} do
+      [first, second | _] = EmailTemplates.definitions()
+      {:ok, _} = EmailTemplates.upsert(second.key, %{"subject" => "Custom", "body" => "{{url}}"})
+
+      {:ok, lv, _html} = live(conn, ~p"/console/emails")
+
+      refute lv |> element("a#tab-#{first.key}") |> render() =~ "Customised"
+      assert lv |> element("a#tab-#{second.key}") |> render() =~ "Customised"
+    end
+
     test "the default badge and reset action stay per template", %{conn: conn} do
       [first, second | _] = EmailTemplates.definitions()
       {:ok, _} = EmailTemplates.upsert(second.key, %{"subject" => "Custom", "body" => "{{url}}"})
 
       {:ok, _lv, first_html} = live(conn, ~p"/console/emails/#{first.key}")
-      assert first_html =~ "default"
+      assert default_badge?(first_html)
       refute first_html =~ "Reset to default"
 
       {:ok, _lv, second_html} = live(conn, ~p"/console/emails/#{second.key}")
-      refute second_html =~ "default</span>"
+      refute default_badge?(second_html)
       assert second_html =~ "Reset to default"
     end
   end
