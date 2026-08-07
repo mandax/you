@@ -38,7 +38,15 @@ config :phoenix,
 config :you, :audit, enabled: false
 config :you, :audit_webhook_url, nil
 
-config :wax_, origin: "http://localhost:4002", rp_id: :auto
+# A real canonical shape (origin's host equals the RP ID) rather than the
+# unrelated localhost:4002 this used to pair with rp_id against — that
+# mismatch is what a deployment never has, and pairing them for real is what
+# lets a full Wax.register/3 ceremony (test/you/web_authn_origin_test.exs)
+# actually exercise origin verification, not just the host-suffix gate.
+# ConnTest's default request host ("www.example.com") is a subdomain of
+# "example.com", which is what most of the suite exercises as the
+# canonical, qualifying host for You.WebAuthn.available_for_host?/1.
+config :wax_, origin: "https://example.com", rp_id: "example.com"
 
 # No network in tests — the Pwned Passwords check is exercised via its pure parser.
 config :you, check_pwned_passwords: false

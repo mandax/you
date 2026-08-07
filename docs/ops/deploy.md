@@ -22,6 +22,7 @@ All runtime configuration is read from environment variables in
 | `RELEASE_NODE` | No | `you@$HOSTNAME` | Erlang node name (Erlang distribution) |
 | `RELEASE_COOKIE` | No | random per boot | Erlang cookie bootstrap value: a random value when unset (fail closed), overridden at boot by the `erlang_cookie` setting in the database (see [erlang-distribution.md](erlang-distribution.md)) |
 | `DNS_CLUSTER_QUERY` | No | (none) | DNS cluster query for distributed Erlang |
+| `WEBAUTHN_RP_ID` | No | derived from `PHX_HOST` | The WebAuthn relying-party id passkeys are bound to. Environment-only — no console path can set it. Unset reproduces the value derived from `PHX_HOST` today, so a single-host deployment is unchanged, but from then on `PHX_HOST` and the RP ID can move independently: changing this value (or, while it stays unset, changing `PHX_HOST`) strands every passkey already registered, in both directions. A host offers passkeys only when it equals `WEBAUTHN_RP_ID` or is a subdomain of it |
 
 Set `PHX_HOST` to the hostname users actually reach You on. It is used to build
 the OIDC issuer URL and the WebAuthn origin (`https://<PHX_HOST>`), so a wrong

@@ -85,7 +85,8 @@ export async function registerPasskey(startUrl, finishUrl, csrfToken, label) {
     },
   })
   if (!startRes.ok) {
-    throw new Error(`Failed to start registration: ${startRes.status}`)
+    const err = await startRes.json().catch(() => ({}))
+    throw new Error(err.error || `Failed to start registration: ${startRes.status}`)
   }
   const options = await startRes.json()
 
@@ -133,7 +134,8 @@ export async function authenticatePasskey(startUrl, finishUrl, email) {
     body,
   })
   if (!startRes.ok) {
-    throw new Error(`Failed to start authentication: ${startRes.status}`)
+    const err = await startRes.json().catch(() => ({}))
+    throw new Error(err.error || `Failed to start authentication: ${startRes.status}`)
   }
   const options = await startRes.json()
 

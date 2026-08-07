@@ -1,7 +1,7 @@
 defmodule YouWeb.UserSessionController do
   use YouWeb, :controller
 
-  import YouWeb.AuthMethods, only: [app_for: 1, enabled_methods: 1, enabled?: 2]
+  import YouWeb.AuthMethods, only: [app_for: 1, enabled_methods: 2, enabled?: 2]
 
   alias You.Accounts
   alias YouWeb.RequestURL
@@ -84,7 +84,7 @@ defmodule YouWeb.UserSessionController do
         form: form,
         callback_url: get_session(conn, :callback_url),
         providers: oidc_providers(app),
-        methods: enabled_methods(app)
+        methods: enabled_methods(app, conn.host)
       ] ++ YouWeb.AppBranding.assigns(conn)
     )
   end

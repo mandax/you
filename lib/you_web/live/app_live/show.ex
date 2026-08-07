@@ -832,7 +832,7 @@ defmodule YouWeb.AppLive.Show do
   end
 
   defp preview_methods_label(app) do
-    case YouWeb.AuthMethods.enabled_methods(app) -- ["password"] do
+    case YouWeb.AuthMethods.previewed_methods(app) -- ["password"] do
       [] -> "Password sign-in only"
       others -> "Also: " <> Enum.map_join(others, ", ", &String.replace(&1, "_", " "))
     end
