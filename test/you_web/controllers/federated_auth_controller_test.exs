@@ -2,6 +2,8 @@ defmodule YouWeb.FederatedAuthControllerTest do
   use YouWeb.ConnCase, async: false
 
   alias You.IdentityProviders
+  alias You.IdentityProviders.LoginFlow
+  alias You.Repo
 
   @google_attrs %{
     "slug" => "google",
@@ -21,6 +23,39 @@ defmodule YouWeb.FederatedAuthControllerTest do
     provider
   end
 
+  # Drives the real `/auth/:provider` endpoint to mint a flow the way a
+  # browser would, and returns `{conn, state}` — `conn` carries the binding
+  # nonce cookie in its response, ready to be `recycle/1`d for a same-browser
+  # callback.
+  defp start_flow(conn, provider) do
+    conn = get(conn, ~p"/auth/#{provider}")
+    state = conn |> redirected_to(302) |> state_param()
+    {conn, state}
+  end
+
+  defp state_param(location) do
+    location |> URI.parse() |> Map.fetch!(:query) |> URI.decode_query() |> Map.fetch!("state")
+  end
+
+  defp attach_and_await_audit(fun) do
+    test_pid = self()
+    handler_id = "federated-audit-#{System.unique_integer([:positive])}"
+
+    :telemetry.attach(
+      handler_id,
+      [:you, :audit, :login, :attempt],
+      fn _event, _measurements, metadata, _config -> send(test_pid, {:audit_event, metadata}) end,
+      nil
+    )
+
+    on_exit(fn -> :telemetry.detach(handler_id) end)
+
+    fun.()
+
+    assert_receive {:audit_event, metadata}, 1_000
+    metadata
+  end
+
   describe "GET /auth/:provider (authorize)" do
     test "reads the provider from the database, not app env", %{conn: conn} do
       create_provider!()
@@ -29,6 +64,18 @@ defmodule YouWeb.FederatedAuthControllerTest do
 
       assert redirected_to(conn, 302) =~ "accounts.google.com/o/oauth2/v2/auth"
       assert redirected_to(conn) =~ "client_id=gid"
+    end
+
+    test "sets a binding nonce cookie, HttpOnly and scoped to /auth", %{conn: conn} do
+      create_provider!()
+
+      conn = get(conn, ~p"/auth/google")
+
+      cookie = conn.resp_cookies["_you_login_flow_nonce"]
+      assert cookie
+      assert cookie.http_only
+      assert cookie.path == "/auth"
+      assert is_binary(cookie.value) and cookie.value != ""
     end
 
     test "rejects an unknown provider slug without raising", %{conn: conn} do
@@ -212,28 +259,154 @@ defmodule YouWeb.FederatedAuthControllerTest do
           enabled_providers: ["google"]
         })
 
+      # Rejected by the app's provider allow-list before the flow record is
+      # even looked up, so an arbitrary `state` is enough to prove it.
       conn =
         conn
-        |> init_test_session(
-          callback_url: "https://google-only.example.com/cb",
-          oidc_state: "st-123"
-        )
+        |> init_test_session(callback_url: "https://google-only.example.com/cb")
         |> get(~p"/auth/github/callback", %{"code" => "x", "state" => "st-123"})
 
       assert redirected_to(conn) == ~p"/users/log-in"
       assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "Authentication failed."
     end
+  end
 
-    test "state mismatch is rejected before any token exchange", %{conn: conn} do
+  describe "state binding (#132): the callback only completes for the browser that started it" do
+    test "a real flow, presented by the browser that started it, is accepted past state verification" do
       create_provider!()
+      {conn, state} = start_flow(build_conn(), "google")
+
+      # No provider configured for a real token exchange, so this still fails
+      # further down the pipeline — but on a *network* error, not a state
+      # mismatch, which is what proves `verify_state/3` let it through.
+      conn =
+        conn |> recycle() |> get(~p"/auth/google/callback", %{"code" => "x", "state" => state})
+
+      refute Phoenix.Flash.get(conn.assigns.flash, :error) =~ "state mismatch"
+    end
+
+    test "consuming a flow deletes it: the state is unusable a second time" do
+      create_provider!()
+      {conn, state} = start_flow(build_conn(), "google")
+
+      conn1 =
+        conn |> recycle() |> get(~p"/auth/google/callback", %{"code" => "x", "state" => state})
+
+      refute Phoenix.Flash.get(conn1.assigns.flash, :error) =~ "state mismatch"
+
+      conn2 =
+        conn |> recycle() |> get(~p"/auth/google/callback", %{"code" => "x", "state" => state})
+
+      assert Phoenix.Flash.get(conn2.assigns.flash, :error) =~ "state mismatch"
+    end
+
+    test "a tampered state is refused" do
+      create_provider!()
+      {conn, state} = start_flow(build_conn(), "google")
+      tampered = String.replace_prefix(state, String.first(state), "x")
 
       conn =
-        conn
-        |> init_test_session(oidc_state: "expected")
-        |> get(~p"/auth/google/callback", %{"code" => "x", "state" => "wrong"})
+        conn |> recycle() |> get(~p"/auth/google/callback", %{"code" => "x", "state" => tampered})
 
       assert redirected_to(conn) == ~p"/users/log-in"
       assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "state mismatch"
+    end
+
+    test "an expired state is refused" do
+      create_provider!()
+      {conn, state} = start_flow(build_conn(), "google")
+
+      past =
+        DateTime.utc_now()
+        |> DateTime.add(-(LoginFlow.validity_in_minutes() + 1) * 60, :second)
+        |> DateTime.truncate(:second)
+
+      Repo.update_all(LoginFlow, set: [inserted_at: past])
+
+      conn =
+        conn |> recycle() |> get(~p"/auth/google/callback", %{"code" => "x", "state" => state})
+
+      assert redirected_to(conn) == ~p"/users/log-in"
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "state mismatch"
+    end
+
+    test "a valid state with no binding cookie is refused" do
+      create_provider!()
+
+      # Minted directly through the context, bypassing `/auth/:provider`, so
+      # this request never receives the nonce cookie — the state is
+      # completely valid and unexpired, only the cookie is missing.
+      {state, _nonce} =
+        IdentityProviders.start_login_flow("google", %{
+          "callback_url" => nil,
+          "scopes" => nil,
+          "code_challenge" => nil,
+          "branding_app_slug" => nil
+        })
+
+      conn = get(build_conn(), ~p"/auth/google/callback", %{"code" => "x", "state" => state})
+
+      assert redirected_to(conn) == ~p"/users/log-in"
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "state mismatch"
+    end
+
+    test "a callback presented by a browser that did not initiate the flow is refused" do
+      create_provider!()
+
+      # The attacker's browser: runs /auth/:provider, captures `state` from
+      # the redirect, but the resulting …/callback URL is never visited here
+      # — it's handed to the victim instead. The attacker's nonce cookie
+      # never leaves this cookie jar.
+      {_attacker_conn, state} = start_flow(build_conn(), "google")
+
+      # The victim's browser: a completely independent conn/cookie jar that
+      # never ran /auth/:provider, clicking the captured link.
+      victim_conn = build_conn()
+      refute victim_conn.resp_cookies["_you_login_flow_nonce"]
+
+      victim_conn =
+        get(victim_conn, ~p"/auth/google/callback", %{"code" => "attacker-code", "state" => state})
+
+      assert redirected_to(victim_conn) == ~p"/users/log-in"
+      assert Phoenix.Flash.get(victim_conn.assigns.flash, :error) =~ "state mismatch"
+    end
+
+    test "a state mismatch emits the same audit event as any other failed login attempt" do
+      create_provider!()
+      {conn, state} = start_flow(build_conn(), "google")
+      tampered = state <> "x"
+
+      metadata =
+        attach_and_await_audit(fn ->
+          conn
+          |> recycle()
+          |> get(~p"/auth/google/callback", %{"code" => "x", "state" => tampered})
+        end)
+
+      assert metadata.method == "oidc:google"
+      assert metadata.result == :failure
+      assert metadata.reason == :state_mismatch
+    end
+
+    test "a missing-cookie refusal is just as observable as a state mismatch" do
+      create_provider!()
+
+      {state, _nonce} =
+        IdentityProviders.start_login_flow("google", %{
+          "callback_url" => nil,
+          "scopes" => nil,
+          "code_challenge" => nil,
+          "branding_app_slug" => nil
+        })
+
+      metadata =
+        attach_and_await_audit(fn ->
+          get(build_conn(), ~p"/auth/google/callback", %{"code" => "x", "state" => state})
+        end)
+
+      assert metadata.method == "oidc:google"
+      assert metadata.result == :failure
+      assert metadata.reason == :state_mismatch
     end
   end
 
@@ -247,6 +420,9 @@ defmodule YouWeb.FederatedAuthControllerTest do
     # GitHub has no userinfo endpoint and no `sub` claim, so a github-kind
     # provider must go through the adapter rather than the generic OIDC fetch.
     # The adapter's own behaviour is covered in identity_providers/github_test.
+    # This is also the end-to-end proof that a real, same-browser flow
+    # completes: it exercises `/auth/github` through the callback with the
+    # actual nonce cookie the first request set.
     test "a github-kind provider routes through the adapter, not the OIDC userinfo fetch",
          %{conn: conn} do
       test_pid = self()
@@ -293,10 +469,12 @@ defmodule YouWeb.FederatedAuthControllerTest do
           "enabled" => true
         })
 
+      {conn, state} = start_flow(conn, "github")
+
       conn =
         conn
-        |> init_test_session(oidc_state: "st", oidc_provider: "github")
-        |> get(~p"/auth/github/callback", %{"code" => "c", "state" => "st"})
+        |> recycle()
+        |> get(~p"/auth/github/callback", %{"code" => "c", "state" => state})
 
       assert_received {:hit, "/login/oauth/access_token"}
       assert_received {:hit, "/user"}

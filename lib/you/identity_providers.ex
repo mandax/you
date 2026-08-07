@@ -16,8 +16,11 @@ defmodule You.IdentityProviders do
 
   import Ecto.Query, warn: false
 
-  alias You.IdentityProviders.{Crypto, Discovery, IdentityProvider, Presets}
+  alias You.IdentityProviders.{Crypto, Discovery, IdentityProvider, LoginFlow, Presets}
   alias You.Repo
+
+  @ctx_salt "you.identity_providers.login_ctx"
+  @ctx_max_age_seconds 300
 
   @doc """
   Lists all providers, ordered by `sort_order` then `slug`.
@@ -128,6 +131,96 @@ defmodule You.IdentityProviders do
   `{:error, reason}`.
   """
   def discover(issuer) when is_binary(issuer), do: Discovery.fetch(issuer)
+
+  @doc """
+  Starts a federated login flow for `provider`, persisting `ctx` (a
+  string-keyed map of `callback_url`, `scopes`, `code_challenge` and
+  `branding_app_slug`) behind an opaque `state`.
+
+  Returns `{state, nonce}`: `state` goes upstream to the IdP as the OIDC
+  `state` param, and `nonce` must be set as the binding cookie on the
+  response to the initiating browser (see `LoginFlow`).
+  """
+  def start_login_flow(provider, ctx) when is_binary(provider) and is_map(ctx) do
+    {state, nonce, flow} = LoginFlow.build(provider, ctx)
+    Repo.insert!(flow)
+    {state, nonce}
+  end
+
+  @doc """
+  Consumes a login flow started by `start_login_flow/2`: looks up `state` for
+  `provider`, deletes it (single-use, whether or not what follows succeeds),
+  and checks `nonce` — the value read from the binding cookie on the callback
+  request — against the stored hash in constant time.
+
+  A `state` that is unknown, expired, minted for a different provider, or not
+  validly encoded, and a `state` that is otherwise valid but paired with a
+  missing or mismatched `nonce`, all return the same
+  `{:error, :state_mismatch}` — none of them is the browser that started the
+  flow, and none of them should learn which check is the one that failed.
+
+  Returns `{:ok, ctx}` (string-keyed map) on success.
+  """
+  def consume_login_flow(provider, state, nonce) when is_binary(provider) and is_binary(state) do
+    case find_and_delete_flow(state, provider) do
+      nil -> {:error, :state_mismatch}
+      flow -> verify_nonce(flow, nonce)
+    end
+  end
+
+  def consume_login_flow(_provider, _state, _nonce), do: {:error, :state_mismatch}
+
+  defp find_and_delete_flow(state, provider) do
+    with {:ok, query} <- LoginFlow.verify_query(state, provider),
+         %LoginFlow{} = flow <- Repo.one(query) do
+      Repo.delete!(flow)
+    else
+      _ -> nil
+    end
+  end
+
+  defp verify_nonce(flow, nonce) do
+    if LoginFlow.nonce_matches?(flow, nonce) do
+      {:ok, LoginFlow.ctx(flow)}
+    else
+      {:error, :state_mismatch}
+    end
+  end
+
+  @doc """
+  Deletes flow records past `LoginFlow.validity_in_minutes/0`: the ones
+  nobody came back from the IdP for. Called from `You.Accounts.JtiCleanup`.
+  """
+  def cleanup_expired_login_flows do
+    threshold = DateTime.add(DateTime.utc_now(), -LoginFlow.validity_in_minutes() * 60, :second)
+
+    Repo.delete_all(from f in LoginFlow, where: f.inserted_at < ^threshold)
+  end
+
+  @doc """
+  Signs `attrs` (a map) into a short-lived opaque blob suitable for the `ctx`
+  query param on `/auth/:provider` — the carrier #121 uses to hand a login
+  flow from an app host's session to canonical without one being able to read
+  or forge the other's session.
+
+  Not yet linked from anywhere a user can reach: today `/auth/:provider`
+  always has a same-host session to read `ctx` from instead, so no caller
+  mints one. Kept here, and consumed by `verify_ctx/1` when present, so #121
+  only has to change where the social button links.
+  """
+  def sign_ctx(attrs) when is_map(attrs),
+    do: Phoenix.Token.sign(YouWeb.Endpoint, @ctx_salt, attrs)
+
+  @doc """
+  Verifies a `ctx` blob minted by `sign_ctx/1`. Returns `{:ok, attrs}` or
+  `:error` on a missing, tampered, or expired (5 minute) signature.
+  """
+  def verify_ctx(signed) when is_binary(signed) do
+    case Phoenix.Token.verify(YouWeb.Endpoint, @ctx_salt, signed, max_age: @ctx_max_age_seconds) do
+      {:ok, attrs} when is_map(attrs) -> {:ok, attrs}
+      _ -> :error
+    end
+  end
 
   @doc """
   Seeds the `identity_providers` table from `config :you, :oidc_providers`

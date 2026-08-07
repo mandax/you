@@ -158,16 +158,15 @@ defmodule YouWeb.LoginAuditRequestHostTest do
     } do
       {:ok, _provider} = IdentityProviders.create_provider(@google_attrs)
 
-      # State matches, so the flow reaches the token exchange — which fails
-      # here for lack of network access to Google, landing on the generic
-      # `{:error, reason}` branch that emits the audit event. That's enough
-      # to prove `request_host_claimed` survives an OIDC failure path; the
+      # No flow record exists for "st" (nothing minted it via /auth/google),
+      # so this lands on the `state_mismatch` branch, which emits the audit
+      # event exactly like any other failed attempt (#132). That's enough to
+      # prove `request_host_claimed` survives an OIDC failure path; the
       # success path is exercised end-to-end in federated_auth_controller_test.exs.
       metadata =
         attach_and_await([:you, :audit, :login, :attempt], fn ->
           conn
           |> with_request_host()
-          |> init_test_session(oidc_state: "st")
           |> get(~p"/auth/google/callback", %{"code" => "x", "state" => "st"})
         end)
 

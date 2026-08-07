@@ -74,6 +74,24 @@ of them at once.
   it's the groundwork for per-app hostnames. A request host that is *not*
   allowlisted (a forged `Host` header, for instance) falls back to
   canonical rather than being used.
+- **Social login's OIDC `state` no longer trusts the session — it's bound to
+  the browser with a dedicated cookie.** The IdP round trip used to pin its
+  CSRF check to the session that started it, which per-app hostnames would
+  have broken outright (login starts on an app host, the IdP returns to
+  canonical, a different session) and an earlier design for fixing that would
+  have quietly dropped the CSRF defence to restore functionality: a signed,
+  self-contained `state` proves You minted it, but proves nothing about which
+  browser is presenting it back. `/auth/:provider` now hands the IdP an
+  opaque `state` keyed to a single-use, short-lived, hashed-at-rest flow
+  record (new `federated_login_flows` table, modelled on the existing
+  auth-code pattern) and sets a narrowly-scoped, HttpOnly binding cookie; the
+  callback refuses unless that cookie's hash matches what's on the record. A
+  missing, tampered, replayed, expired, or wrong-browser `state` is refused
+  identically, and audited identically to any other failed login attempt.
+  Nothing you do changes: social login on the canonical host behaves exactly
+  as before. Ground-laying for #121 — an app-host social button will link to
+  canonical carrying a short-lived signed `ctx` instead of relying on a
+  shared session, which `/auth/:provider` already accepts.
 
 ## 0.4.0 — Per-app context, invitations, guests, and auth hardening
 

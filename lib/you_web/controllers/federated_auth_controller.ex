@@ -5,16 +5,31 @@ defmodule YouWeb.FederatedAuthController do
 
   alias You.{Accounts, Admin, IdentityProviders}
 
+  @nonce_cookie "_you_login_flow_nonce"
+  @nonce_cookie_max_age_seconds 600
+
   @doc """
   GET /auth/:provider
 
-  Builds the upstream OIDC authorize URL and redirects the user.
-  Stores the OIDC `state` param in the session for CSRF protection.
+  Starts a federated login flow and redirects to the upstream IdP.
+
+  `ctx` (`callback_url`, `scopes`, `code_challenge`, `branding_app_slug`)
+  travels to the callback through a server-side flow record rather than the
+  session, keyed by an opaque `state` sent as the OIDC `state` param — see
+  `You.IdentityProviders.LoginFlow`. A binding nonce cookie is set on this
+  response and must be presented again at the callback: that comparison,
+  not the `state` value itself, is the CSRF defence.
+
+  Reads `ctx` from the request when present (the carrier #121's app-host
+  social button will use to reach this canonical route), falling back to
+  today's session-carried values when it is not — which is always, until
+  #121 links to here from another host.
   """
-  def authorize(conn, %{"provider" => provider}) do
+  def authorize(conn, %{"provider" => provider} = params) do
     with {:ok, config} <- fetch_provider_config(provider),
-         :ok <- authorize_for_app(conn, provider) do
-      state = generate_state()
+         :ok <- authorize_for_app(conn, provider),
+         {:ok, ctx} <- resolve_ctx(conn, params) do
+      {state, nonce} = IdentityProviders.start_login_flow(provider, ctx)
 
       query =
         URI.encode_query(%{
@@ -28,10 +43,14 @@ defmodule YouWeb.FederatedAuthController do
       authorize_url = "#{config.authorize_url}?#{query}"
 
       conn
-      |> put_session(:oidc_state, state)
-      |> put_session(:oidc_provider, provider)
+      |> put_login_flow_nonce_cookie(nonce)
       |> redirect(external: authorize_url)
     else
+      {:error, :invalid_ctx} ->
+        conn
+        |> put_flash(:error, "Your sign-in attempt expired. Please try again.")
+        |> redirect(to: ~p"/users/log-in")
+
       :error ->
         conn
         |> put_flash(:error, "Unknown authentication provider.")
@@ -42,13 +61,14 @@ defmodule YouWeb.FederatedAuthController do
   @doc """
   GET /auth/:provider/callback
 
-  Handles the OIDC callback: verifies state, exchanges the authorization
-  code for tokens, fetches the userinfo, and logs the user in.
+  Handles the OIDC callback: verifies `state` against its flow record and the
+  binding nonce cookie against that record's stored hash, exchanges the
+  authorization code for tokens, fetches the userinfo, and logs the user in.
   """
   def callback(conn, %{"provider" => provider, "code" => code, "state" => state}) do
     with {:ok, config} <- fetch_provider_config(provider),
          :ok <- authorize_for_app(conn, provider),
-         :ok <- verify_state(conn, state),
+         {:ok, ctx} <- verify_state(conn, provider, state),
          {:ok, tokens} <- exchange_code(config, code, conn, provider),
          {:ok, userinfo} <- fetch_userinfo(config, tokens),
          {:ok, user} <-
@@ -71,12 +91,20 @@ defmodule YouWeb.FederatedAuthController do
       # back to the requesting app as an authorization code when this started
       # from an OAuth flow, and is otherwise a plain sign-in to You.
       conn
-      |> put_session(:oidc_state, nil)
-      |> put_session(:oidc_provider, nil)
+      |> clear_login_flow_nonce_cookie()
+      |> restore_flow_session(ctx)
       |> YouWeb.SecondFactor.complete_login(user, "Welcome back!")
     else
       {:error, :state_mismatch} ->
+        :telemetry.execute([:you, :audit, :login, :attempt], %{}, %{
+          method: "oidc:#{provider}",
+          result: :failure,
+          reason: :state_mismatch,
+          request_host_claimed: conn.host
+        })
+
         conn
+        |> clear_login_flow_nonce_cookie()
         |> put_flash(:error, "Authentication failed: state mismatch.")
         |> redirect(to: ~p"/users/log-in")
 
@@ -163,19 +191,65 @@ defmodule YouWeb.FederatedAuthController do
     end
   end
 
-  defp generate_state do
-    :crypto.strong_rand_bytes(32) |> Base.url_encode64(padding: false)
-  end
-
-  defp verify_state(conn, state) do
-    stored = get_session(conn, :oidc_state)
-
-    if is_binary(stored) and stored == state do
-      :ok
-    else
-      {:error, :state_mismatch}
+  # `ctx` present and valid: this is (the future) cross-host arrival from an
+  # app host, per #121. Otherwise, fall back to the session values this
+  # request already carries — today's only path, since nothing mints a
+  # signed `ctx` yet.
+  defp resolve_ctx(_conn, %{"ctx" => signed}) when is_binary(signed) do
+    case IdentityProviders.verify_ctx(signed) do
+      {:ok, ctx} -> {:ok, ctx}
+      :error -> {:error, :invalid_ctx}
     end
   end
+
+  defp resolve_ctx(conn, _params), do: {:ok, session_ctx(conn)}
+
+  defp session_ctx(conn) do
+    %{
+      "callback_url" => get_session(conn, :callback_url),
+      "scopes" => get_session(conn, :scopes),
+      "code_challenge" => get_session(conn, :code_challenge),
+      "branding_app_slug" => get_session(conn, :branding_app_slug)
+    }
+  end
+
+  # The values `authorize/2` captured into the flow record's `ctx`, restored
+  # into the session so `YouWeb.OAuthFlow.complete_login/3` finds them exactly
+  # as it does for every other login method. On canonical today this is a
+  # round trip to the same values already in the session; once #121 lands, an
+  # app-host `ctx` arrives here for the first time.
+  defp restore_flow_session(conn, ctx) do
+    conn
+    |> put_session(:callback_url, ctx["callback_url"])
+    |> put_session(:scopes, ctx["scopes"])
+    |> put_session(:code_challenge, ctx["code_challenge"])
+    |> put_session(:branding_app_slug, ctx["branding_app_slug"])
+  end
+
+  defp verify_state(conn, provider, state) do
+    conn = fetch_cookies(conn)
+    IdentityProviders.consume_login_flow(provider, state, conn.cookies[@nonce_cookie])
+  end
+
+  # Its own name, HttpOnly, `SameSite=Lax`, short-lived, and scoped to the
+  # callback path — never the session cookie. `secure` follows the same
+  # runtime scheme switch the session cookie does (`YouWeb.Endpoint`), so it
+  # is not sent at all over plain http in dev or test.
+  defp put_login_flow_nonce_cookie(conn, nonce) do
+    put_resp_cookie(conn, @nonce_cookie, nonce,
+      http_only: true,
+      same_site: "Lax",
+      secure: secure_cookies?(),
+      max_age: @nonce_cookie_max_age_seconds,
+      path: "/auth"
+    )
+  end
+
+  defp clear_login_flow_nonce_cookie(conn) do
+    delete_resp_cookie(conn, @nonce_cookie, path: "/auth")
+  end
+
+  defp secure_cookies?, do: Application.get_env(:you, :secure_cookies, false)
 
   defp access_token(tokens) when is_binary(tokens), do: tokens
   defp access_token(tokens) when is_map(tokens), do: tokens["access_token"]
