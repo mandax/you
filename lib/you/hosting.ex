@@ -104,6 +104,17 @@ defmodule You.Hosting do
     end
   end
 
+  @doc """
+  Whether a template is configured *and* syntactically valid (exactly one
+  `{label}` placeholder).
+
+  `false` covers both "no template" and "a template, but malformed" — the
+  console (#127) needs to tell those two apart for an Admin (nothing set,
+  vs something set that needs the Operator's attention), so pair this with
+  `template/0` rather than reading this alone as "is it set".
+  """
+  def template_valid?, do: match?({_prefix, _suffix}, split_template())
+
   @doc "The canonical host: `YouWeb.Endpoint.host/0`, i.e. `PHX_HOST`."
   def canonical_host, do: YouWeb.Endpoint.host()
 

@@ -76,6 +76,167 @@ defmodule YouWeb.ConsoleLiveTest do
     end
   end
 
+  describe "features: per-app hostnames panel (#127)" do
+    setup do
+      on_exit(fn ->
+        Application.delete_env(:you, :app_hostname_template)
+        Application.delete_env(:you, :hosting_preflight_dns_resolver)
+        Application.delete_env(:you, :hosting_preflight_http_client)
+      end)
+
+      :ok
+    end
+
+    test "no template configured: says so, and never claims well-formed", %{conn: conn} do
+      {:ok, _lv, html} = live(conn, ~p"/console/features")
+
+      assert html =~ "Hostname template"
+      assert html =~ "not set"
+      refute html =~ "well-formed"
+    end
+
+    test "a well-formed template is shown with its real value", %{conn: conn} do
+      Application.put_env(:you, :app_hostname_template, "{label}.you.example.com")
+
+      {:ok, _lv, html} = live(conn, ~p"/console/features")
+
+      assert html =~ "{label}.you.example.com"
+      assert html =~ "well-formed"
+    end
+
+    # Must-fix: with the template merely present but malformed, `enabled?/0`
+    # keeps resolution off (per `You.Hosting`'s own moduledoc), which this
+    # panel exists specifically to make visible instead of a silent no-op —
+    # a test that only checked the well-formed case would pass even if this
+    # branch printed nothing at all.
+    test "a malformed template says so rather than silently showing nothing", %{conn: conn} do
+      Application.put_env(:you, :app_hostname_template, "not-a-template.example.com")
+
+      {:ok, _lv, html} = live(conn, ~p"/console/features")
+
+      assert html =~ "not-a-template.example.com"
+      assert html =~ "not well-formed"
+    end
+
+    test "an app whose label has become colliding with canonical is surfaced", %{conn: conn} do
+      Application.put_env(:you, :app_hostname_template, "{label}")
+
+      You.AdminFixtures.insert_legacy_app!("legacy-collider")
+      |> Ecto.Changeset.change(hostname_label: You.Hosting.canonical_host())
+      |> You.Repo.update!()
+
+      {:ok, _lv, html} = live(conn, ~p"/console/features")
+
+      assert html =~ "collide with the canonical host"
+      assert html =~ "audit_hostname_labels"
+    end
+
+    test "no app has a hostname label: guidance instead of a Check button", %{conn: conn} do
+      {:ok, _lv, html} = live(conn, ~p"/console/features")
+
+      assert html =~ "No app has a hostname label yet"
+      refute html =~ ~s(phx-click="run_preflight")
+    end
+
+    test "running the preflight against a real app reports without blocking the page", %{
+      conn: conn
+    } do
+      Application.put_env(:you, :app_hostname_template, "{label}.example.com")
+
+      {:ok, app, _secret} =
+        Admin.create_app(%{
+          "name" => "Acme",
+          "slug" => "acme",
+          "callback_url" => "https://acme.example.com/cb",
+          "hostname_label" => "acme"
+        })
+
+      Application.put_env(:you, :hosting_preflight_dns_resolver, fn _host ->
+        {:error, :nxdomain}
+      end)
+
+      {:ok, lv, _html} = live(conn, ~p"/console/features")
+
+      html =
+        lv
+        |> element(~s(button[phx-click="run_preflight"][phx-value-label="#{app.hostname_label}"]))
+        |> render_click()
+
+      # The click returns immediately — the network call has not resolved
+      # yet — and the button reads as busy rather than the page hanging.
+      assert html =~ "Checking…"
+
+      html = render_async(lv)
+      assert html =~ "no DNS record"
+      refute html =~ "Checking…"
+    end
+
+    # Guards the outbound-request amplification concern directly: a stub
+    # that blocks until released proves a second trigger while the first
+    # check is in flight starts no second task, rather than merely
+    # asserting the eventual result (which a debounced-but-leaky
+    # implementation could still pass). The second trigger is a raw
+    # `render_click(lv, event, params)` rather than a click on the rendered
+    # button: the button is already `disabled` while loading (LiveViewTest
+    # itself refuses to click a disabled element, which is the harness
+    # confirming that half works), so this exercises the server-side guard
+    # a forged or replayed socket push would still have to get past.
+    test "a second push while one preflight is in flight is ignored, not queued", %{conn: conn} do
+      Application.put_env(:you, :app_hostname_template, "{label}.example.com")
+
+      {:ok, app_a, _} =
+        Admin.create_app(%{
+          "name" => "Acme",
+          "slug" => "acme",
+          "callback_url" => "https://acme.example.com/cb",
+          "hostname_label" => "acme"
+        })
+
+      {:ok, app_b, _} =
+        Admin.create_app(%{
+          "name" => "Beta",
+          "slug" => "beta",
+          "callback_url" => "https://beta.example.com/cb",
+          "hostname_label" => "beta"
+        })
+
+      test_pid = self()
+
+      Application.put_env(:you, :hosting_preflight_dns_resolver, fn host ->
+        send(test_pid, {:dns_called, host})
+        Process.sleep(200)
+        {:error, :nxdomain}
+      end)
+
+      {:ok, lv, _html} = live(conn, ~p"/console/features")
+
+      lv
+      |> element(~s(button[phx-click="run_preflight"][phx-value-label="#{app_a.hostname_label}"]))
+      |> render_click()
+
+      render_click(lv, "run_preflight", %{"label" => app_b.hostname_label})
+
+      # Ignored, not queued: the acme button reads busy, the beta button
+      # never changed from "Check" — a queued push would eventually flip
+      # it to "Checking…" once acme's task finished, which the assertion
+      # below (still "acme: no DNS record", never a beta result) also rules
+      # out.
+      assert lv
+             |> element(~s(button[phx-value-label="acme"]))
+             |> render() =~ "Checking…"
+
+      refute lv
+             |> element(~s(button[phx-value-label="beta"]))
+             |> render() =~ "Checking…"
+
+      assert_receive {:dns_called, "acme.example.com"}, 500
+      refute_receive {:dns_called, "beta.example.com"}, 250
+
+      html = render_async(lv)
+      assert html =~ "acme: no DNS record"
+    end
+  end
+
   describe "apps" do
     # Creation lives at its own page now (`AppLive.New`, #130) — see
     # `test/you_web/live/app_live/new_test.exs`.
