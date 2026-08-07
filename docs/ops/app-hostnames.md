@@ -1,7 +1,7 @@
 # App Hostnames: Why and Who Decides
 
 Every app You serves login pages for can be given its own hostname —
-`acme.id.example.com` instead of a `?app=acme` query parameter on You's own
+`acme.example.com` instead of a `?app=acme` query parameter on You's own
 address. This page explains what problem that solves, what it costs, and
 which decisions are yours as the **Operator** versus the **Admin**'s to make
 in the console. See [CONTEXT.md](../../CONTEXT.md) for those two roles; the
