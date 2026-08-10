@@ -333,4 +333,45 @@ if config_env() == :prod do
           """
       end
   end
+
+  # TRUSTED_PROXY_HOPS is how many reverse proxies stand between this
+  # instance and the internet, each one known to *append* to
+  # X-Forwarded-For rather than pass it through unchanged — see
+  # `YouWeb.Plugs.RateLimit`'s moduledoc for why that distinction is what
+  # makes the header trustworthy at all. Defaults to 0 (config.exs): the
+  # header is ignored and every rate limit keys on `conn.remote_ip`
+  # instead. That is the safe failure mode for a directly reachable
+  # instance, but it is also wrong for the common case — one reverse proxy
+  # (nginx, Caddy, Traefik, a Cloudflare tunnel) in front, per
+  # docs/ops/deploy.md — so an Operator behind one must set this to `1` or
+  # every request shares that proxy's single bucket instead of the caller's.
+  #
+  # Environment-only, same reasoning as `WEBAUTHN_RP_ID` and
+  # `APP_HOSTNAME_TEMPLATE` above: it is a value the login-guarding rate
+  # limits depend on, so it cannot sit behind the console those limits
+  # protect (`You.Settings.forbidden_keys/0`). Validated at boot, not left
+  # to fail open at request time: a non-integer or negative value would
+  # otherwise either crash every rate-limited request or silently disable
+  # the header, neither of which is a mistake an Operator should discover
+  # that way.
+  case env.("TRUSTED_PROXY_HOPS") do
+    nil ->
+      :ok
+
+    value ->
+      case Integer.parse(value) do
+        {hops, ""} when hops >= 0 ->
+          config :you, :trusted_proxy_hops, hops
+
+        _ ->
+          raise """
+          TRUSTED_PROXY_HOPS must be a non-negative integer, got: #{inspect(value)}
+
+          It's the number of reverse proxies in front of this instance that
+          are known to append to (not replace) X-Forwarded-For. Leave it
+          unset (0) if You is reached directly or through a proxy you have
+          not verified appends to the header.
+          """
+      end
+  end
 end

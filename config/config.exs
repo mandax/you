@@ -33,6 +33,14 @@ config :you,
 # LiveView socket accepts. See `You.Hosting`'s moduledoc.
 config :you, :app_hostname_template, nil
 
+# 0 by default: X-Forwarded-For is ignored and YouWeb.Plugs.RateLimit keys
+# on conn.remote_ip until the Operator sets `TRUSTED_PROXY_HOPS`
+# (`config/runtime.exs`) — environment-only, same reasoning as
+# `WEBAUTHN_RP_ID` and `APP_HOSTNAME_TEMPLATE`: a value the rate limiter's
+# correctness depends on cannot sit behind a console it's meant to guard.
+# See the plug's moduledoc for how the count is used.
+config :you, :trusted_proxy_hops, 0
+
 # Configure the endpoint
 #
 # `check_origin` is an MFA rather than a static list: the WebSocket

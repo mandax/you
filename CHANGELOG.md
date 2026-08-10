@@ -11,6 +11,8 @@ of them at once.
 
 ## Unreleased
 
+### Requires your attention
+
 - **Password reset redirected to an unvalidated `callback_url` (#140) —
   account takeover for any instance with more than one registered app (or
   one leaked app secret), open redirect otherwise. Exposure window is
@@ -72,6 +74,27 @@ of them at once.
   the user never saw success and never reached wherever they should have
   landed next. This is also why #140 above was unreachable on 0.3.0–0.4.1:
   the crash happens before an authorization code is ever minted.
+||||||| parent of 127bca2 (fix(rate-limit): trust X-Forwarded-For only as far as TRUSTED_PROXY_HOPS says)
+
+- **Rate limits keyed on `X-Forwarded-For` are now bypassable only up to a
+  hop count you set (#141).** `YouWeb.Plugs.RateLimit` used to trust
+  `X-Forwarded-For` verbatim, so anyone could rotate that header on every
+  request and get a fresh bucket each time — the limits guarding login,
+  registration, password reset, TOTP, email 2FA, and social-login flow
+  creation were decorative for any client willing to send a header. Fixed by
+  a new environment variable, `TRUSTED_PROXY_HOPS` (`config/runtime.exs`,
+  environment-only like `WEBAUTHN_RP_ID` and `APP_HOSTNAME_TEMPLATE` — a
+  value the login-guarding limits depend on can't sit behind the console
+  they guard). It defaults to **0**: the header is ignored entirely and
+  every limit keys on `conn.remote_ip`, the actual TCP peer, which can't be
+  spoofed. **If you run behind a reverse proxy or tunnel — the documented
+  shape for `docker-compose.yml` — and do nothing, every caller behind that
+  proxy now shares its one bucket instead of getting their own; a single
+  slow client can trip the limit for everyone else behind the same proxy.**
+  Set `TRUSTED_PROXY_HOPS=1` for the common case (one reverse proxy or
+  tunnel in front); `.env.example` now ships with it set. See
+  docs/ops/deploy.md and docs/ops/docker.md for how the hop count is used
+  and what happens if it's wrong in either direction.
 
 ## 0.4.1 — Per-app hostnames, console navigation, and auth-boundary hardening
 

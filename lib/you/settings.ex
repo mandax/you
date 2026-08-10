@@ -26,14 +26,16 @@ defmodule You.Settings do
   A handful of bootstrap and key-material values — `DATABASE_PATH`,
   `SECRET_KEY_BASE`, `JWT_SIGNING_KEY`, `JWT_KEY_ID`, `JWT_PREVIOUS_KEYS`,
   `PHX_HOST`, `PHX_SCHEME`, `POOL_SIZE`, `BIND_IP`, `WEBAUTHN_RP_ID`,
-  `APP_HOSTNAME_TEMPLATE` — are deliberately absent from `@defaults` and
-  rejected by `set/2`: putting them behind a console login is either
-  circular (the login depends on them) or a way to lock the Operator out.
-  `APP_HOSTNAME_TEMPLATE` in particular gates which hosts an emailed link
-  may point at and which origins a LiveView socket accepts — see
-  `You.Hosting`, which reads it straight from `Application.get_env/2`
-  rather than through this module at all, the same way `You.WebAuthn.rp_id/0`
-  reads `WEBAUTHN_RP_ID`.
+  `APP_HOSTNAME_TEMPLATE`, `TRUSTED_PROXY_HOPS` — are deliberately absent
+  from `@defaults` and rejected by `set/2`: putting them behind a console
+  login is either circular (the login depends on them) or a way to lock the
+  Operator out. `APP_HOSTNAME_TEMPLATE` gates which hosts an emailed link
+  may point at and which origins a LiveView socket accepts;
+  `TRUSTED_PROXY_HOPS` decides which `X-Forwarded-For` entry the
+  login-guarding rate limits key on — see `YouWeb.Plugs.RateLimit`, which,
+  like `You.Hosting` and `You.WebAuthn.rp_id/0` before it, reads its value
+  straight from `Application.get_env/2` rather than through this module at
+  all.
   """
 
   alias You.Settings.Setting
@@ -81,17 +83,22 @@ defmodule You.Settings do
   window, not a console toggle. `APP_HOSTNAME_TEMPLATE` is the same class of
   value again: it gates which hosts an emailed link may point at and which
   origins a LiveView socket accepts (`You.Hosting`, which reads it straight
-  from `Application.get_env/2` and never through this module). `set/2`
-  rejects these atoms outright, so a future key added under one of these
-  names cannot become console-editable by accident — `set/2` has no check
-  that a key is even a *known* one otherwise, so without this list a config
-  bundle or a direct call could still write a `hostname_template` row that
-  nothing reads, which is confusing rather than dangerous but worth closing
-  off explicitly.
+  from `Application.get_env/2` and never through this module). So is
+  `TRUSTED_PROXY_HOPS`: it decides how far `YouWeb.Plugs.RateLimit` trusts
+  `X-Forwarded-For` when choosing which bucket a login attempt counts
+  against, so a console-editable version would let anyone who can reach the
+  console (or reach far enough to try) loosen the very limits guarding it.
+  `set/2` rejects these atoms outright, so a future key added under one of
+  these names cannot become console-editable by accident — `set/2` has no
+  check that a key is even a *known* one otherwise, so without this list a
+  config bundle or a direct call could still write a `hostname_template` or
+  `trusted_proxy_hops` row that nothing reads, which is confusing rather
+  than dangerous but worth closing off explicitly.
   """
   @forbidden_keys ~w(
     database_path secret_key_base jwt_signing_key jwt_key_id jwt_previous_keys
     phx_host phx_scheme pool_size bind_ip webauthn_rp_id hostname_template
+    trusted_proxy_hops
   )a
 
   def forbidden_keys, do: @forbidden_keys

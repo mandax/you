@@ -47,6 +47,7 @@ docker run -d \
 | `JWT_SIGNING_KEY` | No | generated | Ed25519 seed for App JWTs. Generated on first boot and persisted to `$(dirname DATABASE_PATH)/jwt_signing_key` (0600) when unset. Never ephemeral — losing it invalidates every issued token |
 | `PHX_HOST` | Yes | (none) | Public hostname (e.g., `you.example.com`) |
 | `WEBAUTHN_RP_ID` | No | `PHX_HOST`, port stripped | The WebAuthn relying-party ID passkeys are bound to. Unset derives it from `PHX_HOST`, matching today's behaviour. Environment-only — never console-editable, same reasoning as `PHX_HOST` — and changing it strands every passkey already registered, in both directions. A host offers passkeys only when it equals this value or is a subdomain of it |
+| `TRUSTED_PROXY_HOPS` | No | `0` | Number of reverse proxies in front of this container that append to (not replace) `X-Forwarded-For`. This container is meant to sit behind exactly one (`docker-compose.yml` binds to loopback), so set this to `1` — unset, the header is ignored and the login rate limits key on that one proxy's address for every caller behind it. Environment-only, same reasoning as `WEBAUTHN_RP_ID`. See [deploy.md](deploy.md#https) |
 | `SMTP_HOST` | No | (none) | Mail relay. Unset falls back to an in-memory mailbox at `/console/mailbox`; every emailed flow is then undeliverable |
 | `YOU_MODE` | No | `multi` | `single` provisions one app from `SINGLE_APP_*` and hides the multi-app surface. See [quickstart](../quickstart.md) |
 | `SINGLE_APP_SLUG` | With `YOU_MODE=single` | `app` | The app's client id |

@@ -24,6 +24,7 @@ All runtime configuration is read from environment variables in
 | `DNS_CLUSTER_QUERY` | No | (none) | DNS cluster query for distributed Erlang |
 | `WEBAUTHN_RP_ID` | No | derived from `PHX_HOST` | The WebAuthn relying-party id passkeys are bound to. Environment-only — no console path can set it. Unset reproduces the value derived from `PHX_HOST` today, so a single-host deployment is unchanged, but from then on `PHX_HOST` and the RP ID can move independently: changing this value (or, while it stays unset, changing `PHX_HOST`) strands every passkey already registered, in both directions. A host offers passkeys only when it equals `WEBAUTHN_RP_ID` or is a subdomain of it |
 | `APP_HOSTNAME_TEMPLATE` | No | unset | The pattern app hostnames take, one `{label}` placeholder — e.g. `{label}.example.com`. Environment-only, same reasoning as `WEBAUTHN_RP_ID`: it gates which hosts an emailed link may point at and which origins a LiveView socket accepts, values a login depends on. A malformed value (not exactly one `{label}`) fails the boot with an error naming the mistake. Unset or missing the "Per-app hostnames" feature switch (console, Admin-owned): per-app hostnames are off, byte-identical to today. See [app-hostnames.md](app-hostnames.md) |
+| `TRUSTED_PROXY_HOPS` | No | `0` | How many reverse proxies in front of this instance are known to *append to*, not replace, `X-Forwarded-For` — the login-guarding rate limits (`YouWeb.Plugs.RateLimit`) use this many entries counted from the right of that header as the caller's address, and ignore the rest as attacker-supplied. `0` ignores the header entirely and keys on `conn.remote_ip` instead — safe when reachable directly, wrong behind any proxy: every caller then shares that proxy's one bucket. Set to `1` behind a single reverse proxy or tunnel (nginx, Caddy, Traefik, a Cloudflare tunnel) — the common case. Environment-only, same reasoning as `WEBAUTHN_RP_ID`. A non-integer or negative value fails the boot with an error naming the mistake |
 
 Set `PHX_HOST` to the hostname users actually reach You on. It is used to build
 the OIDC issuer URL and the WebAuthn origin (`https://<PHX_HOST>`), so a wrong
@@ -94,6 +95,14 @@ The endpoint is compiled with `force_ssl` using
 (`https://<PHX_HOST>:443` unless you say otherwise), so all generated links use
 that scheme regardless of the internal port, and the session cookie is marked
 `secure` whenever the scheme is https.
+
+Set `TRUSTED_PROXY_HOPS` to match: the same reverse proxy that terminates TLS
+here is the one appending your caller's real address to `X-Forwarded-For`,
+and login/registration/password-reset/2FA rate limiting depends on it being
+named. Leaving it unset behind a proxy does not fail loudly — it just means
+every request through that proxy counts against one shared bucket, so a
+credential-testing bot behind it moves as freely as if there were no limit at
+all.
 
 ## Database
 
