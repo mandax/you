@@ -9,6 +9,43 @@ the source, including into an air-gapped checkout.
 one you are moving to — not only the newest. `docker compose pull` crosses all
 of them at once.
 
+## Unreleased
+
+- **Password reset has been crashing outright since 0.3.0 — fixed.**
+  `PUT /users/reset-password/:token` matched `Accounts.update_user_password/2`
+  against an `{:ok, user}` return shape and then called
+  `Accounts.delete_all_user_tokens/1` on the result a second time, but
+  `update_user_password/2` deletes every token itself and returns
+  `{:ok, {user, expired_tokens}}` (the shape `user_settings_controller.ex`'s
+  password-change action already matched) — this controller was never
+  updated to match. Every real password reset has 500'd on the final step:
+  `update_user_password` had already run, so the password *did* change, but
+  the user never saw success and never reached wherever they should have
+  landed next.
+- **Password reset redirected to an unvalidated `callback_url` (#140) — open
+  redirect and authorization-code leak, pre-existing on `main`.**
+  `UserSessionController`'s login path only ever redirects
+  to a `callback_url` that matches a registered app
+  (`YouWeb.OAuthFlow.safe_callback_url/1`); `UserResetPasswordController`
+  read the session value straight and redirected to it regardless, and
+  `create/2` propagated an attacker-chosen `callback_url` into the reset
+  link it emailed. Verified before fixing: this was **not account
+  takeover**. The emailed link never carried `code_challenge`, so the
+  authorization code minted at the end of a hijacked reset had no PKCE
+  challenge bound, and `Accounts.consume_auth_code/3` only lets such a code
+  through for a client that authenticates with its `client_secret` — an
+  attacker without that secret cannot redeem it. What it *was*: an open
+  redirect off You's own domain, reached immediately after a genuine,
+  successful password reset (a moment users are primed to trust whatever
+  comes next), and an authorization code delivered to a host nobody
+  registered — not exploitable today, but a credential that shouldn't leave
+  to an unregistered destination at all. Fixed by routing the reset
+  controller's completion through the same `safe_callback_url/1` and
+  `redirect_with_code/4` the login path already uses, instead of a second,
+  unvalidated copy of the same logic. An unregistered `callback_url` now
+  falls back to the ordinary post-reset destination; a registered app's
+  still receives its code exactly as before.
+
 ## 0.4.1 — Per-app hostnames, console navigation, and auth-boundary hardening
 
 ### Requires your attention
