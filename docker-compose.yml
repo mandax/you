@@ -78,6 +78,13 @@ services:
       # itself is just as destructive, in both directions, so treat it as a
       # maintenance-window operation, never a routine edit.
       WEBAUTHN_RP_ID: ${WEBAUTHN_RP_ID:-}
+      # The pattern app hostnames follow, one {label} placeholder — e.g.
+      # {label}.example.com. Unset means per-app hostnames are off, which is
+      # the default; a malformed value fails the boot rather than silently
+      # resolving nothing. Setting it is only half the switch: the "Per-app
+      # hostnames" feature also has to be on in the console, which is an
+      # Admin's to flip while this variable is the Operator's to set.
+      APP_HOSTNAME_TEMPLATE: ${APP_HOSTNAME_TEMPLATE:-}
     volumes:
       # Named, not bind-mounted, and never anonymous: the SQLite file, the
       # generated secrets and the WAL all live here. Losing it is losing every
