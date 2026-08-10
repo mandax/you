@@ -333,4 +333,66 @@ if config_env() == :prod do
           """
       end
   end
+
+  # TRUSTED_PROXY_HOPS is how many reverse proxies stand between this
+  # instance and the internet, each one known to *append* to
+  # X-Forwarded-For rather than pass it through unchanged — see
+  # `YouWeb.Plugs.RateLimit`'s moduledoc for why that distinction is what
+  # makes the header trustworthy at all. Defaults to 0 (config.exs): the
+  # header is ignored and every rate limit keys on `conn.remote_ip`
+  # instead. That is the safe failure mode for a directly reachable
+  # instance, but it is also wrong for the common case — one reverse proxy
+  # (nginx, Caddy, Traefik, a Cloudflare tunnel) in front, per
+  # docs/ops/deploy.md — so an Operator behind one must set this to `1` or
+  # every request shares that proxy's single bucket instead of the caller's.
+  #
+  # Environment-only, same reasoning as `WEBAUTHN_RP_ID` and
+  # `APP_HOSTNAME_TEMPLATE` above: it is a value the login-guarding rate
+  # limits depend on, so it cannot sit behind the console those limits
+  # protect (`You.Settings.forbidden_keys/0`). Validated at boot, not left
+  # to fail open at request time: a non-integer or negative value would
+  # otherwise either crash every rate-limited request or silently disable
+  # the header, neither of which is a mistake an Operator should discover
+  # that way.
+  case env.("TRUSTED_PROXY_HOPS") do
+    nil ->
+      :ok
+
+    value ->
+      max_hops = YouWeb.Plugs.RateLimit.max_forwarded_entries()
+
+      case Integer.parse(value) do
+        {hops, ""} when hops >= 0 and hops <= max_hops ->
+          config :you, :trusted_proxy_hops, hops
+
+        {hops, ""} when hops > max_hops ->
+          raise """
+          TRUSTED_PROXY_HOPS is #{hops}, more than the #{max_hops} entries
+          YouWeb.Plugs.RateLimit ever inspects. That can never resolve to a
+          client address, so every request would silently fall back to
+          remote_ip — every caller behind your proxy sharing one bucket,
+          not the "trust more hops" you likely intended. Double-check this
+          isn't a port or a typo; #{max_hops} is already far more proxies
+          than any real deployment chains.
+          """
+
+        _ ->
+          raise """
+          TRUSTED_PROXY_HOPS must be a non-negative integer, got: #{inspect(value)}
+
+          It's the number of reverse proxies in front of this instance that
+          are known to append to (not replace) X-Forwarded-For. Leave it
+          unset (0) if You is reached directly or through a proxy you have
+          not verified appends to the header.
+          """
+      end
+  end
+
+  # A temporary diagnostic, not a setting: logs the raw X-Forwarded-For
+  # entries and the resolved client IP for every rate-limited request, so
+  # an Operator can send one real request through their real chain and
+  # read off how many hops it actually is, rather than guess from a table
+  # of examples that can't cover every proxy stack. Meant to be turned on,
+  # checked once, and turned back off.
+  config :you, :trusted_proxy_hops_debug, env.("TRUSTED_PROXY_HOPS_DEBUG") != nil
 end

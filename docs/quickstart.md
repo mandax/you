@@ -104,6 +104,14 @@ server {
 `X-Forwarded-Proto` is load-bearing: You uses it to know the request arrived
 over TLS.
 
+Set `TRUSTED_PROXY_HOPS` to match whichever of these you put in front, or the
+login/registration/password-reset/2FA rate limits key on this proxy's one
+address instead of each caller's. It is **not** always `1` — Caddy or nginx
+alone, reached directly, is `1`, but Cloudflare's proxy (the orange cloud) in
+front of that same Caddy or nginx is a *second* appending hop, so `2`. See
+[deploy.md](ops/deploy.md#determining-your-hop-count) for how to tell which
+you have rather than guess.
+
 ## 4. Configure email
 
 Magic links, email 2FA, address confirmation and password reset all send mail.

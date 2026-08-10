@@ -85,6 +85,22 @@ services:
       # hostnames" feature also has to be on in the console, which is an
       # Admin's to flip while this variable is the Operator's to set.
       APP_HOSTNAME_TEMPLATE: ${APP_HOSTNAME_TEMPLATE:-}
+      # How many reverse proxies sit between this container and the
+      # internet, each one known to append to (not replace) X-Forwarded-For.
+      # This file always puts at least one in front (see "Bound to loopback"
+      # above), so the login rate limits need this set to 1 to key on the
+      # real caller instead of that proxy's one address — unset (0), the
+      # header is ignored entirely and every caller behind it shares a
+      # single bucket. A proxy in front of your proxy (Cloudflare's proxy in
+      # front of your own nginx/Caddy, say) is 2, not 1 — see
+      # docs/ops/deploy.md for how to determine your actual count.
+      TRUSTED_PROXY_HOPS: ${TRUSTED_PROXY_HOPS:-0}
+      # Temporary diagnostic: any non-empty value logs the raw
+      # X-Forwarded-For entries and the resolved client IP for every
+      # rate-limited request, so you can confirm TRUSTED_PROXY_HOPS above
+      # against a real request through your real chain. Turn on, send one
+      # request, read the log, turn back off — not left-on configuration.
+      TRUSTED_PROXY_HOPS_DEBUG: ${TRUSTED_PROXY_HOPS_DEBUG:-}
     volumes:
       # Named, not bind-mounted, and never anonymous: the SQLite file, the
       # generated secrets and the WAL all live here. Losing it is losing every

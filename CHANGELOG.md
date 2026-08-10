@@ -11,6 +11,8 @@ of them at once.
 
 ## Unreleased
 
+### Requires your attention
+
 - **Password reset redirected to an unvalidated `callback_url` (#140) —
   account takeover for any instance with more than one registered app (or
   one leaked app secret), open redirect otherwise. Exposure window is
@@ -72,6 +74,42 @@ of them at once.
   the user never saw success and never reached wherever they should have
   landed next. This is also why #140 above was unreachable on 0.3.0–0.4.1:
   the crash happens before an authorization code is ever minted.
+||||||| parent of 127bca2 (fix(rate-limit): trust X-Forwarded-For only as far as TRUSTED_PROXY_HOPS says)
+
+- **Rate limits keyed on `X-Forwarded-For` are now bypassable only up to a
+  hop count you set (#141).** `YouWeb.Plugs.RateLimit` used to trust
+  `X-Forwarded-For` verbatim, so anyone could rotate that header on every
+  request and get a fresh bucket each time — the limits guarding login,
+  registration, password reset, TOTP, email 2FA, and social-login flow
+  creation were decorative for any client willing to send a header. Fixed by
+  a new environment variable, `TRUSTED_PROXY_HOPS` (`config/runtime.exs`,
+  environment-only like `WEBAUTHN_RP_ID` and `APP_HOSTNAME_TEMPLATE` — a
+  value the login-guarding limits depend on can't sit behind the console
+  they guard, capped at 20 with a boot error naming the cap on anything
+  higher). It defaults to **0**: the header is ignored entirely and every
+  limit keys on `conn.remote_ip`, the actual TCP peer, which can't be
+  spoofed. **If you run behind a reverse proxy or tunnel — the documented
+  shape for `docker-compose.yml` — and do nothing, every caller behind that
+  proxy now shares its one bucket instead of getting their own; a single
+  slow client can trip the limit for everyone else behind the same proxy.**
+  There is no single value that's right for every deployment — one reverse
+  proxy reached directly is `1`, but a CDN or edge proxy (Cloudflare's
+  orange-cloud proxy, say) in front of that same reverse proxy is a second
+  *appending* hop and needs `2`, while a tunnel client that just relays
+  bytes (`cloudflared`) doesn't add a hop of its own at all. A new
+  `TRUSTED_PROXY_HOPS_DEBUG` flag logs the raw header and resolved IP per
+  request so you can confirm the count against a real request rather than
+  guess. See docs/ops/deploy.md#determining-your-hop-count,
+  docs/ops/docker.md, and docs/quickstart.md.
+
+- **`APP_HOSTNAME_TEMPLATE` (#121) reached `docker-compose.yml`'s allowlist
+  (#163), shipped in 0.4.1 without a changelog entry of its own.** Anyone
+  who set it in `.env` before this and ran `docker compose up` got no
+  per-app hostnames and no error explaining why — the variable was
+  documented but never added to the compose file's `environment:` block,
+  which silently drops anything absent from it. Fixed; no action needed
+  unless you already worked around the gap by injecting the variable some
+  other way, which you can now remove.
 
 ## 0.4.1 — Per-app hostnames, console navigation, and auth-boundary hardening
 
