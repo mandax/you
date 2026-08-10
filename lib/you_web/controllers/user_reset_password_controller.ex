@@ -137,9 +137,18 @@ defmodule YouWeb.UserResetPasswordController do
   defp finish_reset(conn, user) do
     case YouWeb.OAuthFlow.safe_callback_url(conn) do
       nil ->
-        redirect(conn, to: YouWeb.AppBranding.login_path(conn))
+        # login_path/1 reads the session's callback_url to carry it forward
+        # to the login form, so it must be computed before the flow keys are
+        # cleared below.
+        target = YouWeb.AppBranding.login_path(conn)
+
+        conn
+        |> clear_flow_session()
+        |> redirect(to: target)
 
       callback_url ->
+        YouWeb.OAuthFlow.record_consent_for_app(conn, user)
+
         {:ok, code} =
           Accounts.generate_auth_code(
             user,
@@ -150,5 +159,17 @@ defmodule YouWeb.UserResetPasswordController do
 
         YouWeb.OAuthFlow.redirect_with_code(conn, callback_url, code, get_session(conn, :state))
     end
+  end
+
+  # Mirrors the flow-key cleanup `OAuthFlow.redirect_with_code/4` does on the
+  # OAuth branch, so an unregistered or absent callback doesn't leave an
+  # attacker-chosen callback_url sitting in the session for the rest of its
+  # life.
+  defp clear_flow_session(conn) do
+    conn
+    |> put_session(:callback_url, nil)
+    |> put_session(:scopes, nil)
+    |> put_session(:code_challenge, nil)
+    |> put_session(:state, nil)
   end
 end

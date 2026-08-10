@@ -11,7 +11,56 @@ of them at once.
 
 ## Unreleased
 
-- **Password reset has been crashing outright since 0.3.0 — fixed.**
+- **Password reset redirected to an unvalidated `callback_url` (#140) —
+  account takeover for any instance with more than one registered app (or
+  one leaked app secret), open redirect otherwise. Exposure window is
+  narrower than the bug's age, in your favour: read both severity notes
+  below before deciding whether to act.**
+  `UserSessionController`'s login path only ever redirects to a
+  `callback_url` that matches a registered app
+  (`YouWeb.OAuthFlow.safe_callback_url/1`); `UserResetPasswordController`
+  read the session value straight and redirected to it regardless, and
+  `create/2` propagated an attacker-chosen `callback_url` into the reset
+  link it emailed. A `GET /users/reset-password?callback_url=https://evil…`
+  followed by the victim genuinely resetting their own password ended with
+  their browser sent to the attacker's host carrying a fresh authorization
+  code.
+  - **How bad, corrected**: our first read was that this was "only" an open
+    redirect plus a leaked code, because the emailed link never carries
+    `code_challenge`, so the code has no PKCE binding — reasoning we
+    verified against `Accounts.consume_auth_code/3` and confirmed as far as
+    it went. It stops short: a PKCE-less code still redeems for *any*
+    client that authenticates with *a* `client_secret`, not specifically
+    the one the code was minted for — `YouWeb.OIDCController`'s
+    `issued_to?(nil, _client_id), do: true` waves through a code whose
+    `app` is `nil`, which is exactly what a leak to an *unregistered*
+    callback produces (`app_slug_for_callback/1` returns `nil` for an
+    unregistered URL). So any party holding any registered app's own
+    secret — a second app on the same instance, or a first app whose
+    secret leaked elsewhere — could redeem a code that was never theirs
+    and obtain the victim's identity plus a durable refresh token. That is
+    account takeover, not merely a leak. The gap is in the token endpoint's
+    audience check, not in this reset flow specifically, so it's tracked
+    and will be fixed separately as **#165** — it is live on `main` today
+    regardless of this fix, for any code minted without an `app` bound
+    (which a legitimate first-party login can also produce).
+  - **How exposed, corrected**: on `main`, this path has been unreachable
+    since 0.3.0 for an unrelated reason — the crash fixed below runs first
+    and aborts the request before an authorization code is ever minted, so
+    no redirect and no leak actually occurred on 0.3.0 through 0.4.1.
+    **0.2.1 and earlier are the versions where this was live and
+    exploitable**; if you're running one of those, rotate every app's
+    `client_secret` and invalidate existing sessions/refresh tokens.
+    0.3.0–0.4.1 need this fix (defense in depth: #165 remains open
+    regardless) but were not reachable via this path.
+  - **Fix**: route the reset controller's completion through the same
+    `safe_callback_url/1` and `redirect_with_code/4` the login path already
+    uses, instead of a second, unvalidated copy of the same logic. An
+    unregistered `callback_url` now falls back to the ordinary post-reset
+    destination and clears the session's flow keys either way; a
+    registered app's still receives its code exactly as before, with
+    consent now recorded the same way the login path records it.
+- **Password reset has been crashing outright since 0.3.0 — fixed (#164).**
   `PUT /users/reset-password/:token` matched `Accounts.update_user_password/2`
   against an `{:ok, user}` return shape and then called
   `Accounts.delete_all_user_tokens/1` on the result a second time, but
@@ -21,30 +70,8 @@ of them at once.
   updated to match. Every real password reset has 500'd on the final step:
   `update_user_password` had already run, so the password *did* change, but
   the user never saw success and never reached wherever they should have
-  landed next.
-- **Password reset redirected to an unvalidated `callback_url` (#140) — open
-  redirect and authorization-code leak, pre-existing on `main`.**
-  `UserSessionController`'s login path only ever redirects
-  to a `callback_url` that matches a registered app
-  (`YouWeb.OAuthFlow.safe_callback_url/1`); `UserResetPasswordController`
-  read the session value straight and redirected to it regardless, and
-  `create/2` propagated an attacker-chosen `callback_url` into the reset
-  link it emailed. Verified before fixing: this was **not account
-  takeover**. The emailed link never carried `code_challenge`, so the
-  authorization code minted at the end of a hijacked reset had no PKCE
-  challenge bound, and `Accounts.consume_auth_code/3` only lets such a code
-  through for a client that authenticates with its `client_secret` — an
-  attacker without that secret cannot redeem it. What it *was*: an open
-  redirect off You's own domain, reached immediately after a genuine,
-  successful password reset (a moment users are primed to trust whatever
-  comes next), and an authorization code delivered to a host nobody
-  registered — not exploitable today, but a credential that shouldn't leave
-  to an unregistered destination at all. Fixed by routing the reset
-  controller's completion through the same `safe_callback_url/1` and
-  `redirect_with_code/4` the login path already uses, instead of a second,
-  unvalidated copy of the same logic. An unregistered `callback_url` now
-  falls back to the ordinary post-reset destination; a registered app's
-  still receives its code exactly as before.
+  landed next. This is also why #140 above was unreachable on 0.3.0–0.4.1:
+  the crash happens before an authorization code is ever minted.
 
 ## 0.4.1 — Per-app hostnames, console navigation, and auth-boundary hardening
 
