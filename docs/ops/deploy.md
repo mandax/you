@@ -24,7 +24,8 @@ All runtime configuration is read from environment variables in
 | `DNS_CLUSTER_QUERY` | No | (none) | DNS cluster query for distributed Erlang |
 | `WEBAUTHN_RP_ID` | No | derived from `PHX_HOST` | The WebAuthn relying-party id passkeys are bound to. Environment-only — no console path can set it. Unset reproduces the value derived from `PHX_HOST` today, so a single-host deployment is unchanged, but from then on `PHX_HOST` and the RP ID can move independently: changing this value (or, while it stays unset, changing `PHX_HOST`) strands every passkey already registered, in both directions. A host offers passkeys only when it equals `WEBAUTHN_RP_ID` or is a subdomain of it |
 | `APP_HOSTNAME_TEMPLATE` | No | unset | The pattern app hostnames take, one `{label}` placeholder — e.g. `{label}.example.com`. Environment-only, same reasoning as `WEBAUTHN_RP_ID`: it gates which hosts an emailed link may point at and which origins a LiveView socket accepts, values a login depends on. A malformed value (not exactly one `{label}`) fails the boot with an error naming the mistake. Unset or missing the "Per-app hostnames" feature switch (console, Admin-owned): per-app hostnames are off, byte-identical to today. See [app-hostnames.md](app-hostnames.md) |
-| `TRUSTED_PROXY_HOPS` | No | `0` | How many reverse proxies in front of this instance are known to *append to*, not replace, `X-Forwarded-For` — the login-guarding rate limits (`YouWeb.Plugs.RateLimit`) use this many entries counted from the right of that header as the caller's address, and ignore the rest as attacker-supplied. `0` ignores the header entirely and keys on `conn.remote_ip` instead — safe when reachable directly, wrong behind any proxy: every caller then shares that proxy's one bucket. Set to `1` behind a single reverse proxy or tunnel (nginx, Caddy, Traefik, a Cloudflare tunnel) — the common case. Environment-only, same reasoning as `WEBAUTHN_RP_ID`. A non-integer or negative value fails the boot with an error naming the mistake |
+| `TRUSTED_PROXY_HOPS` | No | `0` | How many reverse proxies in front of this instance are known to *append to*, not replace, `X-Forwarded-For` — the login-guarding rate limits (`YouWeb.Plugs.RateLimit`) use this many entries counted from the right of that header as the caller's address, and ignore the rest as attacker-supplied. `0` ignores the header entirely and keys on `conn.remote_ip` instead — safe when reachable directly, wrong behind any proxy: every caller then shares that proxy's one bucket. There is no single "common case" value — see "Determining your hop count" below. Capped at 20; a boot error names the cap rather than silently disabling the header on a typo (a stray digit, a port pasted into the wrong line). Environment-only, same reasoning as `WEBAUTHN_RP_ID`. A non-integer or negative value fails the boot with an error naming the mistake |
+| `TRUSTED_PROXY_HOPS_DEBUG` | No | unset | Temporary diagnostic, not a setting to leave on: any non-empty value logs the raw `X-Forwarded-For` entries and the resolved client IP for every rate-limited request, so you can check `TRUSTED_PROXY_HOPS` against a real request through your real chain. See "Determining your hop count" below |
 
 Set `PHX_HOST` to the hostname users actually reach You on. It is used to build
 the OIDC issuer URL and the WebAuthn origin (`https://<PHX_HOST>`), so a wrong
@@ -34,6 +35,41 @@ Planning to give apps their own login hostnames rather than one shared
 `PHX_HOST`? Read [app-hostnames.md](app-hostnames.md) first — the pattern you
 pick fixes what `PHX_HOST`, `WEBAUTHN_RP_ID`, and `APP_HOSTNAME_TEMPLATE` have
 to be, and it is far cheaper to decide before any of them is live.
+
+### Determining your hop count
+
+`TRUSTED_PROXY_HOPS` is the number of proxies that *append* to
+`X-Forwarded-For` between the internet and this instance — not the number of
+network hops, and not always `1`:
+
+- **One reverse proxy, directly exposed** (nginx, Caddy, or Traefik on the
+  same box or LAN, with nothing else in front): `1`. It receives the
+  connection straight from the client and appends the client's address.
+- **A CDN or edge proxy in front of that same reverse proxy** — Cloudflare's
+  orange-cloud proxy pointed at your own nginx or Caddy, rather than a tunnel
+  — is **two** appending hops, not one: the edge appends the client's
+  address, then your reverse proxy appends the edge's address on top. Set
+  `1` here and every request keys on the edge's own address instead of the
+  caller's — and because a given edge PoP serves many clients through a
+  handful of addresses, one client behind that PoP tripping a limit takes
+  the limit down for everyone else behind it too, which is close to the
+  denial of service this feature exists to prevent.
+- **A tunnel client** (`cloudflared` and similar) that relays bytes to this
+  instance rather than terminating and re-proxying HTTP does not append
+  anything itself — it forwards whatever `X-Forwarded-For` the edge already
+  set. If the edge is the only thing that appends, that's `1`, the same as
+  the plain-reverse-proxy case above, even though there are two processes in
+  the path.
+
+The distinction that matters is which hops *rewrite the HTTP request*
+(append) versus which just *relay the connection* (don't) — not how many
+things a packet passes through. Don't guess: set `TRUSTED_PROXY_HOPS_DEBUG=1`,
+send one real request through your real chain from outside your network, and
+read the logged `X-Forwarded-For` entries and resolved client IP. The
+resolved IP should be the address you actually made the request from. If it's
+a proxy's address instead, the count is too low; if it's an entry your own
+client sent (or the log shows the fallback to `remote_ip`), it's too high.
+Turn the flag back off once you've confirmed it.
 
 ## Mail (SMTP)
 
@@ -96,13 +132,15 @@ The endpoint is compiled with `force_ssl` using
 that scheme regardless of the internal port, and the session cookie is marked
 `secure` whenever the scheme is https.
 
-Set `TRUSTED_PROXY_HOPS` to match: the same reverse proxy that terminates TLS
-here is the one appending your caller's real address to `X-Forwarded-For`,
-and login/registration/password-reset/2FA rate limiting depends on it being
-named. Leaving it unset behind a proxy does not fail loudly — it just means
-every request through that proxy counts against one shared bucket, so a
-credential-testing bot behind it moves as freely as if there were no limit at
-all.
+Set `TRUSTED_PROXY_HOPS` to match this chain (see "Determining your hop
+count" above — it is not always `1`, and is 2 if a CDN or edge proxy sits in
+front of this same reverse proxy): login/registration/password-reset/2FA
+rate limiting depends on it being named correctly. Leaving it unset behind a
+proxy does not fail loudly — it just means every request through that proxy
+counts against one shared bucket, so a credential-testing bot behind it moves
+as freely as if there were no limit at all. Getting the count too high is
+its own failure, just as silent: every request then falls back to
+`remote_ip`, the same one shared bucket by a different route.
 
 ## Database
 

@@ -53,7 +53,22 @@ defmodule YouWeb.Plugs.RateLimit do
   documented deployment shapes (Caddy, nginx, Traefik, a Cloudflare tunnel)
   emits it, and accepting a second, differently-shaped header for the same
   purpose would only widen what a forged request could try.
+
+  A generic hop count, rather than a single-purpose header some proxies
+  offer instead (Cloudflare's `Cf-Connecting-Ip`, which the edge sets and
+  a well-behaved intermediary never appends to, so there's nothing to
+  count), is what stays correct across every documented shape, including
+  ones stacked in front of each other — see docs/ops/deploy.md for how
+  many hops a given chain actually is, which is not always 1.
+
+  `TRUSTED_PROXY_HOPS_DEBUG` (any non-empty value, environment-only, not
+  persisted) logs the raw `X-Forwarded-For` entries and the resolved
+  client IP for every rate-limited request while `hops > 0` — turn it on
+  temporarily to see, from a real request through your real chain, whether
+  the configured hop count actually lands on the caller.
   """
+
+  require Logger
 
   import Plug.Conn
 
@@ -62,6 +77,16 @@ defmodule YouWeb.Plugs.RateLimit do
   # An attacker controls X-Forwarded-For's length; nothing beyond this many
   # hops is a plausible proxy chain, so entries past it are never inspected.
   @max_forwarded_entries 20
+
+  @doc """
+  The most entries of `X-Forwarded-For` ever inspected, from the right.
+
+  A `TRUSTED_PROXY_HOPS` beyond this can never resolve to anything —
+  `config/runtime.exs` rejects one at boot using this same value, rather
+  than let an oversized hop count boot cleanly and then silently fall back
+  to `remote_ip` on every request.
+  """
+  def max_forwarded_entries, do: @max_forwarded_entries
 
   @impl true
   def init(opts), do: opts
@@ -105,12 +130,26 @@ defmodule YouWeb.Plugs.RateLimit do
 
   defp client_ip(conn) do
     case trusted_proxy_hops() do
-      0 -> remote_ip(conn)
-      hops -> forwarded_client_ip(conn, hops) || remote_ip(conn)
+      0 ->
+        remote_ip(conn)
+
+      hops ->
+        resolved = forwarded_client_ip(conn, hops) || remote_ip(conn)
+        debug_log(conn, hops, resolved)
+        resolved
     end
   end
 
   defp trusted_proxy_hops, do: Application.get_env(:you, :trusted_proxy_hops, 0)
+
+  defp debug_log(conn, hops, resolved) do
+    if Application.get_env(:you, :trusted_proxy_hops_debug, false) do
+      Logger.info(
+        "YouWeb.Plugs.RateLimit: X-Forwarded-For=#{inspect(get_req_header(conn, "x-forwarded-for"))} " <>
+          "remote_ip=#{remote_ip(conn)} hops=#{hops} resolved=#{resolved}"
+      )
+    end
+  end
 
   defp remote_ip(conn), do: conn.remote_ip |> :inet.ntoa() |> to_string()
 

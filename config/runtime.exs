@@ -359,9 +359,22 @@ if config_env() == :prod do
       :ok
 
     value ->
+      max_hops = YouWeb.Plugs.RateLimit.max_forwarded_entries()
+
       case Integer.parse(value) do
-        {hops, ""} when hops >= 0 ->
+        {hops, ""} when hops >= 0 and hops <= max_hops ->
           config :you, :trusted_proxy_hops, hops
+
+        {hops, ""} when hops > max_hops ->
+          raise """
+          TRUSTED_PROXY_HOPS is #{hops}, more than the #{max_hops} entries
+          YouWeb.Plugs.RateLimit ever inspects. That can never resolve to a
+          client address, so every request would silently fall back to
+          remote_ip — every caller behind your proxy sharing one bucket,
+          not the "trust more hops" you likely intended. Double-check this
+          isn't a port or a typo; #{max_hops} is already far more proxies
+          than any real deployment chains.
+          """
 
         _ ->
           raise """
@@ -374,4 +387,12 @@ if config_env() == :prod do
           """
       end
   end
+
+  # A temporary diagnostic, not a setting: logs the raw X-Forwarded-For
+  # entries and the resolved client IP for every rate-limited request, so
+  # an Operator can send one real request through their real chain and
+  # read off how many hops it actually is, rather than guess from a table
+  # of examples that can't cover every proxy stack. Meant to be turned on,
+  # checked once, and turned back off.
+  config :you, :trusted_proxy_hops_debug, env.("TRUSTED_PROXY_HOPS_DEBUG") != nil
 end

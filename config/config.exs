@@ -41,6 +41,12 @@ config :you, :app_hostname_template, nil
 # See the plug's moduledoc for how the count is used.
 config :you, :trusted_proxy_hops, 0
 
+# Off by default: no per-request logging of X-Forwarded-For resolution.
+# `TRUSTED_PROXY_HOPS_DEBUG` (config/runtime.exs) is a temporary diagnostic
+# an Operator turns on to verify TRUSTED_PROXY_HOPS against a real request
+# through their real chain, then turns back off — not a setting to leave on.
+config :you, :trusted_proxy_hops_debug, false
+
 # Configure the endpoint
 #
 # `check_origin` is an MFA rather than a static list: the WebSocket

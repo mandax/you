@@ -95,6 +95,12 @@ services:
       # front of your own nginx/Caddy, say) is 2, not 1 — see
       # docs/ops/deploy.md for how to determine your actual count.
       TRUSTED_PROXY_HOPS: ${TRUSTED_PROXY_HOPS:-0}
+      # Temporary diagnostic: any non-empty value logs the raw
+      # X-Forwarded-For entries and the resolved client IP for every
+      # rate-limited request, so you can confirm TRUSTED_PROXY_HOPS above
+      # against a real request through your real chain. Turn on, send one
+      # request, read the log, turn back off — not left-on configuration.
+      TRUSTED_PROXY_HOPS_DEBUG: ${TRUSTED_PROXY_HOPS_DEBUG:-}
     volumes:
       # Named, not bind-mounted, and never anonymous: the SQLite file, the
       # generated secrets and the WAL all live here. Losing it is losing every
