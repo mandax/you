@@ -41,7 +41,33 @@ defmodule You.Application do
     # (not prepended) because it reads the audit-webhook setting from the DB at
     # init, so it must start after You.Repo. Same for the webhook Dispatcher,
     # which queries endpoints from the DB per event.
-    children = children ++ [You.Audit.Streamer, You.Webhooks.Dispatcher]
+    #
+    # The Task.Supervisor comes before the Dispatcher because every delivery
+    # runs under it. Supervising them (rather than bare `Task.start`) is what
+    # makes an in-flight delivery findable, and so terminable, by something
+    # other than itself — see `You.DataCase.setup_sandbox/1` (#159).
+    # `rest_for_one` for the webhook pair: the Dispatcher's telemetry handler
+    # calls into You.Webhooks.TaskSupervisor by name, so a supervisor that
+    # restarted without the Dispatcher restarting too would leave the handler
+    # pointing at a dead name. Under `rest_for_one` the Dispatcher is restarted
+    # after it, which re-attaches the handler.
+    webhooks = [
+      {Task.Supervisor, name: You.Webhooks.TaskSupervisor},
+      You.Webhooks.Dispatcher
+    ]
+
+    children =
+      children ++
+        [
+          You.Audit.Streamer,
+          %{
+            id: You.Webhooks.Supervisor,
+            type: :supervisor,
+            start:
+              {Supervisor, :start_link,
+               [webhooks, [strategy: :rest_for_one, name: You.Webhooks.Supervisor]]}
+          }
+        ]
 
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options

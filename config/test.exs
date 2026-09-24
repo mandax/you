@@ -9,14 +9,26 @@ config :you, You.Repo,
   pool_size: System.schedulers_online() * 2,
   # SQLite serializes writers; under async load a blocked writer otherwise
   # errors immediately with "Database busy". Wait for the lock instead.
-  busy_timeout: 5_000,
+  # Comfortably above the suite's own async phase, which is what a blocked
+  # test waits on, but deliberately under Ecto's 15s default query timeout:
+  # past that the caller raises DBConnection.ConnectionError while the busy
+  # handler is still asleep inside the NIF, which is a worse failure than the
+  # one being prevented.
+  busy_timeout: 10_000,
   journal_mode: :wal,
-  # `busy_timeout` alone is not enough: the sandbox wraps each test in a
-  # transaction that starts as a reader, and SQLite refuses to invoke the busy
-  # handler when such a transaction later needs to upgrade to a writer (waiting
-  # there could deadlock two readers). It returns SQLITE_BUSY immediately, which
-  # is the flake CI hits. `:immediate` takes the write lock at BEGIN, where the
-  # busy handler does apply, so a blocked test waits instead of failing.
+  # This key does NOT affect the sandbox, contrary to what this comment used
+  # to claim (#161). The diagnosis it recorded was right — a transaction that
+  # begins as a reader and later upgrades to a writer gets SQLITE_BUSY with no
+  # busy handler, because waiting there could deadlock two readers — but the
+  # mitigation never reached the sandbox: `Ecto.Adapters.SQL.Sandbox`'s
+  # `post_checkout/3` calls `handle_begin([mode: :transaction] ++ opts, ...)`,
+  # and `Exqlite.Connection.handle_begin/2` reads `Keyword.get(options, :mode,
+  # state.default_transaction_mode)` — so the hardcoded `:transaction` wins and
+  # maps to a plain deferred `BEGIN TRANSACTION`. Nor does it apply to an
+  # explicit `Repo.transaction/2` here: inside the sandbox that is a SAVEPOINT,
+  # not a BEGIN. In the test environment this key governs nothing. The real fix is in
+  # `You.DataCase.setup_sandbox/1`, which issues a write as the transaction's
+  # first statement. Kept here for parity with dev/prod, where it does apply.
   default_transaction_mode: :immediate
 
 config :you, YouWeb.Endpoint,
@@ -59,6 +71,13 @@ config :phoenix,
 
 config :you, :audit, enabled: false
 config :you, :audit_webhook_url, nil
+
+# Near-zero webhook retry backoff (#159). The dispatcher tests are about the
+# retry *policy* — three attempts, then give up — not about how long a real
+# deployment waits between them, and the production schedule
+# ([0, 2_000, 10_000]) costs the suite ~12s of genuine sleeping. Non-zero so
+# the `wait > 0` sleep branch is still exercised.
+config :you, :webhook_retry_backoff, [0, 10, 10]
 
 # A real canonical shape (origin's host equals the RP ID) rather than the
 # unrelated localhost:4002 this used to pair with rp_id against — that

@@ -1,6 +1,8 @@
 defmodule You.Webhooks.DispatcherTest do
   use You.DataCase, async: false
 
+  import ExUnit.CaptureLog
+
   alias You.Webhooks
 
   setup do
@@ -82,10 +84,32 @@ defmodule You.Webhooks.DispatcherTest do
 
     emit_user_registered()
 
-    assert_receive {:webhook_delivery, _, _}, 2_000
-    assert_receive {:webhook_delivery, _, _}, 6_000
-    assert_receive {:webhook_delivery, _, _}, 15_000
+    assert_receive {:webhook_delivery, _, _}, 1_000
+    assert_receive {:webhook_delivery, _, _}, 1_000
+    assert_receive {:webhook_delivery, _, _}, 1_000
     assert :counters.get(failures, 1) == 0
+  end
+
+  test "gives up after the configured number of attempts", %{url: url, failures: failures} do
+    :counters.add(failures, 1, 3)
+    create_endpoint(url, ["user.registered"])
+
+    log =
+      capture_log(fn ->
+        emit_user_registered()
+
+        for _ <- 1..3, do: assert_receive({:webhook_delivery, _, _}, 1_000)
+
+        # Wait for the delivery to actually give up, so the assertion below is
+        # about an exhausted delivery rather than about a race with a pending one.
+        for pid <- Task.Supervisor.children(You.Webhooks.TaskSupervisor) do
+          ref = Process.monitor(pid)
+          assert_receive {:DOWN, ^ref, :process, ^pid, _}, 1_000
+        end
+      end)
+
+    assert log =~ "failed after 3 attempts"
+    refute_received {:webhook_delivery, _, _}
   end
 
   test "Accounts.register_user emits a user.registered delivery", %{url: url} do
